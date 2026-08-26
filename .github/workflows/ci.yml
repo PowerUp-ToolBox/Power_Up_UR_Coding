@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Build, test, and bundle
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Build
+        run: swift build
+
+      - name: Test
+        run: swift test
+
+      # Full release pipeline: SPM release build, icon generation, .app
+      # assembly, ad-hoc signing. Catches build.sh regressions and release-only
+      # compile errors.
+      - name: Bundle app
+        run: ./scripts/build.sh
+
+      - name: Verify bundle
+        run: |
+          test -x build/PowerUp.app/Contents/MacOS/PowerUp
+          test -f build/PowerUp.app/Contents/Resources/AppIcon.icns
+          plutil -lint build/PowerUp.app/Contents/Info.plist
+          codesign --verify build/PowerUp.app
