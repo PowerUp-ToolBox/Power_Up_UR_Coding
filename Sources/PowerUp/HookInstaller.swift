@@ -37,9 +37,15 @@ enum HookInstaller {
 
     // MARK: - Paths
 
+    /// Test seam: when set, the hook script is written under this directory
+    /// instead of the real Application Support one, so tests can exercise
+    /// install/uninstall without touching a live PowerUp installation.
+    static var supportDirectoryOverride: URL?
+
     /// `~/Library/Application Support/PowerUp/` (falls back to a temp dir if the
     /// Application Support directory can't be located).
     static var supportDirectory: URL {
+        if let supportDirectoryOverride { return supportDirectoryOverride }
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
         return (base ?? FileManager.default.temporaryDirectory)
             .appendingPathComponent("PowerUp", isDirectory: true)

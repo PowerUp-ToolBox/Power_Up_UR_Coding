@@ -608,7 +608,9 @@ final class ClaudeService: ObservableObject {
     }
 
     /// Parses one stdout line. Anything unrecognised is silently ignored.
-    private nonisolated static func events(fromLine line: Data) -> [ClaudeEvent] {
+    /// Internal (not private) so the wire-protocol quirks verified against the
+    /// live CLI stay pinned by tests.
+    nonisolated static func events(fromLine line: Data) -> [ClaudeEvent] {
         guard !line.isEmpty else { return [] }
         guard let parsed = try? JSONSerialization.jsonObject(with: line, options: []),
               let root = parsed as? [String: Any],
@@ -768,7 +770,8 @@ private let cachedLoginShellClaudePath: String? = ClaudeService.loginShellLookup
 // MARK: - IOChannel
 
 /// Thread-safe buffers shared between the pipe reader threads and the main actor.
-private final class IOChannel: @unchecked Sendable {
+/// Internal (not private) so the line-splitting behavior is testable.
+final class IOChannel: @unchecked Sendable {
 
     private let lock = NSLock()
     private var stdoutBuffer = Data()

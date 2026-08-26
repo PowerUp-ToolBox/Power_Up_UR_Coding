@@ -369,7 +369,7 @@ enum ClaudeState: Equatable { case stopped, starting, ready, working }
 
 // MARK: - ClaudeEvent
 
-enum ClaudeEvent {
+enum ClaudeEvent: Equatable {
     case ready(sessionID: String, model: String)         // system/init parsed
     case textDelta(String)                               // stream_event text_delta
     case assistantMessage(String)                        // joined text blocks of an assistant message
