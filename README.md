@@ -68,6 +68,7 @@ default mapping table is in **[Buttons & controls](docs/controls.md)**.
 | [Configuration & sessions](docs/configuration.md) | Settings, `config.json`, session resume, cost display |
 | [Troubleshooting](docs/troubleshooting.md) | Permission resets, controller, `claude` binary issues |
 | [Privacy](docs/privacy.md) | Where your voice and data go (spoiler: mostly nowhere) |
+| [The PowerUp protocol](docs/protocol.md) | Build your own device plugin or UI against the local WebSocket API |
 
 For contributors: [CONTRIBUTING.md](CONTRIBUTING.md) (build/test/PR rules),
 [DESIGN.md](DESIGN.md) (the binding implementation contract), and

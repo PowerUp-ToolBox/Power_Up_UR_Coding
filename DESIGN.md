@@ -1089,3 +1089,143 @@ undecodable lines are ignored, never fatal.
 
 Tests must use `supportDirectoryOverride` (see `TranscriptStoreTests`) — a
 live installation's history is never touched.
+
+---
+
+# v1.7 addendum — intent/harness contracts + the PowerUp protocol server
+
+Supersedes anything above where it conflicts. This is the M2 "protocol
+extraction" milestone (DEVELOPMENT.md): devices and the session driver are
+decoupled through three new contracts, and the listener grows a WebSocket
+protocol endpoint. Behavior of the app is unchanged.
+
+## New file: Intent.swift
+
+```swift
+enum VoiceCaptureMode: String, Equatable { case send, draft }
+
+enum Intent: Equatable {
+    case beginVoiceCapture(VoiceCaptureMode), endVoiceCapture
+    case sendPrompt(String), sendDraft
+    case approve, reject, interrupt
+    case stopSpeaking, replayLastReply, toggleTTS
+    case newSession, showWindow
+    case cycleModel, cycleEffort, cyclePermissionMode, toggleControlMode
+}
+
+enum ControlPhase: Equatable { case began, ended }
+
+enum IntentMapper {
+    static func intent(for action: ControllerAction, phase: ControlPhase) -> Intent?
+        // hold actions → begin/end pair; others fire on .began, nil on .ended
+    static func intent(forProtocolName name: String, text: String?) -> Intent?
+        // the wire-safe subset — NO voice capture, NO direct setters; unknown → nil
+}
+```
+
+`AppState` dispatch: `handleButtonDown/Up` do the hold bookkeeping
+(`pttHoldButton`) then translate via `IntentMapper` into `handle(_ intent:)` —
+the single dispatcher every input source funnels into (buttons and protocol
+clients alike). Button release for a recorded hold always emits
+`.endVoiceCapture` regardless of the current mapping (a mid-hold mapping edit
+must not strand the recorder). The old `perform(_ action:)` is gone; the old
+private `PTTMode` is replaced by `VoiceCaptureMode`.
+
+## New file: Harness.swift
+
+```swift
+typealias HarnessState = ClaudeState
+
+struct HarnessConfiguration: Equatable {
+    var projectDir: URL
+    var model: String; var permissionMode: String; var effort: String
+    var resumeSessionID: String?; var binaryPathOverride: String?
+}
+
+enum HarnessEvent: Equatable {
+    case sessionReady(sessionID: String, model: String)
+    case replyDelta(String), reply(String)
+    case toolUse(name: String, detail: String)
+    case turnCompleted(resultText: String?, costUSD: Double?, isError: Bool, detail: String)
+    case controlResult(action: String, ok: Bool, detail: String, value: String?)
+    case permissionRequest(id: String, name: String, detail: String)  // reserved
+    case notification(String)                                         // reserved
+    case runtimeError(String), ended(exitCode: Int32)
+
+    static func from(_ event: ClaudeEvent) -> HarnessEvent   // total, 1:1, tested
+}
+
+@MainActor protocol HarnessAdapter: AnyObject {
+    var state: HarnessState { get }
+    var sessionID: String? { get }
+    var modelName: String? { get }
+    var totalCostUSD: Double { get }
+    var onHarnessEvent: ((HarnessEvent) -> Void)? { get set }
+    func start(_ configuration: HarnessConfiguration)
+    func send(_ text: String); func interrupt()
+    func setModel(_ model: String); func setPermissionMode(_ mode: String)
+    func stop()
+}
+```
+
+`ClaudeService` conforms: it gains the stored `onHarnessEvent` (fed from
+`emit`, alongside the wire-level `onEvent`) and `start(_ configuration:)`
+delegating to the existing `start(projectDir:…)`. **AppState's session logic
+uses only `harness` (an `any HarnessAdapter` computed over `claude`) and
+`HarnessEvent`** — the concrete `claude` remains exposed solely for the views
+until the UI generalizes. `permissionRequest`/`notification` have no emitter
+yet; AppState surfaces them as transcript entries + announcements when they
+arrive.
+
+## New files: WebSocketFraming.swift, PowerUpProtocol.swift
+
+Pure, fully unit-tested:
+
+- `WebSocketFraming` — server-side RFC 6455: `acceptKey(forClientKey:)`,
+  `decodeFrames(from:maxPayload:)` (client frames must be masked, RSV must be
+  0, data frames must be final — v0 forbids fragmentation; control frames
+  ≤ 125 bytes; violations throw), `encodeFrame/encodeText/encodeClose`
+  (server frames unmasked, final).
+- `PowerUpProtocol` — the wire vocabulary of **docs/protocol.md** (spec and
+  file must change together): `upgradeDecision(method:path:header:)`
+  (`/ws` only; GET; upgrade headers; **any non-empty Origin → 403**;
+  version 13; key required), `parseClientMessage` (hello/intent/ping →
+  `ClientMessage`, everything else → typed `ClientMessageFailure` with wire
+  `code`/`message`), and the server-message builders
+  (welcome/status/transcript/session/pong/error + `encode`).
+
+## RemoteListener additions (same class, same port)
+
+```swift
+var onIntent: ((Intent) -> Void)?                 // main actor
+var welcomeSnapshot: (() -> [[String: Any]])?     // main actor
+func broadcast(_ message: [String: Any])          // to all authed WS clients
+```
+
+`GET /ws` upgrades a connection into WebSocket mode (`HookConnection` gains
+the mode switch, a 2 MB buffer cap, 1 MB frame cap); in-band `hello` with the
+listener token authenticates (15 s deadline — the existing idle timer now
+spares authenticated sockets); on auth the client gets `welcome` + the
+snapshot, then live broadcasts. `ConnectionRegistry` tracks authenticated
+handlers separately: hook bursts can never evict a protocol client, and
+authenticated clients cap at 16 (`server_busy` beyond that).
+`POST /event` behavior is byte-for-byte unchanged.
+
+## AppState wiring
+
+- `wireListener` sets `onIntent` (voice-capture intents are dropped
+  defensively — they can't arrive) and `welcomeSnapshot` (current status +
+  session message).
+- Broadcasts: every `appendEntry` → `transcript` message; every actual status
+  change → `status` message; `scheduleDerivedUpdate` ends with
+  `broadcastSessionIfChanged()` (keyed on model/liveModel/effort/permission/
+  controlMode/sessionID/cost).
+
+## Safety invariants (normative)
+
+1. No input source can set `bypassPermissions`: the only permission intent is
+   the cycle, and `AppConfig.permissionModeCycle` excludes it.
+2. Unknown wire input is answered or ignored, never partially executed.
+3. Growing the protocol intent vocabulary requires editing
+   `IntentMapper.intent(forProtocolName:)`, whose tests assert the allowed
+   set — a reviewed decision, never an accident.
