@@ -37,7 +37,8 @@ main.swift. Press ✕ to allow or ○ to deny."*
   `openai/gpt-5.3-chat-latest`) — or leave Model on **Default** and let the
   agent decide. Unknown ids are rejected by the agent and PowerUp rolls the
   setting back.
-- **No effort setting** — Cycle Effort tells you so instead of pretending.
+- **No effort setting** (including Ultra/dynamic workflows) — Cycle Effort
+  tells you so instead of pretending.
 - **No cost display** — ACP doesn't report dollars; the cost readout stays
   at zero for ACP sessions.
 - **No session resume** — an ACP session starts fresh each time (the

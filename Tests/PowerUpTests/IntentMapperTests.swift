@@ -27,6 +27,7 @@ final class IntentMapperTests: XCTestCase {
             (.cycleModel, .cycleModel),
             (.cycleEffort, .cycleEffort),
             (.cyclePermissionMode, .cyclePermissionMode),
+            (.cycleProject, .cycleProject),
             (.toggleControlMode, .toggleControlMode),
         ]
         for (action, intent) in expectations {
@@ -47,6 +48,7 @@ final class IntentMapperTests: XCTestCase {
         XCTAssertEqual(IntentMapper.intent(forProtocolName: "approve", text: nil), .approve)
         XCTAssertEqual(IntentMapper.intent(forProtocolName: "interrupt", text: nil), .interrupt)
         XCTAssertEqual(IntentMapper.intent(forProtocolName: "cycleModel", text: nil), .cycleModel)
+        XCTAssertEqual(IntentMapper.intent(forProtocolName: "cycleProject", text: nil), .cycleProject)
         XCTAssertEqual(IntentMapper.intent(forProtocolName: "sendPrompt", text: "run tests"),
                        .sendPrompt("run tests"))
     }

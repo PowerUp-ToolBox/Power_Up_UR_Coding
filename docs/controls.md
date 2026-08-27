@@ -113,7 +113,11 @@ keyboard:
   `sonnet, opus, haiku, fable`) to the next alias and applies it to the
   *running* session immediately, no restart needed.
 - **Cycle Effort** — advances through `low → medium → high → xhigh →
-  low…`. The `default` setting (which simply omits the `--effort` flag) is
+  ultra → low…`. **Ultra** is more than a level: it runs Claude Code at
+  maximum effort *and* asks it to orchestrate dynamic multi-agent workflows
+  on substantial tasks (your prompts carry the `ultracode` keyword) — expect
+  deeper, slower, costlier turns. Built-in Claude Code only; ACP harnesses
+  have no effort setting. The `default` setting (which simply omits the `--effort` flag) is
   not part of the cycle — it's only reachable from **Settings → General →
   Effort**. Unlike model and permission mode, effort has no live
   switch: PowerUp restarts the `claude` process with `--effort` and
@@ -121,6 +125,12 @@ keyboard:
   get a brief pause while the session comes back up. If Claude is mid-turn
   when you cycle effort, PowerUp waits for the turn to finish first, then
   restarts.
+- **Cycle Project** *(unmapped by default — assign it in Settings → Buttons)*
+  — steps through your recent project folders. **Each folder is its own
+  conversation**: its transcript history swaps in and its own session resumes,
+  so you can bounce between several pieces of work from the pad. Folders join
+  the recent list whenever you pick them with the folder picker (kept in
+  Settings → General → Project, up to 8).
 - **Cycle Permission Mode** — advances through `acceptEdits → plan →
   default → acceptEdits…` and applies live. `bypassPermissions` is
   deliberately left out of this cycle — a stray button press should never

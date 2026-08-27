@@ -110,16 +110,43 @@ private struct GeneralSettingsTab: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 SettingsSection(title: "Project") {
-                    HStack {
-                        Image(systemName: "folder")
-                            .foregroundStyle(SettingsPalette.accent)
-                        Text(configStore.config.projectDir ?? "No folder chosen")
-                            .foregroundStyle(configStore.config.projectDir == nil ? .secondary : .primary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        Spacer()
-                        Button("Choose…") {
-                            appState.chooseProjectDirectory()
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Image(systemName: "folder")
+                                .foregroundStyle(SettingsPalette.accent)
+                            Text(configStore.config.projectDir ?? "No folder chosen")
+                                .foregroundStyle(configStore.config.projectDir == nil ? .secondary : .primary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer()
+                            Button("Choose…") {
+                                appState.chooseProjectDirectory()
+                            }
+                        }
+
+                        if configStore.config.recentProjectDirs.count > 1 {
+                            Divider()
+                            Text("Recent projects — each keeps its own conversation. Map \"Cycle Project\" to a button to switch hands-free.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            ForEach(configStore.config.recentProjectDirs, id: \.self) { path in
+                                HStack {
+                                    Text((path as NSString).lastPathComponent)
+                                        .lineLimit(1)
+                                        .help(path)
+                                    Spacer()
+                                    if path == configStore.config.projectDir {
+                                        Text("current")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    } else {
+                                        Button("Switch") {
+                                            appState.switchProject(to: path)
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -167,15 +194,25 @@ private struct GeneralSettingsTab: View {
                 }
 
                 SettingsSection(title: "Effort") {
-                    Picker("Effort", selection: $configStore.config.effort) {
-                        Text("Default").tag("default")
-                        Text("Low").tag("low")
-                        Text("Medium").tag("medium")
-                        Text("High").tag("high")
-                        Text("Extra High").tag("xhigh")
+                    VStack(alignment: .leading, spacing: 8) {
+                        Picker("Effort", selection: $configStore.config.effort) {
+                            Text("Default").tag("default")
+                            Text("Low").tag("low")
+                            Text("Medium").tag("medium")
+                            Text("High").tag("high")
+                            Text("Extra High").tag("xhigh")
+                            Text("Ultra (dynamic workflows)").tag("max")
+                        }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+
+                        if configStore.config.effort == "max" {
+                            Text("Ultra runs Claude Code at maximum effort and asks it to orchestrate dynamic multi-agent workflows on substantial tasks (your prompts carry the \"ultracode\" keyword). Built-in Claude Code only — expect deeper, slower, costlier turns.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
                 }
 
                 SettingsSection(title: "Model Cycle") {

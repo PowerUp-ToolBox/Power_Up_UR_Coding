@@ -22,9 +22,13 @@ crashing.
 
 ## How sessions & resume work
 
-PowerUp keeps a single long-lived `claude` subprocess running per project.
-The session ID it's given is remembered (`lastSessionID` in the config) so
-that relaunching PowerUp can resume the same conversation with `--resume`.
+PowerUp keeps a single long-lived `claude` subprocess running per project,
+and **every project folder is its own conversation**: each folder's session
+id is remembered separately (`sessionIDsByProject`), so switching folders —
+via the folder picker, the Settings → General recents list, or a button
+mapped to **Cycle Project** — swaps in that folder's transcript history and
+resumes *its* conversation with `--resume`. The recent-folders list keeps the
+last 8 you've chosen.
 Use **New Session** (in the toolbar, Settings, or mapped to a controller
 button) whenever you want to discard that history and start clean. If a
 resumed session fails to start (for example because the session ID has gone

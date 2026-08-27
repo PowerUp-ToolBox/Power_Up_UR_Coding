@@ -1565,3 +1565,56 @@ thought-chunk filtering, the permission round-trip choosing `allow_once`,
 set_model accept/reject). The mock is not a real harness — the live wire
 shapes above were captured by probes, and changes there must update this
 addendum and the adapter together.
+
+---
+
+# v2.1 addendum — Ultra effort (dynamic workflows) + multiple conversations
+
+Supersedes anything above where it conflicts. Two built-in-mode features.
+
+## A. Ultra effort ("max")
+
+Verified live: the installed claude CLI accepts `--effort max`. There is no
+CLI flag for workflow orchestration — the documented opt-in is the
+`ultracode` prompt keyword.
+
+- `AppConfig.effortOptions` gains `"max"`; `effortCycle` becomes
+  `low → medium → high → xhigh → max`. New
+  `AppConfig.effortDisplayName(_:)` renders `"max"` as **Ultra** everywhere
+  (Settings picker "Ultra (dynamic workflows)", cycle transcript entries and
+  announcements, the effort chip shows "ultra").
+- **Wire behavior**: when `effort == "max"` AND the harness kind is
+  `"claude"`, `AppState.outgoingText(for:)` prefixes every outgoing built-in
+  prompt with `"ultracode\n\n"` — the harness's documented multi-agent
+  opt-in. The transcript keeps the user's own words. ACP harnesses and
+  remote mode are NEVER prefixed (the keyword is Claude-Code-specific, and
+  remote text belongs to someone else's session verbatim).
+- Effort restart semantics are unchanged (`--effort max` + `--resume`).
+
+## B. Multiple conversations (several folders)
+
+Every project folder is its own conversation: its own resumable session id
+and its own transcript history (v1.6).
+
+- `AppConfig` gains `recentProjectDirs: [String]` (most-recent-first, capped
+  at 8) and `sessionIDsByProject: [String: String]`; both tolerant-decoded.
+  `AppState.seedProjectBookkeeping()` migrates old configs on launch (current
+  folder joins recents; `lastSessionID` seeds its map entry).
+- `ControllerAction`/`Intent` gain `cycleProject` ("Cycle Project"; NOT in
+  the default mapping), wired through IntentMapper, the protocol vocabulary
+  (`"cycleProject"`, additive in v0), MappingView's Session group, and a
+  `folder.badge.gearshape` glyph.
+- `adoptProject(_:movingToFrontOfRecents:)` is the single switch path
+  (folder panel → front-of-recents; cycle/Settings switch → in place, so
+  cycling can't ping-pong): sets `projectDir`, points `lastSessionID` at THE
+  TARGET folder's saved id (no cross-folder resume), swaps transcript
+  history, and (built-in mode) restarts the session resuming that folder's
+  conversation. `sessionReady` records ids into `sessionIDsByProject`
+  (claude kind only); `newSession` clears the current folder's entry.
+- `cycleProject` steps through recents IN LIST ORDER, skipping folders that
+  no longer exist; <2 usable folders → transcript note + error haptic.
+  `switchProject(to:)` (also used by the Settings recents list) stops
+  TTS/summaries/pending permissions before adopting and announces
+  "Project: <folder>".
+- SettingsView Project section lists the recents with Switch buttons and a
+  "current" marker.

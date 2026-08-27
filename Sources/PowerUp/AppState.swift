@@ -202,6 +202,7 @@ final class AppState: ObservableObject {
 
         transcriptStore.setProject(store.config.projectDir)
         restorePersistedTranscript()
+        seedProjectBookkeeping()
 
         wireController()
         wireClaude()
@@ -418,6 +419,8 @@ final class AppState: ObservableObject {
             cycleEffort()
         case .cyclePermissionMode:
             cyclePermissionMode()
+        case .cycleProject:
+            cycleProject()
         case .toggleControlMode:
             toggleControlMode()
         }
@@ -533,26 +536,27 @@ final class AppState: ObservableObject {
             // No process of ours to restart — hand the change to the session as a
             // slash command. A CLI without /effort just prints an error there.
             pendingEffortRestart = false
-            appendEntry(.system, "Effort → \(next)")
+            appendEntry(.system, "Effort → \(AppConfig.effortDisplayName(next))")
             sendRemoteText("/effort \(next)", submit: true)
-            announce("Effort: \(next)")
+            announce("Effort: \(AppConfig.effortDisplayName(next))")
             updateStatus()
             return
         }
 
+        let display = AppConfig.effortDisplayName(next)
         if harness.state == .working {
             pendingEffortRestart = true
-            appendEntry(.system, "Effort → \(next) (applies when this turn finishes)")
+            appendEntry(.system, "Effort → \(display) (applies when this turn finishes)")
         } else if harness.state == .stopped {
             pendingEffortRestart = false
-            appendEntry(.system, "Effort → \(next) (applies when the session starts)")
+            appendEntry(.system, "Effort → \(display) (applies when the session starts)")
         } else {
             pendingEffortRestart = false
-            appendEntry(.system, "Effort → \(next)")
+            appendEntry(.system, "Effort → \(display)")
             restartForEffort()
         }
 
-        announce("Effort: \(next)")
+        announce("Effort: \(display)")
         updateStatus()
     }
 
@@ -843,7 +847,7 @@ final class AppState: ObservableObject {
         guard !isRemoteMode else { return }
         guard harness.state == .stopped else { return }
         guard let dir = configStore.config.projectDir, !dir.isEmpty else { return }
-        startSession(resumeSessionID: configStore.config.lastSessionID)
+        startSession(resumeSessionID: savedSessionID(for: dir) ?? configStore.config.lastSessionID)
     }
 
     func newSession() {
@@ -865,6 +869,9 @@ final class AppState: ObservableObject {
         startedWithResume = false
         pendingEffortRestart = false
         configStore.config.lastSessionID = nil
+        if let dir = configStore.config.projectDir, !dir.isEmpty {
+            configStore.config.sessionIDsByProject.removeValue(forKey: dir)
+        }
         appendEntry(.system, "Starting a new Claude session.")
 
         if let dir = configStore.config.projectDir, !dir.isEmpty {
@@ -899,8 +906,21 @@ final class AppState: ObservableObject {
             return
         }
 
-        harness.send(trimmed)
+        harness.send(outgoingText(for: trimmed))
         updateStatus()
+    }
+
+    /// In Ultra effort ("max") on the built-in Claude harness, outgoing
+    /// prompts opt into dynamic multi-agent workflows via Claude Code's
+    /// documented `ultracode` keyword. The transcript keeps the user's own
+    /// words; the wire-level prefix is recorded in DESIGN.md v2.1. Other
+    /// harnesses and remote mode are never prefixed.
+    private func outgoingText(for text: String) -> String {
+        guard configStore.config.effort == "max",
+              AppState.normalizedHarnessKind(configStore.config.harnessKind) == "claude" else {
+            return text
+        }
+        return "ultracode\n\n" + text
     }
 
     func interruptClaude() {
@@ -942,15 +962,24 @@ final class AppState: ObservableObject {
 
         NSApp.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        adoptProject(url.path, movingToFrontOfRecents: true)
+    }
 
-        let path = url.path
+    /// Switches the app onto a project folder: per-project session id (each
+    /// folder is its own conversation), per-project transcript history, and —
+    /// in built-in mode — a session restart resuming THAT project's
+    /// conversation. Shared by the folder picker, the Settings recents list,
+    /// and the Cycle Project action.
+    private func adoptProject(_ path: String, movingToFrontOfRecents: Bool) {
         let changedProject = (path != configStore.config.projectDir)
         configStore.config.projectDir = path
         if changedProject {
-            // A session id belongs to one project — don't try to resume it elsewhere.
-            configStore.config.lastSessionID = nil
+            // Each project keeps its own conversation: resume ITS session id
+            // (nil = this folder starts fresh), never another folder's.
+            configStore.config.lastSessionID = savedSessionID(for: path)
         }
         hasRetriedWithoutResume = false
+        addToRecents(path, front: movingToFrontOfRecents)
 
         // Transcript history is per project: switch the store over and swap the
         // window's scrollback for the new project's restored history.
@@ -960,14 +989,75 @@ final class AppState: ObservableObject {
             restorePersistedTranscript()
         }
 
-        appendEntry(.system, "Project folder: \(url.lastPathComponent)")
+        appendEntry(.system, "Project folder: \((path as NSString).lastPathComponent)")
 
         // In remote mode PowerUp runs no session of its own — the folder is then
         // only used to label read-back from other directories.
         if !isRemoteMode {
-            startSession(resumeSessionID: configStore.config.lastSessionID)
+            startSession(resumeSessionID: savedSessionID(for: path))
         }
         updateStatus()
+    }
+
+    /// Switch to a specific known project (Settings recents list).
+    func switchProject(to path: String) {
+        guard path != configStore.config.projectDir else { return }
+        cancelPendingSummary()
+        tts.stop()
+        liveAssistantText = ""
+        pendingPermissionID = nil
+        adoptProject(path, movingToFrontOfRecents: false)
+        announce("Project: \((path as NSString).lastPathComponent)")
+    }
+
+    /// The Cycle Project action: steps through the recents IN LIST ORDER
+    /// (cycling deliberately doesn't reorder the list — reordering on every
+    /// press would make the next press ping-pong back).
+    private func cycleProject() {
+        let recents = configStore.config.recentProjectDirs.filter {
+            FileManager.default.fileExists(atPath: $0)
+        }
+        guard recents.count > 1 else {
+            appendEntry(.system, "Only one project in the recent list — add more with the folder picker.")
+            errorHaptic()
+            return
+        }
+        let current = configStore.config.projectDir ?? ""
+        let index = recents.firstIndex(of: current) ?? -1
+        let next = recents[(index + 1) % recents.count]
+        haptic(intensity: 0.5, duration: 0.05)
+        switchProject(to: next)
+    }
+
+    private func addToRecents(_ path: String, front: Bool) {
+        var recents = configStore.config.recentProjectDirs
+        if front {
+            recents.removeAll { $0 == path }
+            recents.insert(path, at: 0)
+        } else if !recents.contains(path) {
+            recents.insert(path, at: 0)
+        }
+        if recents.count > 8 { recents.removeLast(recents.count - 8) }
+        if recents != configStore.config.recentProjectDirs {
+            configStore.config.recentProjectDirs = recents
+        }
+    }
+
+    private func savedSessionID(for path: String) -> String? {
+        configStore.config.sessionIDsByProject[path]
+    }
+
+    /// Migrates pre-multi-project configs: the single lastSessionID becomes
+    /// the current folder's entry, and the current folder joins the recents.
+    private func seedProjectBookkeeping() {
+        guard let dir = configStore.config.projectDir, !dir.isEmpty else { return }
+        if !configStore.config.recentProjectDirs.contains(dir) {
+            configStore.config.recentProjectDirs.insert(dir, at: 0)
+        }
+        if configStore.config.sessionIDsByProject[dir] == nil,
+           let last = configStore.config.lastSessionID {
+            configStore.config.sessionIDsByProject[dir] = last
+        }
     }
 
     /// Minimum reply length before a summary is worth a model call — anything
@@ -1375,6 +1465,9 @@ final class AppState: ObservableObject {
             // an ACP session id must never overwrite the stored one.
             if AppState.normalizedHarnessKind(configStore.config.harnessKind) == "claude" {
                 configStore.config.lastSessionID = sessionID
+                if let dir = configStore.config.projectDir, !dir.isEmpty {
+                    configStore.config.sessionIDsByProject[dir] = sessionID
+                }
             }
             if !didLogSessionStart {
                 didLogSessionStart = true

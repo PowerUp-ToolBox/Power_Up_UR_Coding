@@ -247,7 +247,8 @@ private struct EffortChip: View {
     @EnvironmentObject private var configStore: ConfigStore
 
     var body: some View {
-        let effort = configStore.config.effort
+        let raw = configStore.config.effort
+        let effort = (raw == "max") ? "ultra" : raw
         SessionChip(symbol: "gauge",
                     label: effort,
                     tint: Theme.amber,

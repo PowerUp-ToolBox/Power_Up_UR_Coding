@@ -91,7 +91,7 @@ controller button could perform:
 
 `approve`, `reject`, `interrupt`, `stopSpeaking`, `replayLastReply`,
 `toggleTTS`, `newSession`, `showWindow`, `cycleModel`, `cycleEffort`,
-`cyclePermissionMode`, `toggleControlMode`, `sendDraft`, and
+`cyclePermissionMode`, `cycleProject`, `toggleControlMode`, `sendDraft`, and
 `sendPrompt` (requires non-empty `text`).
 
 Deliberately **not** in the vocabulary:

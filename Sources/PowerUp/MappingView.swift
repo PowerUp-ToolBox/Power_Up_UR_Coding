@@ -102,6 +102,7 @@ private struct MappingRow: View {
                         actionRow(.cycleModel)
                         actionRow(.cycleEffort)
                         actionRow(.cyclePermissionMode)
+                        actionRow(.cycleProject)
                         actionRow(.toggleControlMode)
                     }
                     Section("App") {
@@ -147,6 +148,7 @@ private enum ActionKind: String, CaseIterable, Identifiable, Hashable {
     case cycleModel
     case cycleEffort
     case cyclePermissionMode
+    case cycleProject
     case toggleControlMode
     case sendPrompt
     case pushToTalkDraft
@@ -169,6 +171,7 @@ private enum ActionKind: String, CaseIterable, Identifiable, Hashable {
         case .cycleModel: return "Cycle Model"
         case .cycleEffort: return "Cycle Effort"
         case .cyclePermissionMode: return "Cycle Permission Mode"
+        case .cycleProject: return "Cycle Project"
         case .toggleControlMode: return "Toggle Built-in / Remote"
         case .sendPrompt: return "Send Prompt…"
         case .pushToTalkDraft: return "Dictate to Prompt Box"
@@ -192,6 +195,7 @@ private enum ActionKind: String, CaseIterable, Identifiable, Hashable {
         case .cycleModel: self = .cycleModel
         case .cycleEffort: self = .cycleEffort
         case .cyclePermissionMode: self = .cyclePermissionMode
+        case .cycleProject: self = .cycleProject
         case .toggleControlMode: self = .toggleControlMode
         case .pushToTalkDraft: self = .pushToTalkDraft
         case .sendDraft: self = .sendDraft
@@ -216,6 +220,7 @@ private enum ActionKind: String, CaseIterable, Identifiable, Hashable {
         case .cycleModel: return .cycleModel
         case .cycleEffort: return .cycleEffort
         case .cyclePermissionMode: return .cyclePermissionMode
+        case .cycleProject: return .cycleProject
         case .toggleControlMode: return .toggleControlMode
         case .pushToTalkDraft: return .pushToTalkDraft
         case .sendDraft: return .sendDraft

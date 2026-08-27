@@ -83,6 +83,7 @@ enum ControllerAction: Codable, Hashable {
     case cycleModel               // step config.model through config.modelCycle (live via set_model)
     case cycleEffort              // step config.effort through the fixed effort cycle (restart + resume)
     case cyclePermissionMode      // step config.permissionMode through the fixed cycle (live)
+    case cycleProject             // step config.projectDir through recentProjectDirs (own session each)
     case pushToTalkDraft          // hold to dictate into the prompt box; nothing is sent
     case sendDraft                // send whatever the prompt box currently holds
     case toggleControlMode        // flip config.controlMode between "builtin" and "remote"
@@ -103,6 +104,7 @@ enum ControllerAction: Codable, Hashable {
         case .cycleModel: return "Cycle Model"
         case .cycleEffort: return "Cycle Effort"
         case .cyclePermissionMode: return "Cycle Permission Mode"
+        case .cycleProject: return "Cycle Project"
         case .pushToTalkDraft: return "Dictate to Prompt Box"
         case .sendDraft: return "Send Prompt Box"
         case .toggleControlMode: return "Toggle Built-in / Remote"
@@ -153,6 +155,11 @@ struct AppConfig: Codable, Equatable {
     var listenerPort: Int                 // local read-back listener port (127.0.0.1 only)
     var listenerToken: String             // shared secret the Claude Code hook sends back; never empty in practice
 
+    // MARK: Multiple conversations (several folders)
+
+    var recentProjectDirs: [String]       // most-recent-first, capped; Cycle Project steps through it
+    var sessionIDsByProject: [String: String]  // project path -> resumable session id
+
     var mapping: [ControllerButton: ControllerAction]
 
     // MARK: Fixed option sets
@@ -161,10 +168,26 @@ struct AppConfig: Codable, Equatable {
     static let defaultModelCycle: [String] = ["sonnet", "opus", "haiku", "fable"]
 
     /// Every value the effort setting can take (`default` = don't pass `--effort`).
-    static let effortOptions: [String] = ["default", "low", "medium", "high", "xhigh"]
+    /// "max" is surfaced as **Ultra**: maximum CLI effort plus dynamic
+    /// multi-agent workflows (the `ultracode` prompt keyword) — verified live:
+    /// `claude -p --effort max` is accepted by the CLI.
+    static let effortOptions: [String] = ["default", "low", "medium", "high", "xhigh", "max"]
 
     /// Cycle order for the Cycle Effort action — "default" is not part of it.
-    static let effortCycle: [String] = ["low", "medium", "high", "xhigh"]
+    static let effortCycle: [String] = ["low", "medium", "high", "xhigh", "max"]
+
+    /// Human name for an effort value ("max" reads as Ultra everywhere).
+    static func effortDisplayName(_ effort: String) -> String {
+        switch effort {
+        case "default": return "Default"
+        case "low": return "Low"
+        case "medium": return "Medium"
+        case "high": return "High"
+        case "xhigh": return "Extra High"
+        case "max": return "Ultra"
+        default: return effort
+        }
+    }
 
     /// Cycle order for the Cycle Permission Mode action. `bypassPermissions` is
     /// deliberately excluded: a stray button press must never turn on
@@ -253,6 +276,8 @@ struct AppConfig: Codable, Equatable {
             // Filled in by ConfigStore on first launch (it never leaves an empty
             // token behind), so the listener always has a secret to check.
             listenerToken: "",
+            recentProjectDirs: [],
+            sessionIDsByProject: [:],
             mapping: defaultMapping()
         )
     }
@@ -291,6 +316,7 @@ struct AppConfig: Codable, Equatable {
         case harnessKind, acpAgent, acpCustomCommand
         case controlMode, remoteTargetKind, remoteCmuxWorkspace, remoteCmuxSurface
         case remoteAppBundleID, remoteCmuxPassword, remoteAutoSubmit, listenerPort, listenerToken
+        case recentProjectDirs, sessionIDsByProject
         case mapping
     }
 }
@@ -359,6 +385,8 @@ extension AppConfig {
             remoteAutoSubmit: value(.remoteAutoSubmit, fallback.remoteAutoSubmit),
             listenerPort: (1...65535).contains(port) ? port : fallback.listenerPort,
             listenerToken: value(.listenerToken, fallback.listenerToken),
+            recentProjectDirs: value(.recentProjectDirs, fallback.recentProjectDirs),
+            sessionIDsByProject: value(.sessionIDsByProject, fallback.sessionIDsByProject),
             mapping: value(.mapping, fallback.mapping)
         )
     }

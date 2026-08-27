@@ -40,6 +40,28 @@ final class AppConfigTests: XCTestCase {
         XCTAssertFalse(ControllerAction.approve.isHoldAction)
     }
 
+    func testEffortCycleEndsAtUltra() {
+        XCTAssertEqual(AppConfig.effortCycle, ["low", "medium", "high", "xhigh", "max"])
+        XCTAssertTrue(AppConfig.effortOptions.contains("max"))
+        XCTAssertFalse(AppConfig.effortCycle.contains("default"))
+        XCTAssertEqual(AppConfig.effortDisplayName("max"), "Ultra")
+        XCTAssertEqual(AppConfig.effortDisplayName("xhigh"), "Extra High")
+    }
+
+    func testMultiProjectFieldsDecodeTolerantly() throws {
+        let decoded = try decode("{}")
+        XCTAssertEqual(decoded.recentProjectDirs, [])
+        XCTAssertEqual(decoded.sessionIDsByProject, [:])
+
+        let populated = try decode(#"{"recentProjectDirs":["/a","/b"],"sessionIDsByProject":{"/a":"s1"}}"#)
+        XCTAssertEqual(populated.recentProjectDirs, ["/a", "/b"])
+        XCTAssertEqual(populated.sessionIDsByProject["/a"], "s1")
+
+        let wrongTypes = try decode(#"{"recentProjectDirs":"nope","sessionIDsByProject":[1]}"#)
+        XCTAssertEqual(wrongTypes.recentProjectDirs, [])
+        XCTAssertEqual(wrongTypes.sessionIDsByProject, [:])
+    }
+
     func testPermissionCycleNeverContainsBypass() {
         XCTAssertFalse(AppConfig.permissionModeCycle.contains("bypassPermissions"),
                        "a stray button press must never escalate to auto-approve-everything")
