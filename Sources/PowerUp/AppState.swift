@@ -734,7 +734,7 @@ final class AppState: ObservableObject {
                 self.updateStatus()
                 return
             }
-            self.appendEntry(.system, "Dictated into the remote session (not sent): \(heard)")
+            self.appendEntry(.system, "Dictated into the remote session — send it with L1, ✕, or Enter there: \(heard)")
             self.sendRemoteText(heard, submit: false)
             self.haptic(intensity: 0.5, duration: 0.05)
             self.updateStatus()
@@ -744,10 +744,22 @@ final class AppState: ObservableObject {
 
     /// Sends whatever is in the prompt box right now — the shared path for the
     /// Send button, the keyboard, and the `.sendDraft` controller action.
+    ///
+    /// In remote mode the "prompt box" is really the target's own input line —
+    /// that's where L2 dictation lands (v1.8) — so an empty local box means
+    /// "submit what's typed over there": press Enter in the target. That keeps
+    /// the L2 → L1 dictate-review-send flow working in both modes.
     func sendDraft() {
         let trimmed = draftText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            errorHaptic()
+        if trimmed.isEmpty {
+            guard isRemoteMode else {
+                errorHaptic()
+                return
+            }
+            appendEntry(.system, "Sent the remote input (Enter).")
+            haptic(intensity: 0.5, duration: 0.05)
+            sendRemoteKey(.enter)
+            updateStatus()
             return
         }
         sendUserText(trimmed)

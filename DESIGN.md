@@ -1356,3 +1356,30 @@ nonsense.
 - `clearRemoteTurns()` empties the table and the flag — used by Interrupt,
   Reject, remote New Session, and every control-mode switch (the user's
   escape hatches, unchanged in behavior).
+
+---
+
+# v1.11 addendum — L1 submits the remote input box
+
+Supersedes anything above where it conflicts. Live report, and a hole v1.8
+opened: after L2 dictation started landing in the REMOTE input box, L1
+("Send Prompt Box") still only sent PowerUp's local `draftText` — which that
+flow leaves empty — so L1 error-buzzed, the dictated text sat unsubmitted,
+and the idle session's Notification hook had PowerUp announcing "Claude
+needs your attention."
+
+`sendDraft()` behavior now:
+
+- Local box NON-empty: unchanged (send via `sendUserText`, clear the box) —
+  both modes.
+- Local box EMPTY, built-in mode: unchanged (error haptic).
+- Local box EMPTY, remote mode: press **Enter in the remote target**
+  (`sendKey(.enter)`), submitting whatever is typed there — the v1.8 framing
+  completed: in remote mode the "prompt box" IS the target's input line, so
+  "Send Prompt Box" submits it. Transcript notes "Sent the remote input
+  (Enter)."; tick haptic. The L2 → L1 dictate-review-send flow is thereby
+  identical in both modes.
+
+The remote-draft transcript note now names the send options ("send it with
+L1, ✕, or Enter there"), and docs/controls.md + docs/remote-control.md say
+the same.

@@ -100,8 +100,9 @@ etc.) all work the same way.
 - **Dictate to Prompt Box** (L2 by default) adapts to remote mode: releasing
   the hold **types your words into the target's input box without pressing
   Enter** — review and edit them right in cmux/the terminal, then send with
-  Enter there or the Approve button (✕ = Enter). Push to Talk (R2) still
-  sends immediately, honoring the Auto-submit toggle.
+  **L1** (Send Prompt Box: when PowerUp's own box is empty, it presses Enter
+  in the target), the Approve button (✕ = Enter), or Enter in that app.
+  Push to Talk (R2) still sends immediately, honoring the Auto-submit toggle.
 - **Claude's replies** stream back via the listener hooks and appear in
   PowerUp's transcript, are read aloud by text-to-speech (if enabled), and
   trigger light/haptic feedback as usual.

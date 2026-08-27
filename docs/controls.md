@@ -99,8 +99,9 @@ A few details worth knowing:
 - **In [Remote Control mode](remote-control.md)** the review happens where
   your session lives: releasing L2 **types the words into the remote input
   box** (cmux or the terminal) without pressing Enter — edit them there if
-  needed, then send with Enter in that app or the Approve button (✕, which is
-  Enter in remote mode). PowerUp's own prompt box isn't involved.
+  needed, then send with **L1** (with PowerUp's own box empty, Send Prompt Box
+  presses Enter in the target), the Approve button (✕), or Enter in that app.
+  The L2 → L1 flow works the same in both modes.
 
 ## Session control actions
 
