@@ -18,6 +18,13 @@ final class AppState: ObservableObject {
     let tts: TTSService
     let claude: ClaudeService
 
+    /// The session driver, seen strictly through the harness contract. Today
+    /// it's the Claude adapter above (the same object); all session logic in
+    /// this class goes through `harness` + `HarnessEvent`, so a future adapter
+    /// (ACP, Codex) can slot in without touching the dispatch code. `claude`
+    /// stays exposed for the views until the UI generalizes (M3).
+    var harness: any HarnessAdapter { claude }
+
     /// Delivers input to somebody else's Claude session (cmux surface, or any app
     /// via keystroke injection) when `config.controlMode` is "remote".
     let remote: RemoteControlService
@@ -69,14 +76,10 @@ final class AppState: ObservableObject {
     /// button *or* from Settings) runs its side effects exactly once.
     private var lastControlMode: String = "builtin"
 
-    /// What the active push-to-talk hold does when it ends: send the transcript
-    /// straight to Claude, or drop it into the prompt box for review.
-    private enum PTTMode { case send, draft }
-
     /// The button currently held down for push-to-talk (nil when not holding).
     private var pttHoldButton: ControllerButton?
     /// Mode of the hold `pttHoldButton` started; only meaningful while holding.
-    private var pttMode: PTTMode = .send
+    private var pttMode: VoiceCaptureMode = .send
 
     /// Live-dictation bookkeeping for a `.draft` hold.
     /// `draftOriginal` is the box exactly as it was before the hold (restored if
@@ -181,8 +184,8 @@ final class AppState: ObservableObject {
     }
 
     private func wireClaude() {
-        claude.onEvent = { [weak self] event in
-            self?.handleClaudeEvent(event)
+        claude.onHarnessEvent = { [weak self] event in
+            self?.handleHarnessEvent(event)
         }
     }
 
@@ -196,6 +199,56 @@ final class AppState: ObservableObject {
         listener.onEvent = { [weak self] event in
             self?.handleRemoteEvent(event)
         }
+        listener.onIntent = { [weak self] intent in
+            self?.handleProtocolIntent(intent)
+        }
+        listener.welcomeSnapshot = { [weak self] in
+            self?.protocolSnapshot() ?? []
+        }
+    }
+
+    /// Intents from protocol clients (docs/protocol.md). Voice capture can't
+    /// arrive over the wire (the protocol vocabulary omits it), but the gate
+    /// stays anyway — defense in depth for a networked input source.
+    private func handleProtocolIntent(_ intent: Intent) {
+        switch intent {
+        case .beginVoiceCapture, .endVoiceCapture:
+            return
+        default:
+            handle(intent)
+        }
+    }
+
+    /// What a freshly authenticated protocol client is told first.
+    private func protocolSnapshot() -> [[String: Any]] {
+        [PowerUpProtocol.status(status), currentSessionMessage()]
+    }
+
+    private func currentSessionMessage() -> [String: Any] {
+        PowerUpProtocol.session(model: configStore.config.model,
+                                liveModel: harness.modelName,
+                                effort: configStore.config.effort,
+                                permissionMode: configStore.config.permissionMode,
+                                controlMode: AppState.normalizedControlMode(configStore.config.controlMode),
+                                sessionID: harness.sessionID,
+                                costUSD: harness.totalCostUSD)
+    }
+
+    /// Session facts protocol clients last heard, so `scheduleDerivedUpdate`
+    /// only broadcasts real changes.
+    private var lastSessionBroadcastKey: String?
+
+    private func broadcastSessionIfChanged() {
+        let key = [configStore.config.model,
+                   harness.modelName ?? "",
+                   configStore.config.effort,
+                   configStore.config.permissionMode,
+                   AppState.normalizedControlMode(configStore.config.controlMode),
+                   harness.sessionID ?? "",
+                   String(harness.totalCostUSD)].joined(separator: "|")
+        guard key != lastSessionBroadcastKey else { return }
+        lastSessionBroadcastKey = key
+        listener.broadcast(currentSessionMessage())
     }
 
     /// The services are separate observable objects; mirror their changes into the
@@ -218,7 +271,7 @@ final class AppState: ObservableObject {
         }
     }
 
-    // MARK: - Button dispatch
+    // MARK: - Button dispatch (device layer → intents)
 
     private func handleButtonDown(_ button: ControllerButton) {
         let action = configStore.config.mapping[button] ?? .none
@@ -228,19 +281,20 @@ final class AppState: ObservableObject {
             // stays the button that can stop it.
             guard pttHoldButton == nil, !isPTTActive else { return }
             pttHoldButton = button
-            startPushToTalk(mode: action == .pushToTalkDraft ? .draft : .send)
-        } else {
-            perform(action)
         }
+        guard let intent = IntentMapper.intent(for: action, phase: .began) else { return }
+        handle(intent)
     }
 
     private func handleButtonUp(_ button: ControllerButton) {
         // Only hold actions care about the release. Use the button we recorded on
         // the way down so a mapping edit mid-hold can't strand the recorder — and
-        // so the release of any other button is ignored outright.
+        // so the release of any other button is ignored outright. The end intent
+        // is emitted unconditionally for the recorded button for the same reason:
+        // whatever the mapping says *now*, this button started a capture.
         guard pttHoldButton == button else { return }
         pttHoldButton = nil
-        stopPushToTalk()
+        handle(.endVoiceCapture)
     }
 
     /// Safety net for a hold that can no longer be released the normal way —
@@ -252,14 +306,16 @@ final class AppState: ObservableObject {
         stopPushToTalk()
     }
 
-    private func perform(_ action: ControllerAction) {
-        switch action {
-        case .none:
-            break
-        case .pushToTalk:
-            startPushToTalk(mode: .send)
-        case .pushToTalkDraft:
-            startPushToTalk(mode: .draft)
+    // MARK: - Intent dispatch
+
+    /// The single dispatcher every input source funnels into: controller
+    /// buttons (via the mapping), and protocol clients (via the listener).
+    func handle(_ intent: Intent) {
+        switch intent {
+        case .beginVoiceCapture(let mode):
+            startPushToTalk(mode: mode)
+        case .endVoiceCapture:
+            stopPushToTalk()
         case .sendDraft:
             sendDraft()
         case .sendPrompt(let prompt):
@@ -356,14 +412,14 @@ final class AppState: ObservableObject {
             return
         }
 
-        switch claude.state {
+        switch harness.state {
         case .ready, .working, .starting:
             // `.starting` is fine too: the CLI buffers stdin while it boots and
             // answers the request right after init, so writing the change now
             // guarantees it lands *ahead* of any turn sent before the first
             // `system/init` (queueing it until `.ready` did not — the turn got
             // there first and ran on the old command-line model).
-            claude.setModel(next)
+            harness.setModel(next)
         case .stopped:
             // The next launch picks config.model up from the command line.
             break
@@ -392,10 +448,10 @@ final class AppState: ObservableObject {
             return
         }
 
-        if claude.state == .working {
+        if harness.state == .working {
             pendingEffortRestart = true
             appendEntry(.system, "Effort → \(next) (applies when this turn finishes)")
-        } else if claude.state == .stopped {
+        } else if harness.state == .stopped {
             pendingEffortRestart = false
             appendEntry(.system, "Effort → \(next) (applies when the session starts)")
         } else {
@@ -430,11 +486,11 @@ final class AppState: ObservableObject {
         haptic(intensity: 0.5, duration: 0.05)
         appendEntry(.system, "Permissions → \(next)")
 
-        switch claude.state {
+        switch harness.state {
         case .ready, .working, .starting:
             // Same as cycleModel: the CLI buffers stdin during `.starting`, so
             // writing now puts the change ahead of any turn sent before init.
-            claude.setPermissionMode(next)
+            harness.setPermissionMode(next)
         case .stopped:
             // The next launch picks config.permissionMode up from the command line.
             break
@@ -447,10 +503,10 @@ final class AppState: ObservableObject {
     /// Relaunches the CLI so the new `--effort` takes hold, resuming the session
     /// so nothing said so far is lost.
     private func restartForEffort() {
-        guard claude.state != .stopped else { return }
+        guard harness.state != .stopped else { return }
         guard let dir = configStore.config.projectDir, !dir.isEmpty else { return }
 
-        let resumeID = claude.sessionID ?? configStore.config.lastSessionID
+        let resumeID = harness.sessionID ?? configStore.config.lastSessionID
         appendEntry(.system, "Resuming the session with effort \(configStore.config.effort)…")
         startSession(resumeSessionID: resumeID)
     }
@@ -486,7 +542,7 @@ final class AppState: ObservableObject {
 
     // MARK: - Push to talk
 
-    private func startPushToTalk(mode: PTTMode = .send) {
+    private func startPushToTalk(mode: VoiceCaptureMode = .send) {
         guard !isPTTActive else { return }
 
         pttMode = mode
@@ -642,7 +698,7 @@ final class AppState: ObservableObject {
         // Remote mode drives a session somebody else is running; spawning ours
         // would duplicate the work and echo its own hooks back at us.
         guard !isRemoteMode else { return }
-        guard claude.state == .stopped else { return }
+        guard harness.state == .stopped else { return }
         guard let dir = configStore.config.projectDir, !dir.isEmpty else { return }
         startSession(resumeSessionID: configStore.config.lastSessionID)
     }
@@ -691,14 +747,14 @@ final class AppState: ObservableObject {
 
         startSessionIfNeeded()
 
-        guard claude.state != .stopped else {
+        guard harness.state != .stopped else {
             appendEntry(.error, "No Claude session is running. Choose a project folder to start one.")
             errorHaptic()
             updateStatus()
             return
         }
 
-        claude.send(trimmed)
+        harness.send(trimmed)
         updateStatus()
     }
 
@@ -715,13 +771,13 @@ final class AppState: ObservableObject {
 
         // ClaudeService.interrupt() silently no-ops without a live process —
         // don't confirm an interrupt that was never written.
-        guard claude.state != .stopped else {
+        guard harness.state != .stopped else {
             appendEntry(.error, "No Claude session is running — nothing to interrupt.")
             errorHaptic()
             updateStatus()
             return
         }
-        claude.interrupt()
+        harness.interrupt()
         appendEntry(.system, "Interrupt sent.")
         haptic(intensity: 0.6, duration: 0.08)
         updateStatus()
@@ -932,7 +988,7 @@ final class AppState: ObservableObject {
     /// built-in session's own replies would come back around as remote read-back.
     private func handleRemoteEvent(_ event: RemoteHookEvent) {
         guard isRemoteMode else { return }
-        if let sessionID = event.sessionID, let ours = claude.sessionID, sessionID == ours { return }
+        if let sessionID = event.sessionID, let ours = harness.sessionID, sessionID == ours { return }
 
         switch event.kind {
         case .userPromptSubmit:
@@ -1006,21 +1062,21 @@ final class AppState: ObservableObject {
         lastConfirmedModel = config.model
         lastConfirmedPermissionMode = config.permissionMode
 
-        claude.start(
+        harness.start(HarnessConfiguration(
             projectDir: URL(fileURLWithPath: dir, isDirectory: true),
             model: config.model,
             permissionMode: config.permissionMode,
             effort: config.effort,
             resumeSessionID: resumeSessionID,
-            claudePathOverride: config.claudePath
-        )
+            binaryPathOverride: config.claudePath
+        ))
         updateStatus()
     }
 
     private func stopClaude() {
-        guard claude.state != .stopped else { return }
+        guard harness.state != .stopped else { return }
         expectedTerminations += 1
-        claude.stop()
+        harness.stop()
     }
 
     private func shutdown() {
@@ -1029,11 +1085,11 @@ final class AppState: ObservableObject {
         stopClaude()
     }
 
-    // MARK: - Claude events
+    // MARK: - Harness events
 
-    private func handleClaudeEvent(_ event: ClaudeEvent) {
+    private func handleHarnessEvent(_ event: HarnessEvent) {
         switch event {
-        case .ready(let sessionID, let model):
+        case .sessionReady(let sessionID, let model):
             configStore.config.lastSessionID = sessionID
             if !didLogSessionStart {
                 didLogSessionStart = true
@@ -1043,10 +1099,10 @@ final class AppState: ObservableObject {
                 appendEntry(.system, "Session started (\(model))")
             }
 
-        case .textDelta(let chunk):
+        case .replyDelta(let chunk):
             liveAssistantText += chunk
 
-        case .assistantMessage(let message):
+        case .reply(let message):
             let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
             liveAssistantText = ""
             guard !trimmed.isEmpty else { break }
@@ -1092,7 +1148,7 @@ final class AppState: ObservableObject {
                 pendingEffortRestart = false
                 Task { @MainActor [weak self] in
                     guard let self else { return }
-                    guard self.claude.state != .working else {
+                    guard self.harness.state != .working else {
                         // A queued turn started already — wait for that one too.
                         self.pendingEffortRestart = true
                         return
@@ -1104,10 +1160,22 @@ final class AppState: ObservableObject {
         case .controlResult(let action, let ok, let detail, let value):
             handleControlResult(action: action, ok: ok, detail: detail, value: value)
 
-        case .processError(let message):
+        case .permissionRequest(_, let name, let detail):
+            // Reserved event — no adapter emits it yet (DEVELOPMENT.md WS-B
+            // wires it to Approve/Reject). Surface it rather than lose it.
+            let what = detail.isEmpty ? name : "\(name) — \(detail)"
+            appendEntry(.system, "Claude is asking to: \(what). Press Approve or Reject.")
+            announce("Claude needs your approval")
+
+        case .notification(let message):
+            let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+            appendEntry(.system, trimmed.isEmpty ? "Claude needs your attention." : trimmed)
+            announce("Claude needs your attention")
+
+        case .runtimeError(let message):
             appendEntry(.error, message)
 
-        case .terminated(let exitCode):
+        case .ended(let exitCode):
             handleTermination(exitCode: exitCode)
         }
 
@@ -1192,6 +1260,7 @@ final class AppState: ObservableObject {
         let entry = TranscriptEntry(kind: kind, text: trimmed)
         transcript.append(entry)
         transcriptStore.append(entry)
+        listener.broadcast(PowerUpProtocol.transcript(entry))
         let overflow = transcript.count - AppState.maxTranscriptEntries
         if overflow > 0 {
             transcript.removeFirst(overflow)
@@ -1230,6 +1299,7 @@ final class AppState: ObservableObject {
             self.syncListener()
             RemoteControlService.updateCmuxPassword(self.configStore.config.remoteCmuxPassword)
             self.updateStatus()
+            self.broadcastSessionIfChanged()
         }
     }
 
@@ -1242,7 +1312,7 @@ final class AppState: ObservableObject {
             newStatus = .listening
         } else if tts.isSpeaking {
             newStatus = .speaking
-        } else if claude.state == .working || (isRemoteMode && remoteTurnActive) {
+        } else if harness.state == .working || (isRemoteMode && remoteTurnActive) {
             // Remote mode has no process of ours to watch: the hooks bracket the
             // turn instead (UserPromptSubmit → Stop).
             newStatus = .thinking
@@ -1252,6 +1322,7 @@ final class AppState: ObservableObject {
 
         if newStatus != status {
             status = newStatus
+            listener.broadcast(PowerUpProtocol.status(newStatus))
         }
         applyLight(for: newStatus)
     }

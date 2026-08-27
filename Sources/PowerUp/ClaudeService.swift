@@ -18,8 +18,13 @@ final class ClaudeService: ObservableObject {
     @Published private(set) var modelName: String?
     @Published private(set) var totalCostUSD: Double = 0
 
-    /// Always invoked on the main actor.
+    /// Always invoked on the main actor. Wire-level events; most consumers
+    /// should use `onHarnessEvent` instead.
     var onEvent: ((ClaudeEvent) -> Void)?
+
+    /// The normalized stream (see `HarnessEvent.from`). Always on the main
+    /// actor. This is the `HarnessAdapter` surface `AppState` consumes.
+    var onHarnessEvent: ((HarnessEvent) -> Void)?
 
     // MARK: - Private state
 
@@ -526,6 +531,7 @@ final class ClaudeService: ObservableObject {
 
     private func emit(_ event: ClaudeEvent) {
         onEvent?(event)
+        onHarnessEvent?(HarnessEvent.from(event))
     }
 
     // MARK: - stdin writing
@@ -757,6 +763,19 @@ final class ClaudeService: ObservableObject {
         let collapsed = flattened.split(separator: " ", omittingEmptySubsequences: true).joined(separator: " ")
         guard collapsed.count > maxChars else { return collapsed }
         return String(collapsed.prefix(maxChars - 1)) + "…"
+    }
+}
+
+// MARK: - HarnessAdapter conformance
+
+extension ClaudeService: HarnessAdapter {
+    func start(_ configuration: HarnessConfiguration) {
+        start(projectDir: configuration.projectDir,
+              model: configuration.model,
+              permissionMode: configuration.permissionMode,
+              effort: configuration.effort,
+              resumeSessionID: configuration.resumeSessionID,
+              claudePathOverride: configuration.binaryPathOverride)
     }
 }
 
