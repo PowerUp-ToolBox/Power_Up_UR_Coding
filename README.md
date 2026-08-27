@@ -67,6 +67,7 @@ default mapping table is in **[Buttons & controls](docs/controls.md)**.
 | [Remote Control mode](docs/remote-control.md) | Driving an existing session in cmux or a terminal, hooks setup, Accessibility & stable signing |
 | [Configuration & sessions](docs/configuration.md) | Settings, `config.json`, session resume, cost display |
 | [Troubleshooting](docs/troubleshooting.md) | Permission resets, controller, `claude` binary issues |
+| [Privacy](docs/privacy.md) | Where your voice and data go (spoiler: mostly nowhere) |
 
 For contributors: [CONTRIBUTING.md](CONTRIBUTING.md) (build/test/PR rules),
 [DESIGN.md](DESIGN.md) (the binding implementation contract), and
