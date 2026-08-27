@@ -1,0 +1,66 @@
+name: Release
+
+# Scaffolding for issue #42. Today this produces an AD-HOC-SIGNED zip on every
+# v* tag — fine for testers who right-click → Open past Gatekeeper. The
+# Developer ID + notarization steps below are written but commented out until
+# an Apple Developer Program membership exists and these secrets are added:
+#   APPLE_CERT_P12_BASE64, APPLE_CERT_PASSWORD  (Developer ID Application cert)
+#   ASC_KEY_P8, ASC_KEY_ID, ASC_ISSUER_ID       (App Store Connect API key)
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish PowerUp.app
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build app bundle
+        run: ./scripts/build.sh
+
+      # --- Developer ID signing + notarization (enable when secrets exist) ---
+      # - name: Import signing certificate
+      #   run: |
+      #     echo "$APPLE_CERT_P12_BASE64" | base64 -d > cert.p12
+      #     security create-keychain -p ci ci.keychain
+      #     security import cert.p12 -k ci.keychain -P "$APPLE_CERT_PASSWORD" -T /usr/bin/codesign
+      #     security set-key-partition-list -S apple-tool:,apple: -s -k ci ci.keychain
+      #     codesign --force --deep --options runtime \
+      #       --sign "Developer ID Application" build/PowerUp.app
+      #   env:
+      #     APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+      #     APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+      #
+      # - name: Notarize
+      #   run: |
+      #     echo "$ASC_KEY_P8" > asc.p8
+      #     ditto -c -k --keepParent build/PowerUp.app PowerUp-notarize.zip
+      #     xcrun notarytool submit PowerUp-notarize.zip \
+      #       --key asc.p8 --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" --wait
+      #     xcrun stapler staple build/PowerUp.app
+      #   env:
+      #     ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+      #     ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      #     ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+
+      - name: Package
+        run: |
+          ditto -c -k --keepParent build/PowerUp.app "PowerUp-${GITHUB_REF_NAME}.zip"
+          shasum -a 256 "PowerUp-${GITHUB_REF_NAME}.zip" > "PowerUp-${GITHUB_REF_NAME}.zip.sha256"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "PowerUp-${GITHUB_REF_NAME}.zip" \
+            "PowerUp-${GITHUB_REF_NAME}.zip.sha256" \
+            --title "PowerUp $GITHUB_REF_NAME" \
+            --generate-notes \
+            --notes "⚠️ This build is ad-hoc signed (not yet notarized): right-click → Open on first launch, and launch the .app bundle itself. See docs/getting-started.md."
