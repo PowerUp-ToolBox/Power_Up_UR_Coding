@@ -64,6 +64,7 @@ default mapping table is in **[Buttons & controls](docs/controls.md)**.
 | [Getting started](docs/getting-started.md) | Requirements, building, first run, permissions |
 | [Buttons & controls](docs/controls.md) | Full default mapping, dictate→review→send, cycle model/effort/permission, interrupting |
 | [Voice & speech](docs/voice.md) | Multilingual read-back, getting a better voice, spoken-length limit |
+| [Harnesses](docs/harnesses.md) | Driving agents beyond Claude Code (opencode & other ACP agents), controller-button tool approval |
 | [Remote Control mode](docs/remote-control.md) | Driving an existing session in cmux or a terminal, hooks setup, Accessibility & stable signing |
 | [Configuration & sessions](docs/configuration.md) | Settings, `config.json`, session resume, cost display |
 | [Troubleshooting](docs/troubleshooting.md) | Permission resets, controller, `claude` binary issues |

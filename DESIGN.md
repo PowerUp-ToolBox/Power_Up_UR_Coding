@@ -1448,3 +1448,120 @@ nil. Tests cover the pure parts only — never spawn real `claude` in tests.
 Toggle "Summarize long replies (uses a fast model)" in the Text to Speech
 section, with a caption covering cost, the transcript keeping the full text,
 Replay behavior, and the fallback.
+
+---
+
+# v2.0 addendum — the ACP adapter (M3 harness expansion)
+
+Supersedes anything above where it conflicts. Adds the second
+`HarnessAdapter`: any Agent Client Protocol agent — opencode natively, Claude
+Code via the `@agentclientprotocol/claude-agent-acp` bridge (NOTE: renamed
+from `@zed-industries/claude-code-acp`), Codex/Gemini via their bridges when
+installed. Decisions: ADR 0004 (ACP-first), ADR 0005 (built-in Claude stays
+on stream-json).
+
+## Verified facts (live probes, this machine, 2026-08-27)
+
+- ACP = JSON-RPC 2.0, newline-delimited JSON over stdio. `initialize`
+  (`protocolVersion: 1`, client declares `fs` capabilities) → agent
+  capabilities + `agentInfo` + `authMethods`. `session/new {cwd, mcpServers}`
+  → `{sessionId, models: {currentModelId, availableModels}}` (opencode) —
+  the bridge also returns config options including a permission-mode select.
+- `session/prompt {sessionId, prompt: [{type: "text", text}]}` streams
+  `session/update` notifications: `agent_thought_chunk` /
+  `agent_message_chunk` (`content.text`), `tool_call` (toolCallId, title,
+  kind, locations, rawInput, `_meta.claudeCode.toolName` on the bridge),
+  `tool_call_update`, `usage_update`, `available_commands_update`; the
+  request resolves with `{stopReason: "end_turn" | …}` (the bridge adds token
+  `usage`, no dollars).
+- `session/request_permission` is an agent→CLIENT REQUEST carrying
+  `toolCall` + `options: [{optionId, name, kind: allow_once | allow_always |
+  reject_once | reject_always}]`; the client responds
+  `{outcome: {outcome: "selected", optionId}}` or `{outcome: {outcome:
+  "cancelled"}}`.
+- The Claude bridge refuses to start when `CLAUDECODE` / `CLAUDE_CODE_*` env
+  vars are present (nested-session guard) — spawn environments must strip
+  them.
+
+## Models.swift — AppConfig
+
+```swift
+var harnessKind: String       // "claude" (default) | "acp" — option-validated
+var acpAgent: String          // "opencode" (default) | "claudeBridge" | "custom"
+var acpCustomCommand: String  // space-split command line for "custom"
+// + harnessKindOptions, acpAgentOptions, acpAgentDisplayName(_:)
+```
+
+## Harness.swift — contract additions
+
+- `HarnessConfiguration` gains `agentCommand: [String]? = nil` (the spawn
+  command for ACP adapters; nil for the Claude adapter).
+- `HarnessAdapter` gains capability flags `supportsEffort` / `reportsCostUSD`
+  (protocol-extension defaults false; ClaudeService overrides both true) and
+  `respondToPermission(id:allow:)` (default no-op).
+
+## New file: ACPAdapter.swift
+
+`@MainActor final class ACPAdapter: ObservableObject, HarnessAdapter`.
+- Pure, tested statics: `agentCommand(for:)` (opencode candidates →
+  `[bin, "acp"]`; claudeBridge → `[npx, "-y",
+  "@agentclientprotocol/claude-agent-acp"]`; custom → space-split; nil when
+  unresolvable), `agentEnvironment(from:)` (strips `CLAUDECODE`,
+  `CLAUDE_PID`, `CLAUDE_CODE_*`; appends install dirs to PATH),
+  `permissionChoice(options:allow:)` (matches direction, PREFERS the
+  `*_once` variant — a controller press never silently grants "always";
+  nil → cancelled outcome).
+- start: spawn → `initialize` → `session/new` (cwd = projectDir) →
+  `.sessionReady(sessionId, currentModelId)`, state `.ready`; 30 s startup
+  deadline → runtimeError + stop. No resume (ACP sessions start fresh;
+  `lastSessionID` is never overwritten by ACP ids).
+- send: prompts queue while `.starting`/`.working`, FIFO-flushed after each
+  completion. Updates: message chunks → `replyDelta` + accumulate; thought
+  chunks dropped; `tool_call` → `toolUse` (bridge toolName or title;
+  detail = location basename or best rawInput string). Prompt resolution →
+  `reply(accumulated)` + `turnCompleted(resultText:, costUSD: nil, isError:
+  error || stopReason == "refusal", detail: stopReason)`.
+- interrupt: `session/cancel` notification (+ optimistic ok controlResult);
+  setModel/setPermissionMode: `session/set_model` / `session/set_mode`,
+  success/error → `controlResult` (AppState's existing revert logic applies —
+  aliases that the agent doesn't know are rejected and rolled back).
+- `session/request_permission` → store pending rpc id, emit
+  `permissionRequest(id: String(rpcID), name: toolCall.title, detail:)`;
+  `respondToPermission` answers it; unanswered requests are cancelled on
+  stop/interrupt so the agent never hangs. Unknown agent requests (fs/*,
+  terminal/*) get a method-not-found error — we declared no such
+  capabilities. All parsing defensive; unknown update kinds ignored.
+
+## AppState
+
+- `harness` now switches on `config.harnessKind` between `claude` and a
+  lazily created, event-wired `ACPAdapter`. `harnessReportedModel` exposes
+  the active adapter's model for the chip (ModelChip reads it instead of
+  `claude.modelName`).
+- `syncHarnessSelection()` (in the derived-update pass, keyed on
+  kind|agent|customCommand) stops the outgoing session once per change; the
+  new harness starts lazily on next send. `startSession` resolves
+  `agentCommand` for ACP (friendly error when the binary is missing) and
+  passes `resumeSessionID: nil` for ACP.
+- Permission flow (issue #10): `.permissionRequest` stores
+  `pendingPermissionID`, transcript entry "The agent wants to: … Press ✕ to
+  allow or ○ to deny.", haptic + announce "Approval needed". While one is
+  pending (built-in mode), Approve/Reject answer IT via
+  `respondToPermission` instead of sending Yes/No. Cleared on turn
+  completion, session end, and harness switches.
+- `cycleEffort` refuses (transcript note + error haptic) when
+  `!harness.supportsEffort`.
+
+## SettingsView (General tab)
+
+New "Harness" section above Model: segmented Claude Code (built-in) / ACP
+agent; for ACP an agent picker (opencode / Claude Code (ACP bridge) /
+Custom command + TextField) and a caption covering model-id requirements,
+no effort, no cost reporting, and switch-on-next-message semantics.
+
+Tests: pure statics + an integration suite driving the real adapter against
+a scripted python mock agent over stdio (handshake, streamed updates,
+thought-chunk filtering, the permission round-trip choosing `allow_once`,
+set_model accept/reject). The mock is not a real harness — the live wire
+shapes above were captured by probes, and changes there must update this
+addendum and the adapter together.
