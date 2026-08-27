@@ -1229,3 +1229,39 @@ authenticated clients cap at 16 (`server_busy` beyond that).
 3. Growing the protocol intent vocabulary requires editing
    `IntentMapper.intent(forProtocolName:)`, whose tests assert the allowed
    set — a reviewed decision, never an accident.
+
+---
+
+# v1.8 addendum — remote-mode draft dictation types into the target
+
+Supersedes anything above where it conflicts. One behavior fix, reported live:
+in remote mode, dictate-to-draft (L2) dropped the transcript into PowerUp's
+own prompt box — a window the user typically isn't looking at while driving a
+cmux/terminal session — so the dictation appeared to vanish, and sending it
+with L1 would immediately auto-submit, defeating review.
+
+## Behavior (AppState)
+
+- A `.draft` voice hold captures whether it belongs to remote mode **at hold
+  start** (`pttDraftTargetsRemote`); a control-mode toggle mid-hold cannot mix
+  the paths.
+- **Remote draft hold** (`controlMode == "remote"` at hold start): no live
+  mirroring into `draftText` and the prompt box is never touched. On release,
+  the final transcript (or the last partial, as in the local path) is
+  delivered via `sendText(_, submit: false)` — TYPED into the remote target
+  (cmux input box / terminal prompt) **without Enter**, regardless of
+  `remoteAutoSubmit`. The user reviews it where the session lives and sends
+  with Enter there or the Approve button (✕ = Enter in remote mode). A
+  `.system` transcript entry records `Dictated into the remote session (not
+  sent): …`; success = tick haptic, nothing usable heard = error buzz and
+  nothing typed. The permission-denied teardown must not restore `draftText`
+  for a remote hold (it never captured).
+- **Local draft hold**: unchanged (v1.2 behavior).
+- `AppState` gains `var draftDictationTargetsRemote: Bool` (computed from
+  published state) for the UI.
+
+## UI
+
+`PTTIndicator` and `PTTTranscriptBanner` gain `isRemoteDraft: Bool = false`
+and say "…typed into the remote session…" instead of "…the prompt box…" when
+it's true; `MainView` passes `appState.draftDictationTargetsRemote`.

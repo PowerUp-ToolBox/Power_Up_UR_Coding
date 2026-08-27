@@ -97,6 +97,11 @@ etc.) all work the same way.
   - **Terminal/specific app or Frontmost app** — simulated keystrokes
     (keystroke injection) posted directly to that app, which is why these two
     kinds require Accessibility permission.
+- **Dictate to Prompt Box** (L2 by default) adapts to remote mode: releasing
+  the hold **types your words into the target's input box without pressing
+  Enter** — review and edit them right in cmux/the terminal, then send with
+  Enter there or the Approve button (✕ = Enter). Push to Talk (R2) still
+  sends immediately, honoring the Auto-submit toggle.
 - **Claude's replies** stream back via the listener hooks and appear in
   PowerUp's transcript, are read aloud by text-to-speech (if enabled), and
   trigger light/haptic feedback as usual.

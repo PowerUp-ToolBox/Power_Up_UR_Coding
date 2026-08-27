@@ -960,6 +960,8 @@ struct PTTIndicator: View {
     let isActive: Bool
     /// The active hold dictates into the prompt box rather than sending.
     var isDraft: Bool = false
+    /// The active draft hold types into the remote session instead of the box.
+    var isRemoteDraft: Bool = false
     let partialTranscript: String
     var hint: String?
 
@@ -1001,6 +1003,7 @@ struct PTTIndicator: View {
     private var helpText: String {
         if isActive {
             if partialTranscript.isEmpty {
+                if isRemoteDraft { return "Listening… your words will be typed into the remote session." }
                 return isDraft ? "Listening… your words go to the prompt box." : "Listening…"
             }
             return partialTranscript
@@ -1015,9 +1018,14 @@ struct PTTTranscriptBanner: View {
     let partialTranscript: String
     /// A draft hold never sends — its empty-transcript copy must not claim it will.
     var isDraft: Bool = false
+    /// The draft hold types into the remote session instead of the prompt box.
+    var isRemoteDraft: Bool = false
 
     private var emptyHint: String {
-        isDraft
+        if isRemoteDraft {
+            return "Listening… release to type the text into the remote session (nothing is sent)."
+        }
+        return isDraft
             ? "Listening… release to drop the text in the prompt box."
             : "Listening… speak now, release to send."
     }

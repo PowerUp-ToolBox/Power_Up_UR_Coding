@@ -80,6 +80,15 @@ final class AppState: ObservableObject {
     private var pttHoldButton: ControllerButton?
     /// Mode of the hold `pttHoldButton` started; only meaningful while holding.
     private var pttMode: VoiceCaptureMode = .send
+    /// True when the active draft hold belongs to remote mode: the transcript
+    /// is typed into the remote target (without Enter) instead of the local
+    /// prompt box. Captured at hold START so a mode toggle mid-hold can't mix
+    /// the two paths.
+    private var pttDraftTargetsRemote = false
+
+    /// For the UI: the active draft hold will land in the remote session, not
+    /// the prompt box. Derived from published state, so views re-evaluate.
+    var draftDictationTargetsRemote: Bool { isPTTActive && isDraftDictation && pttDraftTargetsRemote }
 
     /// Live-dictation bookkeeping for a `.draft` hold.
     /// `draftOriginal` is the box exactly as it was before the hold (restored if
@@ -547,7 +556,10 @@ final class AppState: ObservableObject {
 
         pttMode = mode
         isDraftDictation = (mode == .draft)
-        if mode == .draft { beginDraftCapture() }
+        // In remote mode the "review" place is the target's own input box —
+        // the local prompt box (probably in a hidden window) stays untouched.
+        pttDraftTargetsRemote = (mode == .draft) && isRemoteMode
+        if mode == .draft, !pttDraftTargetsRemote { beginDraftCapture() }
 
         // Never talk over ourselves: the mic would just hear the synthesizer.
         tts.stop()
@@ -564,9 +576,12 @@ final class AppState: ObservableObject {
                 self.isPTTActive = false
                 self.isDraftDictation = false
                 self.pttHoldButton = nil
-                // Only a draft hold has a mirror to tear down — and only it may
-                // touch the prompt box (a .send hold never wrote to it).
-                if self.pttMode == .draft { self.endDraftCapture(restoringDraft: true) }
+                // Only a local draft hold has a mirror to tear down — and only
+                // it may touch the prompt box (a .send hold never wrote to it,
+                // and a remote draft hold never began capturing).
+                if self.pttMode == .draft, !self.pttDraftTargetsRemote {
+                    self.endDraftCapture(restoringDraft: true)
+                }
                 self.appendEntry(.error, "Speech recognition isn't allowed yet. Enable PowerUp in System Settings → Privacy & Security → Speech Recognition (and Microphone).")
                 self.errorHaptic()
                 self.updateStatus()
@@ -583,7 +598,11 @@ final class AppState: ObservableObject {
         isDraftDictation = false
 
         if pttMode == .draft {
-            stopDraftDictation()
+            if pttDraftTargetsRemote {
+                stopRemoteDraftDictation()
+            } else {
+                stopDraftDictation()
+            }
             return
         }
 
@@ -675,6 +694,33 @@ final class AppState: ObservableObject {
                 let updated = base + heard
                 if self.draftText != updated { self.draftText = updated }
             }
+            self.updateStatus()
+        }
+        updateStatus()
+    }
+
+    /// Release of a dictate-to-draft hold while in remote mode: the final
+    /// transcript is TYPED into the remote target — cmux input box, terminal
+    /// prompt — without pressing Enter, so it can be reviewed right where the
+    /// session lives and sent from there (Enter in the app, or ✕/Approve).
+    /// Nothing is submitted from here, and the local prompt box is untouched.
+    private func stopRemoteDraftDictation() {
+        // Fallback if the recognizer ends without a final result (mirrors
+        // stopDraftDictation's lastShown, which the remote path doesn't track).
+        let lastShown = speech.partialTranscript
+
+        speech.stopListening { [weak self] text in
+            guard let self else { return }
+            let heard = (text ?? lastShown).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !heard.isEmpty else {
+                // Nothing usable — buzz twice, type nothing.
+                self.errorHaptic()
+                self.updateStatus()
+                return
+            }
+            self.appendEntry(.system, "Dictated into the remote session (not sent): \(heard)")
+            self.sendRemoteText(heard, submit: false)
+            self.haptic(intensity: 0.5, duration: 0.05)
             self.updateStatus()
         }
         updateStatus()

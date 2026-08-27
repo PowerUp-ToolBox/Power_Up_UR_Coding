@@ -619,12 +619,14 @@ private struct ComposerBar: View {
         VStack(alignment: .leading, spacing: 10) {
             if appState.isPTTActive {
                 PTTTranscriptBanner(partialTranscript: speech.partialTranscript,
-                                    isDraft: appState.isDraftDictation)
+                                    isDraft: appState.isDraftDictation,
+                                    isRemoteDraft: appState.draftDictationTargetsRemote)
             }
 
             HStack(alignment: .center, spacing: 12) {
                 PTTIndicator(isActive: appState.isPTTActive,
                              isDraft: appState.isDraftDictation,
+                             isRemoteDraft: appState.draftDictationTargetsRemote,
                              partialTranscript: speech.partialTranscript,
                              hint: pushToTalkButtonName(in: configStore.config.mapping))
                 inputField

@@ -96,6 +96,11 @@ A few details worth knowing:
   dictation.
 - Holding a second voice button while one is already recording does nothing;
   only the button that started the recording can end it.
+- **In [Remote Control mode](remote-control.md)** the review happens where
+  your session lives: releasing L2 **types the words into the remote input
+  box** (cmux or the terminal) without pressing Enter — edit them there if
+  needed, then send with Enter in that app or the Approve button (✕, which is
+  Enter in remote mode). PowerUp's own prompt box isn't involved.
 
 ## Session control actions
 
