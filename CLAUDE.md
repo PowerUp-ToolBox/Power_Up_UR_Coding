@@ -4,6 +4,13 @@ PowerUp — a native macOS SwiftUI app that turns a PS5 DualSense controller
 into a voice remote for Claude Code. Swift 5.9 / SwiftPM, no Xcode project,
 no third-party dependencies.
 
+## The documents
+
+- **DESIGN.md** — binding implementation contract for the current macOS app.
+- **DEVELOPMENT.md** — the cross-platform/multi-device/multi-harness roadmap:
+  architecture direction, workstreams, milestones, open decisions (ADR-gated).
+- **CONTRIBUTING.md** — contributor-facing build/test/PR rules.
+
 ## The binding contract
 
 **DESIGN.md is the binding implementation contract.** It specifies exact

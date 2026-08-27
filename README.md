@@ -14,6 +14,25 @@ or speaking.
 This is a native macOS app built with SwiftUI. No Xcode project required to
 build it — just Swift Package Manager.
 
+## The bigger picture
+
+What exists today — macOS, DualSense, Claude Code — is **v1 of a much larger
+open-source ambition**: let anyone vibe code hands-free with **any device**
+(game controller, headset buttons, foot pedal, macropad, voice alone) driving
+**any AI coding harness** (Claude Code, Codex CLI, Gemini CLI, opencode, …) on
+**any OS** (macOS, Windows, Linux) — with the device giving live feedback
+(lights, haptics, screens) about what your agent is doing.
+
+- 📍 **[DEVELOPMENT.md](DEVELOPMENT.md)** — the full development plan: target
+  architecture, every workstream and task, milestones, open decisions, risks.
+- 🤝 **[CONTRIBUTING.md](CONTRIBUTING.md)** — how to build, test, and land a
+  PR today, and how to find something to work on.
+- 📐 **[DESIGN.md](DESIGN.md)** — the binding implementation contract for the
+  current macOS app, including the verified Claude CLI wire protocol.
+
+Contributions, device ideas, and harness requests are all welcome — open an
+issue or a discussion.
+
 ## Requirements
 
 - macOS 14 (Sonoma) or later.
