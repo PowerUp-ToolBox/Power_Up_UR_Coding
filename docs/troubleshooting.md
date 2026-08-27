@@ -41,7 +41,18 @@ rather than running the executable inside it directly — TCC (permissions)
 tracks the bundle identity, and running the raw binary will misattribute or
 silently deny permission requests.
 
-**My Accessibility grant disappears every time I rebuild.** That's the
-ad-hoc signature changing on each build — see
-[stable signing](remote-control.md#accessibility--stable-signing-persistent-permissions)
-for the one-time fix.
+**Settings → Remote shows Accessibility red even though System Settings shows
+PowerUp enabled.** The System Settings toggle is stale: macOS binds the grant
+to the app's exact code signature, and an ad-hoc-signed build gets a *new*
+signature on every rebuild — so the listed entry refers to a previous build
+and no longer applies (PowerUp's red dot is telling the truth). The fix, once:
+
+```sh
+./scripts/setup-signing.sh                            # stable identity (one password dialog)
+./scripts/build.sh                                    # rebuild, now stably signed
+tccutil reset Accessibility com.powerup.claudepad     # clear the stale entries
+open build/PowerUp.app                                # grant once — it now sticks forever
+```
+
+See [stable signing](remote-control.md#accessibility--stable-signing-persistent-permissions)
+for the background. (cmux targets never need Accessibility at all.)
