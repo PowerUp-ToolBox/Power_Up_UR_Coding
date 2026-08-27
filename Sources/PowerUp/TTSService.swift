@@ -170,12 +170,24 @@ final class TTSService: NSObject, ObservableObject {
         rankedVoices(languagePrefix: "en")
     }
 
+    /// Pure identifier-level exclusions (testable without installed voices):
+    /// the "eloquence" engine voices, the legacy
+    /// "com.apple.speech.synthesis.voice" bucket, and the modern
+    /// "super-compact" tier (e.g. com.apple.voice.super-compact.en-AU.Karen)
+    /// — the most robotic voices Apple ships, which the old prefix filter
+    /// missed. Plain "compact" voices stay: they're the standard default tier
+    /// (Samantha, Tingting) and for many languages the only voice installed.
+    static func isExcludedVoiceIdentifier(_ identifier: String) -> Bool {
+        let lowered = identifier.lowercased()
+        if lowered.contains("eloquence") { return true }
+        if lowered.hasPrefix("com.apple.speech.synthesis.voice") { return true }
+        if lowered.contains("super-compact") { return true }
+        return false
+    }
+
     private static func passesQualityExclusions(_ voice: AVSpeechSynthesisVoice) -> Bool {
         guard !voice.voiceTraits.contains(.isNoveltyVoice) else { return false }
-        let identifier = voice.identifier.lowercased()
-        guard !identifier.contains("eloquence") else { return false }
-        guard !identifier.hasPrefix("com.apple.speech.synthesis.voice") else { return false }
-        return true
+        return !isExcludedVoiceIdentifier(voice.identifier)
     }
 
     /// 5-step resolution so speech never silently no-ops when any usable
@@ -191,8 +203,12 @@ final class TTSService: NSObject, ObservableObject {
     private static func resolveVoice(text: String, voiceID: String?, language: String? = nil) -> AVSpeechSynthesisVoice? {
         let lang = language ?? dominantLanguageCode(of: text) ?? "en"
 
+        // A stale config can point at a voice the picker no longer lists
+        // (e.g. a super-compact one chosen before that tier was excluded) —
+        // such a pick yields to quality routing instead of being honored.
         if let voiceID,
            let explicit = AVSpeechSynthesisVoice(identifier: voiceID),
+           passesQualityExclusions(explicit),
            primarySubtag(of: explicit.language) == lang {
             return explicit
         }

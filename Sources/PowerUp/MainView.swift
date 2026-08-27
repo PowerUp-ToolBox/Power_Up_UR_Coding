@@ -620,7 +620,8 @@ private struct ComposerBar: View {
             if appState.isPTTActive {
                 PTTTranscriptBanner(partialTranscript: speech.partialTranscript,
                                     isDraft: appState.isDraftDictation,
-                                    isRemoteDraft: appState.draftDictationTargetsRemote)
+                                    isRemoteDraft: appState.draftDictationTargetsRemote,
+                                    recognitionLanguage: recognitionLanguageWarning)
             }
 
             HStack(alignment: .center, spacing: 12) {
@@ -637,6 +638,16 @@ private struct ComposerBar: View {
         .padding(.vertical, 14)
         .background(Color.black.opacity(0.25))
         .animation(.easeInOut(duration: 0.2), value: appState.isPTTActive)
+    }
+
+    /// Non-nil (a display name) when speech recognition is set to a
+    /// non-English language — the #1 cause of "my dictation is garbage"
+    /// reports is a locale that doesn't match what the user speaks, so it's
+    /// surfaced right in the listening banner.
+    private var recognitionLanguageWarning: String? {
+        let localeID = configStore.config.localeID
+        guard !localeID.lowercased().hasPrefix("en") else { return nil }
+        return Locale.current.localizedString(forIdentifier: localeID) ?? localeID
     }
 
     /// Bound to `AppState.draftText` (not a local `@State`) so dictation from the

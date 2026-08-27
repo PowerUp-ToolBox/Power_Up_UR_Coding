@@ -1265,3 +1265,47 @@ with L1 would immediately auto-submit, defeating review.
 `PTTIndicator` and `PTTTranscriptBanner` gain `isRemoteDraft: Bool = false`
 and say "…typed into the remote session…" instead of "…the prompt box…" when
 it's true; `MainView` passes `appState.draftDictationTargetsRemote`.
+
+---
+
+# v1.9 addendum — recognition-language safety + super-compact voice exclusion
+
+Supersedes anything above where it conflicts. Root cause of a live "voice to
+text is really really off" report: the STT locale was silently set to a
+language the user wasn't speaking (`localeID: "zh-CN"`, plus
+`onDeviceRecognition: true`), and nothing in the UI made that visible. A
+mismatched recognizer doesn't degrade — it produces garbage. Separately, the
+config had `ttsVoiceID` pointing at a `com.apple.voice.super-compact.*` voice:
+the picker's legacy-prefix filter missed that modern identifier tier.
+
+## SettingsView (Voice tab)
+
+- The free-typed locale TextField is REPLACED by a Picker over
+  `SFSpeechRecognizer.supportedLocales()` labeled **"Language you speak"** —
+  rows are localized display names ("English (United States) — en-US"),
+  sorted; identifiers normalize `_` to `-`. A saved value not in the supported
+  set is kept as an extra row labeled "— not supported on this Mac" so the
+  picker never lies about current state.
+- Caption under the picker states plainly that a mismatch produces gibberish.
+- The on-device toggle gains a caption: less accurate, leave off for best
+  results.
+
+## MainView / ComponentViews
+
+`PTTTranscriptBanner` gains `recognitionLanguage: String?`; `MainView` passes
+a display name whenever `config.localeID` doesn't start with "en", and the
+listening hint appends "Recognizing <language> — change it in Settings →
+Voice if that's wrong." The #1 misconfiguration is now visible at the exact
+moment it bites.
+
+## TTSService
+
+- New pure helper `static func isExcludedVoiceIdentifier(_:) -> Bool`
+  (tested): excludes "eloquence", the legacy
+  "com.apple.speech.synthesis.voice" prefix, and identifiers containing
+  "super-compact". Plain "compact" voices remain — they're the standard
+  default tier and often a language's only voice.
+- `passesQualityExclusions` delegates to it (novelty-trait check unchanged).
+- Voice-resolution rule 2 (explicit `voiceID`) additionally requires
+  `passesQualityExclusions` — a stale config pointing at a now-excluded voice
+  yields to quality routing instead of being honored.

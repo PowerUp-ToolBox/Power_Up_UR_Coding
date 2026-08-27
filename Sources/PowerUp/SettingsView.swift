@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import AVFAudio
+import Speech
 
 // MARK: - Shared palette (used by SettingsView + MappingView)
 
@@ -310,6 +311,26 @@ private struct VoiceSettingsTab: View {
         }
     }
 
+    /// Every locale the speech recognizer supports, named in the user's UI
+    /// language ("English (United States) — en-US"), sorted by name. If the
+    /// saved value isn't supported (hand-edited config, removed locale), it's
+    /// kept as an extra row so the picker never shows a lie — and gets a
+    /// warning label so the fix is obvious.
+    private var supportedSpeechLocales: [(identifier: String, name: String)] {
+        var options = SFSpeechRecognizer.supportedLocales().map { locale -> (identifier: String, name: String) in
+            let identifier = locale.identifier.replacingOccurrences(of: "_", with: "-")
+            let name = Locale.current.localizedString(forIdentifier: locale.identifier) ?? identifier
+            return (identifier, "\(name) — \(identifier)")
+        }
+        options.sort { $0.name < $1.name }
+
+        let current = configStore.config.localeID
+        if !options.contains(where: { $0.identifier == current }) {
+            options.insert((current, "\(current) — not supported on this Mac"), at: 0)
+        }
+        return options
+    }
+
     /// Test phrase + routing language matched to the currently selected voice.
     /// A fixed English phrase would always detect "en" and resolution rule 2
     /// would route past a non-English selection to the best en voice — the
@@ -394,14 +415,23 @@ private struct VoiceSettingsTab: View {
 
                 SettingsSection(title: "Speech Recognition") {
                     VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Text("Locale")
-                            TextField("en-US", text: $configStore.config.localeID)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 140)
+                        Picker("Language you speak", selection: $configStore.config.localeID) {
+                            ForEach(supportedSpeechLocales, id: \.identifier) { option in
+                                Text(option.name).tag(option.identifier)
+                            }
                         }
+                        .frame(maxWidth: 380, alignment: .leading)
+
+                        Text("Push-to-talk transcribes what you say in THIS language. If your dictation comes out as gibberish or the wrong script, this doesn't match the language you're speaking.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
 
                         Toggle("On-device recognition", isOn: $configStore.config.onDeviceRecognition)
+                        Text("Keeps audio on your Mac and works offline, but is noticeably less accurate. Leave off for the best recognition.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
 
                         HStack {
                             Text("Authorization:")

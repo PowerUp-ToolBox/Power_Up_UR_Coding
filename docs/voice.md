@@ -3,8 +3,26 @@
 *[← Back to README](../README.md) · [All docs](../README.md#documentation)*
 
 Voice settings live in **Settings → Voice**: text-to-speech on/off, voice
-picker, speaking rate, max spoken characters, and the speech-to-text locale
-and on-device options.
+picker, speaking rate, max spoken characters, and the speech-recognition
+language and on-device options.
+
+## The language you speak (speech recognition)
+
+Push-to-talk transcribes what you say **in the language selected under
+Settings → Voice → Speech Recognition** (default: English, United States).
+This is the single most important voice setting: if it doesn't match the
+language you're actually speaking, recognition doesn't get "a bit worse" — it
+produces gibberish or the wrong script entirely. The listening banner shows a
+reminder whenever a non-English recognition language is active.
+
+Two related notes:
+
+- **On-device recognition** keeps audio on your Mac and works offline, but is
+  noticeably less accurate than Apple's server recognition. Leave it **off**
+  for the best results unless privacy/offline matters more to you.
+- The recognition language (what you *say*) is independent of the read-back
+  voices (what you *hear*) — Claude's replies are read in whatever language
+  they arrive in, automatically, regardless of this setting.
 
 ## Replies in other languages are spoken properly
 

@@ -110,4 +110,23 @@ final class SpeechTextTests: XCTestCase {
         let text = "The variable named 中 is renamed everywhere in the file, and the build now passes cleanly."
         XCTAssertEqual(TTSService.dominantLanguageCode(of: text), "en")
     }
+
+    // MARK: Voice-quality exclusions
+
+    func testSuperCompactAndLegacyVoicesAreExcluded() {
+        // The robotic tiers must never be listed or resolved — including the
+        // modern "super-compact" identifiers the old prefix filter missed.
+        XCTAssertTrue(TTSService.isExcludedVoiceIdentifier("com.apple.voice.super-compact.en-AU.Karen"))
+        XCTAssertTrue(TTSService.isExcludedVoiceIdentifier("com.apple.speech.synthesis.voice.samantha"))
+        XCTAssertTrue(TTSService.isExcludedVoiceIdentifier("com.apple.eloquence.en-US.Flo"))
+    }
+
+    func testStandardCompactAndQualityVoicesAreKept() {
+        // Plain "compact" is the normal default tier (Samantha, Tingting) and
+        // often a language's only voice — excluding it would silence TTS.
+        XCTAssertFalse(TTSService.isExcludedVoiceIdentifier("com.apple.voice.compact.en-US.Samantha"))
+        XCTAssertFalse(TTSService.isExcludedVoiceIdentifier("com.apple.voice.compact.zh-CN.Tingting"))
+        XCTAssertFalse(TTSService.isExcludedVoiceIdentifier("com.apple.voice.enhanced.en-US.Evan"))
+        XCTAssertFalse(TTSService.isExcludedVoiceIdentifier("com.apple.voice.premium.en-US.Zoe"))
+    }
 }

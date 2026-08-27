@@ -6,6 +6,15 @@ Remote Control problems (text not typing into the target app, no voice
 read-back, testing the listener with curl) have their own section in
 [Remote Control mode](remote-control.md#troubleshooting-remote-control).
 
+**My dictation comes out as gibberish, the wrong words, or the wrong
+script.** Almost always a recognition-language mismatch: **Settings → Voice →
+Speech Recognition** must be set to the language you're actually speaking
+(e.g. English (United States)). Also make sure **On-device recognition** is
+off — the on-device engine is noticeably less accurate. And check **System
+Settings → Sound → Input**: if a Bluetooth headset mic was auto-selected, its
+telephone-quality audio hurts recognition badly — the Mac's built-in mic
+usually transcribes better.
+
 **Microphone or speech recognition isn't working / I denied the permission
 prompt by mistake.** Reset the permissions and relaunch the app so macOS
 asks again:

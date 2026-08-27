@@ -1020,14 +1020,21 @@ struct PTTTranscriptBanner: View {
     var isDraft: Bool = false
     /// The draft hold types into the remote session instead of the prompt box.
     var isRemoteDraft: Bool = false
+    /// Display name of a non-English recognition language, so a surprising
+    /// locale (the #1 cause of garbage transcription) is visible mid-hold.
+    var recognitionLanguage: String?
 
     private var emptyHint: String {
+        let base: String
         if isRemoteDraft {
-            return "Listening… release to type the text into the remote session (nothing is sent)."
+            base = "Listening… release to type the text into the remote session (nothing is sent)."
+        } else if isDraft {
+            base = "Listening… release to drop the text in the prompt box."
+        } else {
+            base = "Listening… speak now, release to send."
         }
-        return isDraft
-            ? "Listening… release to drop the text in the prompt box."
-            : "Listening… speak now, release to send."
+        guard let recognitionLanguage else { return base }
+        return base + " Recognizing \(recognitionLanguage) — change it in Settings → Voice if that's wrong."
     }
 
     var body: some View {
