@@ -98,9 +98,10 @@ should get a short ADR in `docs/adr/` — copy the format of the existing ones.
   questions, ideas, and design conversations.
 - This is a spare-time project. Best-effort response within a few days; a
   quiet week is not a rejection. Pinging after a week is fine and welcome.
-- Be kind. The project follows the Contributor Covenant; hands-free tooling
-  exists in large part for accessibility, and this community should be at
-  least as accessible as the software.
+- Be kind. The project follows the
+  [Contributor Covenant 3.0](CODE_OF_CONDUCT.md); hands-free tooling exists in
+  large part for accessibility, and this community should be at least as
+  accessible as the software.
 
 ## A note on AI-assisted contributions
 
