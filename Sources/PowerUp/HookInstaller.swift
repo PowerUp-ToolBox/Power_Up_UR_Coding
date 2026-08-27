@@ -13,8 +13,11 @@ import Foundation
 /// throwaway copy without going anywhere near the real file.
 enum HookInstaller {
 
-    /// Hook events PowerUp subscribes to, in a stable order.
-    static let hookEvents = ["Stop", "UserPromptSubmit", "Notification"]
+    /// Hook events PowerUp subscribes to, in a stable order. SessionEnd is
+    /// how a session that closes MID-TURN releases the "Claude is working"
+    /// state — its Stop hook never fires, and without SessionEnd the light
+    /// bar would stay amber forever.
+    static let hookEvents = ["Stop", "UserPromptSubmit", "Notification", "SessionEnd"]
 
     // MARK: - Errors
 
@@ -183,6 +186,15 @@ enum HookInstaller {
         // A legacy unquoted registration never executes (the space in
         // "Application Support" splits the command) — always stale.
         guard hasQuoted else { return .outOfDate }
+
+        // An install from an older build may be missing events added since
+        // (e.g. SessionEnd) — reinstalling brings them in.
+        for event in hookEvents {
+            guard let eventGroups = hooks[event] as? [Any],
+                  eventGroups.contains(where: { group($0, references: [quoted]) }) else {
+                return .outOfDate
+            }
+        }
 
         guard let data = try? Data(contentsOf: hookScriptURL()) else { return .outOfDate }
         let body = String(decoding: data, as: UTF8.self)

@@ -1309,3 +1309,50 @@ moment it bites.
 - Voice-resolution rule 2 (explicit `voiceID`) additionally requires
   `passesQualityExclusions` — a stale config pointing at a now-excluded voice
   yields to quality routing instead of being honored.
+
+---
+
+# v1.10 addendum — per-session remote turn tracking (the stuck-amber fix)
+
+Supersedes anything above where it conflicts. Live report: a Claude session
+closed mid-turn and the light bar stayed amber ("working") forever. Two root
+causes: a session that dies mid-turn never emits `Stop` (and PowerUp didn't
+subscribe to `SessionEnd`), and `remoteTurnActive` was one global Bool fed by
+every session on the machine, so concurrent sessions interleaved into
+nonsense.
+
+## HookInstaller
+
+- `hookEvents` gains **`SessionEnd`** (now Stop, UserPromptSubmit,
+  Notification, SessionEnd).
+- `installState` additionally verifies **every** event in `hookEvents` is
+  registered with the current quoted command — an install from an older build
+  (missing SessionEnd) reports `.outOfDate`, and the existing Settings UI
+  already prompts the reinstall. `install()` idempotently adds only what's
+  missing.
+
+## RemoteListener
+
+`RemoteHookEvent.Kind` gains `.sessionEnd`; `SessionEnd` payloads parse with
+`reason` as the text field, plus the usual `session_id`/`cwd`.
+
+## AppState
+
+- `remoteTurnActive` is now DERIVED, never written directly:
+  `remoteActiveTurns: [String: Date]` maps session id (or
+  `"unknown-session"`) → last sign of life. `userPromptSubmit` inserts and
+  schedules an expiry check; `stop` and `sessionEnd` remove their session's
+  entry; a `notification` refreshes an existing entry's timestamp (a turn
+  waiting on the user is alive) but never creates one.
+  `remoteTurnActive = !remoteActiveTurns.isEmpty` after pruning.
+- **Expiry**: an entry with no hook activity for 15 minutes
+  (`remoteTurnExpiry`) is presumed dead — missed Stop (killed terminal,
+  crashed CLI, Escape pressed directly in the session). A legitimate longer
+  turn may go idle early and self-corrects on its next hook event; the
+  reverse tradeoff (amber forever) has no recovery.
+- `sessionEnd` for a session we believed was working appends a `.system`
+  entry "Claude session ended before replying." (label-prefixed by cwd);
+  sessions we weren't tracking end silently.
+- `clearRemoteTurns()` empties the table and the flag — used by Interrupt,
+  Reject, remote New Session, and every control-mode switch (the user's
+  escape hatches, unchanged in behavior).

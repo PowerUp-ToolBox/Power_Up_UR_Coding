@@ -11,8 +11,10 @@ import Network
 ///   `last_assistant_message` (the full final reply — no transcript parsing).
 /// - `UserPromptSubmit` → `hook_event_name`, `session_id`, `cwd`, `prompt`.
 /// - `Notification` → `message` (per docs).
+/// - `SessionEnd` → `session_id`, `cwd`, `reason` (per docs) — the only
+///   signal a session that closes mid-turn ever sends.
 struct RemoteHookEvent {
-    enum Kind { case stop, userPromptSubmit, notification }
+    enum Kind { case stop, userPromptSubmit, notification, sessionEnd }
 
     let kind: Kind
     /// `last_assistant_message` / `prompt` / `message`, whichever the kind carries.
@@ -771,6 +773,9 @@ private final class HookConnection: @unchecked Sendable {
         case "Notification":
             kind = .notification
             textKey = "message"
+        case "SessionEnd":
+            kind = .sessionEnd
+            textKey = "reason"
         default:
             // SubagentStop, PreToolUse, anything future — not ours to act on.
             return nil

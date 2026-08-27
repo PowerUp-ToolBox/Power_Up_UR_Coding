@@ -154,6 +154,26 @@ back to ad-hoc signing otherwise (so a fresh clone still builds with no setup).
 
 ## Troubleshooting Remote Control
 
+**The controller is stuck on amber ("Claude is working…") and won't go
+idle.** The working state is driven by hooks: a turn starts on
+`UserPromptSubmit` and clears on `Stop` — or on `SessionEnd` if the session
+closes mid-turn. Three layers of recovery:
+
+1. **Right now:** press **Interrupt** (○) or **Reject** — both hard-reset the
+   turn state. Toggling Built-in/Remote does too.
+2. If the status line in **Settings → Remote → Read-back** says *"out of date
+   — reinstall"*, click **Install Claude Code hooks**: older installs are
+   missing the `SessionEnd` hook, which is exactly what clears the state when
+   a session dies without replying.
+3. As a last resort, a turn with no hook activity for 15 minutes expires on
+   its own. (Long-running turns can legitimately exceed this — the light may
+   then go idle early and self-corrects on the session's next event.)
+
+Also worth knowing: the hooks fire for **every** Claude session on your
+machine, so any session mid-turn — including a background one — shows as
+"working". When a session that never replied goes away, the transcript notes
+"Claude session ended before replying."
+
 **Text isn't appearing in the target app (keystroke injection).** This requires
 Accessibility permission — open **Settings → Remote → Accessibility** and make
 sure "Grant Access" worked. Or check **System Settings → Privacy & Security →

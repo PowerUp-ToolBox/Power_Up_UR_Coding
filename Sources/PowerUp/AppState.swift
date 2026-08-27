@@ -44,9 +44,10 @@ final class AppState: ObservableObject {
     /// "release to send" — a draft hold never sends anything.
     @Published private(set) var isDraftDictation: Bool = false
 
-    /// True between a remote session's `UserPromptSubmit` hook and its `Stop`
-    /// hook — remote mode's stand-in for `claude.state == .working` (no process
-    /// of ours is running, so the light bar and status pill lean on this).
+    /// True while at least one remote session has a turn in flight — remote
+    /// mode's stand-in for `claude.state == .working` (no process of ours is
+    /// running, so the light bar and status pill lean on this). Derived from
+    /// `remoteActiveTurns`; never write it directly.
     @Published private(set) var remoteTurnActive: Bool = false
 
     /// Text of the main window's prompt box. It lives here rather than in the
@@ -121,6 +122,21 @@ final class AppState: ObservableObject {
     /// `system/init` events mid-session (e.g. after a live `set_model`), and
     /// those must only refresh fields, not fake a new session start.
     private var didLogSessionStart = false
+
+    /// Turn state per remote session (session id → when its turn last showed
+    /// life). Hooks fire for EVERY Claude session on this machine, several of
+    /// which can be mid-turn at once — one global Bool interleaved them into
+    /// nonsense, and a session that closed mid-turn (its Stop hook never
+    /// fires) pinned the light on amber forever. Entries leave on Stop, on
+    /// SessionEnd, or by expiring.
+    private var remoteActiveTurns: [String: Date] = [:]
+
+    /// A remote turn with no hook activity for this long is presumed dead
+    /// (missed Stop: killed terminal, crashed CLI, Escape pressed directly in
+    /// the session). Long legitimate turns can exceed it — the tradeoff is a
+    /// too-early idle that self-corrects on the next hook, versus an amber
+    /// light no event will ever clear.
+    private static let remoteTurnExpiry: TimeInterval = 15 * 60
 
     private var willTerminateObserver: NSObjectProtocol?
 
@@ -384,7 +400,7 @@ final class AppState: ObservableObject {
         // Escape also stops a turn in flight, and an Escape-interrupted turn
         // never emits a Stop hook — without this the status pill and light bar
         // would claim "Claude is working…" forever (interruptClaude does the same).
-        remoteTurnActive = false
+        clearRemoteTurns()
         appendEntry(.system, "Rejected (Esc).")
         sendRemoteKey(.escape)
         updateStatus()
@@ -756,7 +772,7 @@ final class AppState: ObservableObject {
         if isRemoteMode {
             // We don't own the remote session, so "new session" means clearing
             // the conversation it's holding.
-            remoteTurnActive = false
+            clearRemoteTurns()
             appendEntry(.system, "Clearing the remote session.")
             sendRemoteText("/clear", submit: true)
             updateStatus()
@@ -807,7 +823,7 @@ final class AppState: ObservableObject {
     func interruptClaude() {
         if isRemoteMode {
             // Escape is the interactive CLI's stop key.
-            remoteTurnActive = false
+            clearRemoteTurns()
             appendEntry(.system, "Interrupt sent (Esc).")
             haptic(intensity: 0.6, duration: 0.08)
             sendRemoteKey(.escape)
@@ -915,7 +931,7 @@ final class AppState: ObservableObject {
         guard mode != lastControlMode else { return }
         lastControlMode = mode
 
-        remoteTurnActive = false
+        clearRemoteTurns()
         liveAssistantText = ""
 
         if mode == "remote" {
@@ -1036,12 +1052,24 @@ final class AppState: ObservableObject {
         guard isRemoteMode else { return }
         if let sessionID = event.sessionID, let ours = harness.sessionID, sessionID == ours { return }
 
+        let turnKey = event.sessionID ?? "unknown-session"
+
         switch event.kind {
         case .userPromptSubmit:
-            remoteTurnActive = true
+            beginRemoteTurn(key: turnKey)
+
+        case .sessionEnd:
+            // The only signal a session that dies mid-turn ever sends. Only a
+            // session we believed was working is worth a note — sessions end
+            // on this machine all the time.
+            if remoteActiveTurns.removeValue(forKey: turnKey) != nil {
+                appendEntry(.system, remoteCwdPrefix(event.cwd) + "Claude session ended before replying.")
+            }
+            refreshRemoteTurnActive()
 
         case .stop:
-            remoteTurnActive = false
+            remoteActiveTurns.removeValue(forKey: turnKey)
+            refreshRemoteTurnActive()
             let reply = (event.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !reply.isEmpty else { break }
             appendEntry(.assistant, remoteCwdPrefix(event.cwd) + reply)
@@ -1062,12 +1090,49 @@ final class AppState: ObservableObject {
             }
 
         case .notification:
+            // Sign of life from a turn that's waiting on the user — keep its
+            // expiry clock fresh, but a notification alone doesn't start one.
+            if remoteActiveTurns[turnKey] != nil {
+                remoteActiveTurns[turnKey] = Date()
+            }
             let message = (event.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             appendEntry(.system, message.isEmpty ? "Claude needs your attention." : message)
             announce("Claude needs your attention")
         }
 
         updateStatus()
+    }
+
+    /// Records a remote turn starting and schedules the expiry check that
+    /// clears it if every ending signal (Stop, SessionEnd) is missed.
+    private func beginRemoteTurn(key: String) {
+        remoteActiveTurns[key] = Date()
+        refreshRemoteTurnActive()
+
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64((AppState.remoteTurnExpiry + 1) * 1_000_000_000))
+            guard let self else { return }
+            self.refreshRemoteTurnActive()
+            self.updateStatus()
+        }
+    }
+
+    /// Recomputes `remoteTurnActive` from the per-session table, dropping
+    /// entries whose sessions have gone silent past the expiry.
+    private func refreshRemoteTurnActive() {
+        let cutoff = Date().addingTimeInterval(-AppState.remoteTurnExpiry)
+        remoteActiveTurns = remoteActiveTurns.filter { $0.value > cutoff }
+        let active = !remoteActiveTurns.isEmpty
+        if remoteTurnActive != active {
+            remoteTurnActive = active
+        }
+    }
+
+    /// Hard reset of remote turn state — the user's escape hatch (Interrupt /
+    /// Reject / New Session) and every mode switch land here.
+    private func clearRemoteTurns() {
+        remoteActiveTurns.removeAll()
+        if remoteTurnActive { remoteTurnActive = false }
     }
 
     /// Labels read-back that came from a different folder than the configured

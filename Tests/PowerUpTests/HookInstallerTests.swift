@@ -132,6 +132,28 @@ final class HookInstallerTests: XCTestCase {
         XCTAssertFalse(HookInstaller.isInstalled(settingsURL: settingsURL))
     }
 
+    func testInstallFromOlderBuildMissingAnEventIsOutOfDate() throws {
+        // An install written before SessionEnd joined hookEvents must report
+        // out-of-date so Settings prompts a reinstall — a missing SessionEnd
+        // is exactly the "light stuck on amber" bug.
+        try HookInstaller.install(port: 48738, token: "tok", settingsURL: settingsURL)
+
+        var root = try XCTUnwrap(try JSONSerialization.jsonObject(
+            with: Data(contentsOf: settingsURL)) as? [String: Any])
+        var hooks = try XCTUnwrap(root["hooks"] as? [String: Any])
+        hooks.removeValue(forKey: "SessionEnd")
+        root["hooks"] = hooks
+        try JSONSerialization.data(withJSONObject: root).write(to: settingsURL)
+
+        XCTAssertEqual(HookInstaller.installState(port: 48738, token: "tok", settingsURL: settingsURL),
+                       .outOfDate)
+
+        // Reinstalling adds only the missing event back.
+        try HookInstaller.install(port: 48738, token: "tok", settingsURL: settingsURL)
+        XCTAssertEqual(HookInstaller.installState(port: 48738, token: "tok", settingsURL: settingsURL),
+                       .installed)
+    }
+
     // MARK: Uninstall
 
     func testUninstallRemovesOnlyOursAndPrunesEmpties() throws {
