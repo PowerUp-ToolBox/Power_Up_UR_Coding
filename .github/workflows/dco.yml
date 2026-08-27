@@ -1,0 +1,38 @@
+name: DCO
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  check-signoff:
+    name: Check Developer Certificate of Origin sign-offs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const commits = await github.paginate(github.rest.pulls.listCommits, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+            const signoff = /^Signed-off-by: .+ <.+@.+>/m;
+            const missing = commits.filter((c) =>
+              c.parents.length <= 1 && !signoff.test(c.commit.message)
+            );
+            if (missing.length === 0) {
+              core.info(`All ${commits.length} commit(s) are signed off.`);
+              return;
+            }
+            for (const c of missing) {
+              core.error(`Missing Signed-off-by: ${c.sha.slice(0, 7)} ${c.commit.message.split('\n')[0]}`);
+            }
+            core.setFailed(
+              `${missing.length} commit(s) lack a Signed-off-by line. ` +
+              `Amend with \`git commit -s --amend\` (or \`git rebase --signoff main\` for a branch) ` +
+              `and force-push. See CONTRIBUTING.md and https://developercertificate.org.`
+            );
