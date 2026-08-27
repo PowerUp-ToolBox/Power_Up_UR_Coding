@@ -1,0 +1,48 @@
+name: Device request
+description: Ask for support for an input device (controller, headset, pedal, macropad, …).
+labels: ["ws:device"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Devices are a core part of the [roadmap](../blob/main/DEVELOPMENT.md). The more connection details you can give, the easier it is to scope.
+  - type: input
+    id: device
+    attributes:
+      label: Device make and model
+      placeholder: e.g. Elgato Stream Deck MK.2, Olympus RS27H foot pedal
+    validations:
+      required: true
+  - type: dropdown
+    id: connection
+    attributes:
+      label: How does it connect?
+      options:
+        - USB
+        - Bluetooth
+        - Both / either
+        - Other / not sure
+    validations:
+      required: true
+  - type: textarea
+    id: controls
+    attributes:
+      label: What controls does it have, and what feedback can it show?
+      description: Buttons, triggers, pedals, dials — and any LEDs, screens, or vibration that could mirror session state.
+    validations:
+      required: true
+  - type: textarea
+    id: usecase
+    attributes:
+      label: How would you use it with PowerUp?
+      placeholder: e.g. pedal = push-to-talk while my hands stay on the keyboard
+  - type: dropdown
+    id: can-test
+    attributes:
+      label: Can you test builds with this device?
+      description: Maintainers usually won't own the device — a tester makes support realistic.
+      options:
+        - "Yes, happy to test"
+        - "No"
+    validations:
+      required: true

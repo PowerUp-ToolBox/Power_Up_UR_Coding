@@ -1,0 +1,25 @@
+name: Feature request
+description: Propose an improvement to PowerUp.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing: skim [DEVELOPMENT.md](../blob/main/DEVELOPMENT.md) — your idea may already be a planned task (add your thoughts on its issue instead), or deliberately out of scope (§6).
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the situation where you miss this feature, not just the feature itself.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've considered

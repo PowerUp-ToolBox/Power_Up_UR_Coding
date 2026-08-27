@@ -1,0 +1,48 @@
+name: Bug report
+description: Something doesn't work the way the docs say it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! Check [docs/troubleshooting.md](../blob/main/docs/troubleshooting.md) first — the most common issues (permissions, bundle launch, claude binary) are covered there.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what happened instead?
+      placeholder: |
+        1. Held R2 and said "...".
+        2. Expected the transcript to be sent.
+        3. Instead ...
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: e.g. 15.5
+    validations:
+      required: true
+  - type: input
+    id: claude-version
+    attributes:
+      label: claude CLI version (`claude --version`)
+      placeholder: e.g. 2.1.243
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Control mode
+      options:
+        - Built-in (PowerUp spawns claude)
+        - Remote — cmux target
+        - Remote — Terminal / specific app
+        - Remote — frontmost app
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Anything from the transcript / Console that looks relevant?
+      description: Error entries in the transcript, or Console.app output for PowerUp.

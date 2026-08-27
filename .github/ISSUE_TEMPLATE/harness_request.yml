@@ -1,0 +1,27 @@
+name: Harness request
+description: Ask for support for an AI coding harness (agent CLI) beyond the ones planned.
+labels: ["ws:harness"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Claude Code works today; Codex CLI, Gemini CLI, and opencode are planned via the [ACP adapter](../blob/main/DEVELOPMENT.md). File this for anything else.
+  - type: input
+    id: harness
+    attributes:
+      label: Harness name and link
+      placeholder: e.g. SomeAgent CLI — https://github.com/...
+    validations:
+      required: true
+  - type: textarea
+    id: control-surface
+    attributes:
+      label: What programmatic control surface does it have?
+      description: |
+        Anything you know: does it speak ACP? A JSON stdin/stdout mode? An HTTP server? Hooks/notifications? How are permission prompts approved non-interactively?
+    validations:
+      required: true
+  - type: textarea
+    id: usecase
+    attributes:
+      label: What's your setup and what would you drive with PowerUp?
