@@ -8,7 +8,9 @@ on:
 jobs:
   test:
     name: Build, test, and bundle
-    runs-on: macos-14
+    # Pinned deliberately — never `macos-latest` (it rolled from 15 to 26 in
+    # June 2026 and silent toolchain jumps break builds). Bump intentionally.
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
