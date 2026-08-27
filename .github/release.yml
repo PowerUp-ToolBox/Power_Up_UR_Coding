@@ -1,0 +1,31 @@
+# Configures GitHub's auto-generated release notes (used by the release
+# workflow's --generate-notes): PRs are grouped by workstream label, matching
+# DEVELOPMENT.md §5. Changelog automation stays decoupled from the signed
+# artifact builds in workflows/release.yml.
+changelog:
+  exclude:
+    labels:
+      - duplicate
+      - invalid
+      - wontfix
+  categories:
+    - title: Harnesses
+      labels: [ws:harness]
+    - title: Devices
+      labels: [ws:device]
+    - title: Speech & voice
+      labels: [ws:speech]
+    - title: Core & protocol
+      labels: [ws:core]
+    - title: Platforms
+      labels: [ws:platform]
+    - title: UX
+      labels: [ws:ux]
+    - title: Security & privacy
+      labels: [ws:security]
+    - title: Release & CI
+      labels: [ws:release]
+    - title: Community & docs
+      labels: [ws:community, documentation]
+    - title: Everything else
+      labels: ["*"]
