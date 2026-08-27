@@ -10,9 +10,13 @@ build, test, and land changes.
 
 | Document | What it's for |
 |---|---|
-| [README.md](README.md) | What the app does today and how to use it |
+| [README.md](README.md) | Short front page — what the app is, quick start, doc index |
+| [docs/](docs) | User guides: getting started, controls, voice, remote control, configuration, troubleshooting |
 | [DESIGN.md](DESIGN.md) | **The binding implementation contract** for the current macOS app — exact APIs, the verified Claude CLI wire protocol, behavior specs |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | Where the project is going — architecture, workstreams, milestones, open decisions |
+
+If your change alters user-facing behavior, update the matching guide in
+`docs/` in the same PR — the README stays short by design.
 
 The most important rule in this codebase: **DESIGN.md is a contract.** The
 cross-module APIs and wire-protocol handling are specified exactly, and much of

@@ -10,6 +10,10 @@ no third-party dependencies.
 - **DEVELOPMENT.md** — the cross-platform/multi-device/multi-harness roadmap:
   architecture direction, workstreams, milestones, open decisions (ADR-gated).
 - **CONTRIBUTING.md** — contributor-facing build/test/PR rules.
+- **README.md** is a short front page; user documentation lives in `docs/`
+  (getting-started, controls, voice, remote-control, configuration,
+  troubleshooting). Feature changes must update the matching `docs/` guide,
+  not re-grow the README. ADRs live in `docs/adr/`.
 
 ## The binding contract
 
