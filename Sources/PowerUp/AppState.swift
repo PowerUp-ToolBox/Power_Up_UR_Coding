@@ -28,6 +28,8 @@ final class AppState: ObservableObject {
     /// Delivers input to somebody else's Claude session (cmux surface, or any app
     /// via keystroke injection) when `config.controlMode` is "remote".
     let remote: RemoteControlService
+    /// Writes 1-2 sentence spoken conclusions of long replies (Settings → Voice).
+    private let summary = SummaryService()
     /// Local HTTP endpoint the Claude Code hooks post replies back to.
     let listener: RemoteListener
 
@@ -137,6 +139,11 @@ final class AppState: ObservableObject {
     /// too-early idle that self-corrects on the next hook, versus an amber
     /// light no event will ever clear.
     private static let remoteTurnExpiry: TimeInterval = 15 * 60
+
+    /// Bumped whenever the thing worth speaking changes (new turn, interrupt,
+    /// PTT start) so a summary that arrives late speaks into the right moment
+    /// or not at all.
+    private var speechTurnGeneration = 0
 
     private var willTerminateObserver: NSObjectProtocol?
 
@@ -352,6 +359,7 @@ final class AppState: ObservableObject {
         case .interrupt:
             interruptClaude()
         case .stopSpeaking:
+            cancelPendingSummary()
             tts.stop()
             updateStatus()
         case .replayLastReply:
@@ -577,7 +585,9 @@ final class AppState: ObservableObject {
         pttDraftTargetsRemote = (mode == .draft) && isRemoteMode
         if mode == .draft, !pttDraftTargetsRemote { beginDraftCapture() }
 
-        // Never talk over ourselves: the mic would just hear the synthesizer.
+        // Never talk over ourselves: the mic would just hear the synthesizer —
+        // and a summary still cooking must not start speaking mid-recording.
+        cancelPendingSummary()
         tts.stop()
         isPTTActive = true
         updateStatus()
@@ -778,6 +788,7 @@ final class AppState: ObservableObject {
     }
 
     func newSession() {
+        cancelPendingSummary()
         tts.stop()
         liveAssistantText = ""
 
@@ -811,6 +822,7 @@ final class AppState: ObservableObject {
         guard !trimmed.isEmpty else { return }
 
         appendEntry(.user, trimmed)
+        cancelPendingSummary()
         liveAssistantText = ""
 
         if isRemoteMode {
@@ -897,6 +909,65 @@ final class AppState: ObservableObject {
             startSession(resumeSessionID: configStore.config.lastSessionID)
         }
         updateStatus()
+    }
+
+    /// Minimum reply length before a summary is worth a model call — anything
+    /// shorter is faster to just speak in full.
+    private static let summaryMinimumReplyLength = 350
+
+    /// Speaks a completed reply. Normally that's the reply itself
+    /// (markdown-stripped, truncated per settings). With Spoken Summaries on
+    /// and a long reply, a lightweight model writes a 1-2 sentence conclusion
+    /// and THAT is spoken instead — the full reply stays in the transcript,
+    /// `lastAssistantReply`, and Replay. Every summary failure falls back to
+    /// the full reply; a summary that arrives after the moment has passed
+    /// (new turn, interrupt, an active recording) is dropped.
+    private func speakReply(_ reply: String) {
+        guard configStore.config.ttsEnabled, !reply.isEmpty else { return }
+
+        let config = configStore.config
+        guard config.speakSummaries, reply.count >= AppState.summaryMinimumReplyLength else {
+            speakFullReply(reply)
+            return
+        }
+
+        speechTurnGeneration += 1
+        let generation = speechTurnGeneration
+        summary.summarize(reply,
+                          model: config.summaryModel,
+                          claudePathOverride: config.claudePath) { [weak self] text in
+            guard let self, generation == self.speechTurnGeneration, !self.isPTTActive else { return }
+            guard let text else {
+                self.speakFullReply(reply)
+                return
+            }
+            self.appendEntry(.system, "Summary: \(text)")
+            let spoken = TTSService.spokenReply(fromMarkdown: text, maxChars: 0)
+            guard !spoken.text.isEmpty else {
+                self.speakFullReply(reply)
+                return
+            }
+            self.tts.speak(spoken.text,
+                           voiceID: self.configStore.config.ttsVoiceID,
+                           rate: self.configStore.config.ttsRate,
+                           language: spoken.language)
+            self.updateStatus()
+        }
+    }
+
+    private func speakFullReply(_ reply: String) {
+        let spoken = TTSService.spokenReply(fromMarkdown: reply, maxChars: configStore.config.maxSpokenChars)
+        guard !spoken.text.isEmpty else { return }
+        tts.speak(spoken.text,
+                  voiceID: configStore.config.ttsVoiceID,
+                  rate: configStore.config.ttsRate,
+                  language: spoken.language)
+    }
+
+    /// A pending summary belongs to a moment that's over — drop it.
+    private func cancelPendingSummary() {
+        speechTurnGeneration += 1
+        summary.cancel()
     }
 
     func speakLastReply() {
@@ -1088,18 +1159,7 @@ final class AppState: ObservableObject {
             // Unprefixed, so Replay Last Reply speaks the reply and not the label.
             lastAssistantReply = reply
             haptic(intensity: 0.8, duration: 0.1)
-            if configStore.config.ttsEnabled {
-                let spoken = TTSService.spokenReply(
-                    fromMarkdown: reply,
-                    maxChars: configStore.config.maxSpokenChars
-                )
-                if !spoken.text.isEmpty {
-                    tts.speak(spoken.text,
-                              voiceID: configStore.config.ttsVoiceID,
-                              rate: configStore.config.ttsRate,
-                              language: spoken.language)
-                }
-            }
+            speakReply(reply)
 
         case .notification:
             // Sign of life from a turn that's waiting on the user — keep its
@@ -1247,22 +1307,7 @@ final class AppState: ObservableObject {
                     lastAssistantReply = result
                 }
                 haptic(intensity: 0.8, duration: 0.1)
-                if configStore.config.ttsEnabled, !result.isEmpty {
-                    // spokenReply hands back the language its phrases were
-                    // localized for; passing it to speak() pins the voice to
-                    // the same decision, so an injected "code omitted" can
-                    // never flip a Chinese reply onto an English voice.
-                    let spoken = TTSService.spokenReply(
-                        fromMarkdown: result,
-                        maxChars: configStore.config.maxSpokenChars
-                    )
-                    if !spoken.text.isEmpty {
-                        tts.speak(spoken.text,
-                                  voiceID: configStore.config.ttsVoiceID,
-                                  rate: configStore.config.ttsRate,
-                                  language: spoken.language)
-                    }
-                }
+                speakReply(result)
             }
             if pendingEffortRestart {
                 // The effort button was pressed mid-turn; the turn is over now.

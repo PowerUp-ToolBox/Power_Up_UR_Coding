@@ -46,6 +46,28 @@ which lists every language macOS offers — expand the one you want and grab an
 **Enhanced** or **Premium** voice. It'll be picked up the next time Claude
 replies in that language, with no restart needed.
 
+## Spoken summaries — hear the conclusion, not the essay
+
+Long replies can take minutes to read aloud. Turn on **Settings → Voice →
+"Summarize long replies (uses a fast model)"** and PowerUp will instead have a
+lightweight model (Haiku, through your existing `claude` login — no extra
+setup) write a one-to-two-sentence conclusion of any long reply and speak
+*that*: what was done, and anything you need to do next.
+
+The details, honestly stated:
+
+- **Off by default** — each summary is a real model call (a fraction of a
+  cent, a few seconds of latency before speech starts).
+- Short replies are spoken directly; only replies past a few hundred
+  characters get summarized.
+- **Nothing is lost**: the full reply is still in the transcript, the summary
+  appears there too (as "Summary: …"), and **Replay Last Reply always reads
+  the full reply**.
+- If the summary can't be produced (offline, timeout, whatever), PowerUp
+  falls back to speaking the full reply — the toggle can never silence you.
+- Replies in other languages get summaries in their language, read by the
+  matching voice.
+
 ## Getting a better voice
 
 macOS ships a serviceable default voice, but it can sound noticeably

@@ -126,6 +126,8 @@ struct AppConfig: Codable, Equatable {
     var ttsRate: Float                    // AVSpeechUtterance rate; default AVSpeechUtteranceDefaultSpeechRate
     var ttsVoiceID: String?               // AVSpeechSynthesisVoice identifier; nil = best available en voice
     var maxSpokenChars: Int               // cap spoken reply length; 0 = no limit; default 1500
+    var speakSummaries: Bool              // long replies: speak a model-written 1-2 sentence conclusion; default false
+    var summaryModel: String              // alias for the summary model; default "haiku"
     var localeID: String                  // STT locale; default "en-US"
     var onDeviceRecognition: Bool         // default false
     var hapticsEnabled: Bool              // default true
@@ -208,6 +210,8 @@ struct AppConfig: Codable, Equatable {
             ttsRate: AVSpeechUtteranceDefaultSpeechRate,
             ttsVoiceID: nil,
             maxSpokenChars: 1500,
+            speakSummaries: false,
+            summaryModel: "haiku",
             localeID: "en-US",
             onDeviceRecognition: false,
             hapticsEnabled: true,
@@ -257,6 +261,7 @@ struct AppConfig: Codable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case projectDir, model, permissionMode, claudePath, lastSessionID
         case ttsEnabled, ttsRate, ttsVoiceID, maxSpokenChars
+        case speakSummaries, summaryModel
         case localeID, onDeviceRecognition, hapticsEnabled, lightEnabled
         case effort, modelCycle
         case controlMode, remoteTargetKind, remoteCmuxWorkspace, remoteCmuxSurface
@@ -305,6 +310,12 @@ extension AppConfig {
             ttsRate: value(.ttsRate, fallback.ttsRate),
             ttsVoiceID: optionalString(.ttsVoiceID),
             maxSpokenChars: value(.maxSpokenChars, fallback.maxSpokenChars),
+            speakSummaries: value(.speakSummaries, fallback.speakSummaries),
+            summaryModel: {
+                let raw = value(.summaryModel, fallback.summaryModel)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                return raw.isEmpty ? fallback.summaryModel : raw
+            }(),
             localeID: value(.localeID, fallback.localeID),
             onDeviceRecognition: value(.onDeviceRecognition, fallback.onDeviceRecognition),
             hapticsEnabled: value(.hapticsEnabled, fallback.hapticsEnabled),

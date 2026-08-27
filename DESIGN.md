@@ -1383,3 +1383,68 @@ needs your attention."
 The remote-draft transcript note now names the send options ("send it with
 L1, ✕, or Enter there"), and docs/controls.md + docs/remote-control.md say
 the same.
+
+---
+
+# v1.12 addendum — spoken summaries (lightweight-model conclusions)
+
+Supersedes anything above where it conflicts. User-requested: long replies
+take minutes to read aloud; with the toggle on, a lightweight model writes a
+1–2 sentence conclusion and THAT is spoken instead. Off by default.
+
+## Models.swift — AppConfig
+
+```swift
+var speakSummaries: Bool      // default false — summaries cost tokens, opt-in
+var summaryModel: String      // default "haiku"; blank on disk decodes to default
+```
+Both tolerant-decoded like every post-v1.0 field. No UI for `summaryModel`
+(config.json-editable).
+
+## New file: SummaryService.swift
+
+```swift
+@MainActor final class SummaryService: ObservableObject {
+    static let timeout: TimeInterval = 30
+    nonisolated static func arguments(model: String) -> [String]
+        // ["-p", "--model", M, "--output-format", "text", "--permission-mode", "default"]
+        // one-shot, tool-less, prompt via stdin, cwd = temp dir — never touches a project
+    nonisolated static func prompt(for reply: String) -> String
+        // spoken prose only, no markdown, same language as the reply
+    func summarize(_ reply: String, model: String, claudePathOverride: String?,
+                   completion: @escaping (String?) -> Void)
+        // completion once, main actor; nil = fall back to the full reply.
+        // A newer summarize() silently supersedes (old completion never fires).
+        // Output is rejected (nil) when empty or not meaningfully shorter than
+        // the reply (>= max(200, reply.count/2)).
+    func cancel()
+}
+```
+Binary resolution reuses `ClaudeService.resolveClaudeBinary`. Bounded wait
+(30 s) with concurrent stdout drain; nonzero exit / spawn failure / timeout →
+nil. Tests cover the pure parts only — never spawn real `claude` in tests.
+
+## AppState behavior
+
+- Both reply paths (built-in `turnCompleted`, remote `stop` hook) converge on
+  `speakReply(_:)`: TTS off or empty → nothing; summaries off OR reply
+  shorter than `summaryMinimumReplyLength` (350) → speak the full reply
+  exactly as before; otherwise request a summary and speak it on arrival —
+  any nil falls back to the full reply, so the toggle can never silence
+  read-back.
+- The summary is also appended as a `.system` "Summary: …" transcript entry
+  (persisted + broadcast). `lastAssistantReply` remains the FULL reply —
+  Replay Last Reply always reads the full text.
+- Staleness: `speechTurnGeneration` guards the async completion; it's bumped
+  (and the in-flight request cancelled) by `sendUserText`, `newSession`,
+  PTT start, and the `.stopSpeaking` intent, and the completion additionally
+  refuses to speak while `isPTTActive`.
+- The summary is spoken through `TTSService.spokenReply` (markdown-stripped,
+  no truncation) with its language routing, so non-English summaries get the
+  matching voice.
+
+## SettingsView (Voice tab)
+
+Toggle "Summarize long replies (uses a fast model)" in the Text to Speech
+section, with a caption covering cost, the transcript keeping the full text,
+Replay behavior, and the fallback.

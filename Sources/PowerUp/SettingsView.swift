@@ -373,6 +373,12 @@ private struct VoiceSettingsTab: View {
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
 
+                        Toggle("Summarize long replies (uses a fast model)", isOn: $configStore.config.speakSummaries)
+                        Text("When a reply is long, a lightweight model writes a one-to-two-sentence conclusion and PowerUp speaks that instead of the whole reply — the full text stays in the transcript, and Replay Last Reply still reads it in full. Uses your claude login; each summary costs a fraction of a cent. If the summary can't be made, the full reply is spoken as usual.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Speaking Rate")
                                 .font(.caption)
