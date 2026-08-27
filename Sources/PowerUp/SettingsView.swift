@@ -124,6 +124,36 @@ private struct GeneralSettingsTab: View {
                     }
                 }
 
+                SettingsSection(title: "Harness") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Picker("Harness", selection: $configStore.config.harnessKind) {
+                            Text("Claude Code (built-in)").tag("claude")
+                            Text("ACP agent").tag("acp")
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+
+                        if configStore.config.harnessKind == "acp" {
+                            Picker("Agent", selection: $configStore.config.acpAgent) {
+                                ForEach(AppConfig.acpAgentOptions, id: \.self) { agent in
+                                    Text(AppConfig.acpAgentDisplayName(agent)).tag(agent)
+                                }
+                            }
+                            .pickerStyle(.menu)
+
+                            if configStore.config.acpAgent == "custom" {
+                                TextField("/path/to/agent acp", text: $configStore.config.acpCustomCommand)
+                                    .textFieldStyle(.roundedBorder)
+                            }
+
+                            Text("ACP (Agent Client Protocol) drives other coding agents with the same controller and voice. Notes: Model and Model Cycle must use the agent's own model ids (e.g. openai/gpt-5.3-chat-latest, or leave Default), the effort setting doesn't apply, and cost isn't reported. Switching takes effect with your next message.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+
                 SettingsSection(title: "Model") {
                     Picker("Model", selection: $configStore.config.model) {
                         Text("Default").tag("default")

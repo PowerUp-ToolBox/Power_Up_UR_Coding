@@ -227,7 +227,7 @@ private struct BarStatusPill: View {
 @MainActor
 private struct ModelChip: View {
     @EnvironmentObject private var configStore: ConfigStore
-    @EnvironmentObject private var claude: ClaudeService
+    @EnvironmentObject private var appState: AppState
 
     var body: some View {
         SessionChip(symbol: "cpu", label: label, help: "Model: \(label)")
@@ -236,7 +236,8 @@ private struct ModelChip: View {
     private var label: String {
         let configured = configStore.config.model
         if configured != "default", !configured.isEmpty { return configured }
-        if let reported = claude.modelName, !reported.isEmpty { return reported }
+        // Whatever the ACTIVE harness reports (Claude adapter or ACP agent).
+        if let reported = appState.harnessReportedModel, !reported.isEmpty { return reported }
         return "default"
     }
 }

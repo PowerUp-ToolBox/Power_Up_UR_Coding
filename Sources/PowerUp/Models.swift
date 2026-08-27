@@ -135,6 +135,12 @@ struct AppConfig: Codable, Equatable {
     var effort: String                    // "default" (omit the flag) | "low" | "medium" | "high" | "xhigh"
     var modelCycle: [String]              // aliases the Cycle Model button steps through
 
+    // MARK: Harness selection (M3)
+
+    var harnessKind: String               // "claude" (built-in stream-json, default) | "acp"
+    var acpAgent: String                  // "opencode" (default) | "claudeBridge" | "custom"
+    var acpCustomCommand: String          // space-separated command line for acpAgent == "custom"
+
     // MARK: Remote control (v1.4)
 
     var controlMode: String               // "builtin" (PowerUp runs claude) | "remote" (drive an existing session)
@@ -167,6 +173,21 @@ struct AppConfig: Codable, Equatable {
 
     /// Where controller and voice input is delivered.
     static let controlModeOptions: [String] = ["builtin", "remote"]
+
+    /// Which adapter runs the built-in session.
+    static let harnessKindOptions: [String] = ["claude", "acp"]
+
+    /// Preset agents the ACP adapter can spawn (plus a custom command).
+    static let acpAgentOptions: [String] = ["opencode", "claudeBridge", "custom"]
+
+    static func acpAgentDisplayName(_ agent: String) -> String {
+        switch agent {
+        case "opencode": return "opencode"
+        case "claudeBridge": return "Claude Code (ACP bridge)"
+        case "custom": return "Custom command"
+        default: return agent
+        }
+    }
 
     /// How remote mode reaches the session it drives. cmux (socket, no
     /// permission) comes first; the two keystroke-injection kinds follow.
@@ -218,6 +239,9 @@ struct AppConfig: Codable, Equatable {
             lightEnabled: true,
             effort: "default",
             modelCycle: defaultModelCycle,
+            harnessKind: "claude",
+            acpAgent: "opencode",
+            acpCustomCommand: "",
             controlMode: "builtin",
             remoteTargetKind: "cmux",
             remoteCmuxWorkspace: nil,
@@ -264,6 +288,7 @@ struct AppConfig: Codable, Equatable {
         case speakSummaries, summaryModel
         case localeID, onDeviceRecognition, hapticsEnabled, lightEnabled
         case effort, modelCycle
+        case harnessKind, acpAgent, acpCustomCommand
         case controlMode, remoteTargetKind, remoteCmuxWorkspace, remoteCmuxSurface
         case remoteAppBundleID, remoteCmuxPassword, remoteAutoSubmit, listenerPort, listenerToken
         case mapping
@@ -322,6 +347,9 @@ extension AppConfig {
             lightEnabled: value(.lightEnabled, fallback.lightEnabled),
             effort: value(.effort, fallback.effort),
             modelCycle: value(.modelCycle, fallback.modelCycle),
+            harnessKind: option(.harnessKind, AppConfig.harnessKindOptions, fallback.harnessKind),
+            acpAgent: option(.acpAgent, AppConfig.acpAgentOptions, fallback.acpAgent),
+            acpCustomCommand: value(.acpCustomCommand, fallback.acpCustomCommand),
             controlMode: option(.controlMode, AppConfig.controlModeOptions, fallback.controlMode),
             remoteTargetKind: option(.remoteTargetKind, AppConfig.remoteTargetKinds, fallback.remoteTargetKind),
             remoteCmuxWorkspace: optionalString(.remoteCmuxWorkspace),

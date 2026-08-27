@@ -17,6 +17,9 @@ struct HarnessConfiguration: Equatable {
     var effort: String             // "default" = don't ask for one
     var resumeSessionID: String?
     var binaryPathOverride: String?
+    /// For ACP adapters: the agent command line to spawn (executable + args).
+    /// nil for adapters that resolve their own binary (the Claude adapter).
+    var agentCommand: [String]? = nil
 }
 
 // MARK: - HarnessEvent
@@ -79,6 +82,10 @@ protocol HarnessAdapter: AnyObject {
     var modelName: String? { get }
     var totalCostUSD: Double { get }
 
+    // Capability flags — the app degrades honestly instead of faking support.
+    var supportsEffort: Bool { get }       // effort switch via restart+resume
+    var reportsCostUSD: Bool { get }       // dollar cost in turnCompleted
+
     /// Always invoked on the main actor.
     var onHarnessEvent: ((HarnessEvent) -> Void)? { get set }
 
@@ -87,5 +94,14 @@ protocol HarnessAdapter: AnyObject {
     func interrupt()
     func setModel(_ model: String)
     func setPermissionMode(_ mode: String)
+    /// Answers a pending `permissionRequest` event by its id. Adapters whose
+    /// harness surfaces no permission RPC ignore it.
+    func respondToPermission(id: String, allow: Bool)
     func stop()
+}
+
+extension HarnessAdapter {
+    var supportsEffort: Bool { false }
+    var reportsCostUSD: Bool { false }
+    func respondToPermission(id: String, allow: Bool) {}
 }

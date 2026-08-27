@@ -18,12 +18,39 @@ final class AppState: ObservableObject {
     let tts: TTSService
     let claude: ClaudeService
 
-    /// The session driver, seen strictly through the harness contract. Today
-    /// it's the Claude adapter above (the same object); all session logic in
-    /// this class goes through `harness` + `HarnessEvent`, so a future adapter
-    /// (ACP, Codex) can slot in without touching the dispatch code. `claude`
-    /// stays exposed for the views until the UI generalizes (M3).
-    var harness: any HarnessAdapter { claude }
+    /// The session driver, seen strictly through the harness contract. All
+    /// session logic in this class goes through `harness` + `HarnessEvent`;
+    /// which adapter that is follows Settings → General → Harness. `claude`
+    /// stays exposed for the views until the UI fully generalizes.
+    var harness: any HarnessAdapter {
+        AppState.normalizedHarnessKind(configStore.config.harnessKind) == "acp"
+            ? acpAdapterInstance()
+            : claude
+    }
+
+    /// Lazily created ACP adapter (opencode, the Claude bridge, or a custom
+    /// agent command), wired into the same event handler as the Claude adapter.
+    private var acpAdapter: ACPAdapter?
+
+    /// What the active harness reports as its model, for the model chip.
+    var harnessReportedModel: String? { harness.modelName }
+
+    private func acpAdapterInstance() -> ACPAdapter {
+        if let acpAdapter { return acpAdapter }
+        let adapter = ACPAdapter()
+        adapter.onHarnessEvent = { [weak self] event in
+            self?.handleHarnessEvent(event)
+        }
+        adapter.objectWillChange
+            .sink { [weak self] _ in self?.scheduleDerivedUpdate() }
+            .store(in: &cancellables)
+        acpAdapter = adapter
+        return adapter
+    }
+
+    private static func normalizedHarnessKind(_ raw: String) -> String {
+        raw == "acp" ? "acp" : "claude"
+    }
 
     /// Delivers input to somebody else's Claude session (cmux surface, or any app
     /// via keystroke injection) when `config.controlMode` is "remote".
@@ -145,6 +172,15 @@ final class AppState: ObservableObject {
     /// or not at all.
     private var speechTurnGeneration = 0
 
+    /// Harness selection last acted on (kind|agent|custom command), so a
+    /// Settings change stops the old session exactly once.
+    private var lastHarnessKey = ""
+
+    /// The permission request currently awaiting ✕ (allow) / ○ (deny).
+    /// Built-in mode only — remote mode's Approve/Reject already mean
+    /// Enter/Escape in the target session.
+    private var pendingPermissionID: String?
+
     private var willTerminateObserver: NSObjectProtocol?
 
     // MARK: - Init
@@ -162,6 +198,7 @@ final class AppState: ObservableObject {
         // ConfigStore mints a token on first launch; adopt whatever mode the
         // config already holds without running the mode-switch side effects.
         lastControlMode = AppState.normalizedControlMode(store.config.controlMode)
+        lastHarnessKey = AppState.harnessKey(for: store.config)
 
         transcriptStore.setProject(store.config.projectDir)
         restorePersistedTranscript()
@@ -386,10 +423,19 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// "Yes" to Claude. In remote mode the target session is showing its own
+    /// "Yes" to Claude. A pending harness permission request takes priority:
+    /// ✕ answers it. In remote mode the target session is showing its own
     /// prompt, where Enter is the accept key — typing "Yes" there would answer
     /// a permission dialog with a word instead of a choice.
     private func approve() {
+        if !isRemoteMode, let id = pendingPermissionID {
+            pendingPermissionID = nil
+            harness.respondToPermission(id: id, allow: true)
+            appendEntry(.system, "Approved.")
+            haptic(intensity: 0.5, duration: 0.05)
+            updateStatus()
+            return
+        }
         guard isRemoteMode else {
             sendUserText("Yes")
             return
@@ -398,9 +444,17 @@ final class AppState: ObservableObject {
         sendRemoteKey(.enter)
     }
 
-    /// "No" to Claude — Escape in remote mode, which both dismisses a permission
-    /// prompt and stops a turn in flight.
+    /// "No" to Claude — answers a pending permission request first; Escape in
+    /// remote mode, which both dismisses a prompt and stops a turn in flight.
     private func reject() {
+        if !isRemoteMode, let id = pendingPermissionID {
+            pendingPermissionID = nil
+            harness.respondToPermission(id: id, allow: false)
+            appendEntry(.system, "Denied.")
+            haptic(intensity: 0.5, duration: 0.05)
+            updateStatus()
+            return
+        }
         guard isRemoteMode else {
             sendUserText("No")
             return
@@ -466,6 +520,11 @@ final class AppState: ObservableObject {
     /// There is no live effort switch, so this restarts the CLI with `--resume`
     /// (the conversation is preserved) — deferred if a turn is in flight.
     private func cycleEffort() {
+        if !isRemoteMode, !harness.supportsEffort {
+            appendEntry(.system, "This harness doesn't have an effort setting.")
+            errorHaptic()
+            return
+        }
         let next = AppState.nextValue(after: configStore.config.effort, in: AppConfig.effortCycle)
         configStore.config.effort = next
         haptic(intensity: 0.5, duration: 0.05)
@@ -1008,6 +1067,33 @@ final class AppState: ObservableObject {
         syncControlMode()
     }
 
+    private static func harnessKey(for config: AppConfig) -> String {
+        [normalizedHarnessKind(config.harnessKind), config.acpAgent, config.acpCustomCommand]
+            .joined(separator: "|")
+    }
+
+    /// Stops the outgoing session when the harness selection changes (kind,
+    /// agent, or custom command); the new harness starts lazily on next send.
+    private func syncHarnessSelection() {
+        let key = AppState.harnessKey(for: configStore.config)
+        guard key != lastHarnessKey else { return }
+        lastHarnessKey = key
+
+        pendingPermissionID = nil
+        cancelPendingSummary()
+        acpAdapter?.stop()
+        if claude.state != .stopped {
+            expectedTerminations += 1
+            claude.stop()
+        }
+
+        let kind = AppState.normalizedHarnessKind(configStore.config.harnessKind)
+        appendEntry(.system, kind == "acp"
+            ? "Harness → \(AppConfig.acpAgentDisplayName(configStore.config.acpAgent)) (ACP). The session starts with your next message."
+            : "Harness → built-in Claude Code. The session starts with your next message.")
+        updateStatus()
+    }
+
     /// Runs the switch-over work once per actual mode change, whoever caused it.
     private func syncControlMode() {
         let mode = AppState.normalizedControlMode(configStore.config.controlMode)
@@ -1245,13 +1331,25 @@ final class AppState: ObservableObject {
         lastConfirmedModel = config.model
         lastConfirmedPermissionMode = config.permissionMode
 
+        let isACP = AppState.normalizedHarnessKind(config.harnessKind) == "acp"
+        var agentCommand: [String]?
+        if isACP {
+            guard let command = ACPAdapter.agentCommand(for: config) else {
+                appendEntry(.error, "Couldn't find the \(AppConfig.acpAgentDisplayName(config.acpAgent)) command — install it, or pick another harness in Settings → General.")
+                updateStatus()
+                return
+            }
+            agentCommand = command
+        }
+
         harness.start(HarnessConfiguration(
             projectDir: URL(fileURLWithPath: dir, isDirectory: true),
             model: config.model,
             permissionMode: config.permissionMode,
             effort: config.effort,
-            resumeSessionID: resumeSessionID,
-            binaryPathOverride: config.claudePath
+            resumeSessionID: isACP ? nil : resumeSessionID,   // ACP sessions start fresh
+            binaryPathOverride: config.claudePath,
+            agentCommand: agentCommand
         ))
         updateStatus()
     }
@@ -1273,7 +1371,11 @@ final class AppState: ObservableObject {
     private func handleHarnessEvent(_ event: HarnessEvent) {
         switch event {
         case .sessionReady(let sessionID, let model):
-            configStore.config.lastSessionID = sessionID
+            // Only the built-in Claude adapter's ids are resumable with --resume;
+            // an ACP session id must never overwrite the stored one.
+            if AppState.normalizedHarnessKind(configStore.config.harnessKind) == "claude" {
+                configStore.config.lastSessionID = sessionID
+            }
             if !didLogSessionStart {
                 didLogSessionStart = true
                 // Resuming worked (or we started clean): later exits aren't the id's fault.
@@ -1296,6 +1398,7 @@ final class AppState: ObservableObject {
             appendEntry(.tool, trimmedDetail.isEmpty ? name : "\(name) — \(trimmedDetail)")
 
         case .turnCompleted(let resultText, _, let isError, let subtype):
+            pendingPermissionID = nil
             liveAssistantText = ""
             let result = (resultText ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             if isError {
@@ -1328,12 +1431,12 @@ final class AppState: ObservableObject {
         case .controlResult(let action, let ok, let detail, let value):
             handleControlResult(action: action, ok: ok, detail: detail, value: value)
 
-        case .permissionRequest(_, let name, let detail):
-            // Reserved event — no adapter emits it yet (DEVELOPMENT.md WS-B
-            // wires it to Approve/Reject). Surface it rather than lose it.
+        case .permissionRequest(let id, let name, let detail):
+            pendingPermissionID = id
             let what = detail.isEmpty ? name : "\(name) — \(detail)"
-            appendEntry(.system, "Claude is asking to: \(what). Press Approve or Reject.")
-            announce("Claude needs your approval")
+            appendEntry(.system, "The agent wants to: \(what). Press ✕ to allow or ○ to deny.")
+            haptic(intensity: 0.8, duration: 0.1)
+            announce("Approval needed")
 
         case .notification(let message):
             let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1344,6 +1447,7 @@ final class AppState: ObservableObject {
             appendEntry(.error, message)
 
         case .ended(let exitCode):
+            pendingPermissionID = nil
             handleTermination(exitCode: exitCode)
         }
 
@@ -1464,6 +1568,7 @@ final class AppState: ObservableObject {
             // Both are no-ops unless the config actually changed, so Settings
             // edits are picked up without the views having to tell us.
             self.syncControlMode()
+            self.syncHarnessSelection()
             self.syncListener()
             RemoteControlService.updateCmuxPassword(self.configStore.config.remoteCmuxPassword)
             self.updateStatus()

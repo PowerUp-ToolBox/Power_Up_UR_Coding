@@ -769,6 +769,9 @@ final class ClaudeService: ObservableObject {
 // MARK: - HarnessAdapter conformance
 
 extension ClaudeService: HarnessAdapter {
+    var supportsEffort: Bool { true }
+    var reportsCostUSD: Bool { true }
+
     func start(_ configuration: HarnessConfiguration) {
         start(projectDir: configuration.projectDir,
               model: configuration.model,
