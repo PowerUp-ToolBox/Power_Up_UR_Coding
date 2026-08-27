@@ -167,6 +167,25 @@ final class AppState: ObservableObject {
     /// light no event will ever clear.
     private static let remoteTurnExpiry: TimeInterval = 15 * 60
 
+    /// Remote sessions seen via hooks recently (id → cwd + last activity),
+    /// so Cycle Session Focus has something to step through. In-memory only.
+    private var knownRemoteSessions: [String: (cwd: String?, lastSeen: Date)] = [:]
+    private static let remoteSessionMemory: TimeInterval = 30 * 60
+
+    /// Read-back focus in remote mode: nil = everything (default), else only
+    /// this session id is spoken/haptic'd and drives the working light; other
+    /// sessions still log (prefixed) into the transcript.
+    @Published private(set) var remoteFocusSessionID: String?
+
+    /// Display name for the focused session (cwd basename), for the chip.
+    var remoteFocusLabel: String? {
+        guard let focus = remoteFocusSessionID else { return nil }
+        guard let cwd = knownRemoteSessions[focus]?.cwd, !cwd.isEmpty else {
+            return String(focus.prefix(8))
+        }
+        return (cwd as NSString).lastPathComponent
+    }
+
     /// Bumped whenever the thing worth speaking changes (new turn, interrupt,
     /// PTT start) so a summary that arrives late speaks into the right moment
     /// or not at all.
@@ -176,10 +195,19 @@ final class AppState: ObservableObject {
     /// Settings change stops the old session exactly once.
     private var lastHarnessKey = ""
 
-    /// The permission request currently awaiting ✕ (allow) / ○ (deny).
-    /// Built-in mode only — remote mode's Approve/Reject already mean
-    /// Enter/Escape in the target session.
-    private var pendingPermissionID: String?
+    /// The permission request currently awaiting ✕ (allow) / ○ (deny),
+    /// published so the main window can banner it. Built-in mode only —
+    /// remote mode's Approve/Reject already mean Enter/Escape in the target.
+    struct PendingPermission: Equatable {
+        let id: String
+        let name: String
+        let detail: String
+        /// The classifier flagged this as destructive → two ✕ presses needed.
+        let isDestructive: Bool
+        /// First ✕ received; the next one within the window confirms.
+        var armed: Bool = false
+    }
+    @Published private(set) var pendingPermission: PendingPermission?
 
     private var willTerminateObserver: NSObjectProtocol?
 
@@ -301,7 +329,8 @@ final class AppState: ObservableObject {
                                 permissionMode: configStore.config.permissionMode,
                                 controlMode: AppState.normalizedControlMode(configStore.config.controlMode),
                                 sessionID: harness.sessionID,
-                                costUSD: harness.totalCostUSD)
+                                costUSD: harness.totalCostUSD,
+                                tokens: harness.totalTokens)
     }
 
     /// Session facts protocol clients last heard, so `scheduleDerivedUpdate`
@@ -315,7 +344,8 @@ final class AppState: ObservableObject {
                    configStore.config.permissionMode,
                    AppState.normalizedControlMode(configStore.config.controlMode),
                    harness.sessionID ?? "",
-                   String(harness.totalCostUSD)].joined(separator: "|")
+                   String(harness.totalCostUSD),
+                   String(harness.totalTokens)].joined(separator: "|")
         guard key != lastSessionBroadcastKey else { return }
         lastSessionBroadcastKey = key
         listener.broadcast(currentSessionMessage())
@@ -421,6 +451,8 @@ final class AppState: ObservableObject {
             cyclePermissionMode()
         case .cycleProject:
             cycleProject()
+        case .cycleFocus:
+            cycleFocus()
         case .toggleControlMode:
             toggleControlMode()
         }
@@ -431,9 +463,20 @@ final class AppState: ObservableObject {
     /// prompt, where Enter is the accept key — typing "Yes" there would answer
     /// a permission dialog with a word instead of a choice.
     private func approve() {
-        if !isRemoteMode, let id = pendingPermissionID {
-            pendingPermissionID = nil
-            harness.respondToPermission(id: id, allow: true)
+        if !isRemoteMode, let pending = pendingPermission {
+            // Destructive requests take TWO presses: the first arms, the
+            // second (still pending) confirms — a misheard word or stray
+            // press must never delete a branch (docs/protocol.md invariants).
+            if pending.isDestructive && !pending.armed {
+                pendingPermission?.armed = true
+                appendEntry(.system, "⚠️ Destructive action — press ✕ again to confirm, or ○ to deny.")
+                announce("Destructive. Press again to confirm")
+                errorHaptic()
+                updateStatus()
+                return
+            }
+            pendingPermission = nil
+            harness.respondToPermission(id: pending.id, allow: true)
             appendEntry(.system, "Approved.")
             haptic(intensity: 0.5, duration: 0.05)
             updateStatus()
@@ -450,9 +493,9 @@ final class AppState: ObservableObject {
     /// "No" to Claude — answers a pending permission request first; Escape in
     /// remote mode, which both dismisses a prompt and stops a turn in flight.
     private func reject() {
-        if !isRemoteMode, let id = pendingPermissionID {
-            pendingPermissionID = nil
-            harness.respondToPermission(id: id, allow: false)
+        if !isRemoteMode, let pending = pendingPermission {
+            pendingPermission = nil
+            harness.respondToPermission(id: pending.id, allow: false)
             appendEntry(.system, "Denied.")
             haptic(intensity: 0.5, duration: 0.05)
             updateStatus()
@@ -853,6 +896,8 @@ final class AppState: ObservableObject {
     func newSession() {
         cancelPendingSummary()
         tts.stop()
+        // The old session's permission request dies with it.
+        pendingPermission = nil
         liveAssistantText = ""
 
         if isRemoteMode {
@@ -1005,7 +1050,7 @@ final class AppState: ObservableObject {
         cancelPendingSummary()
         tts.stop()
         liveAssistantText = ""
-        pendingPermissionID = nil
+        pendingPermission = nil
         adoptProject(path, movingToFrontOfRecents: false)
         announce("Project: \((path as NSString).lastPathComponent)")
     }
@@ -1027,6 +1072,51 @@ final class AppState: ObservableObject {
         let next = recents[(index + 1) % recents.count]
         haptic(intensity: 0.5, duration: 0.05)
         switchProject(to: next)
+    }
+
+    /// Remote mode: steps read-back focus through All → each active session →
+    /// All. Sessions are ordered by folder name for a stable cycle.
+    private func cycleFocus() {
+        guard isRemoteMode else {
+            appendEntry(.system, "Session focus applies to Remote Control mode.")
+            errorHaptic()
+            return
+        }
+        let cutoff = Date().addingTimeInterval(-AppState.remoteSessionMemory)
+        knownRemoteSessions = knownRemoteSessions.filter { $0.value.lastSeen > cutoff }
+
+        let ordered = knownRemoteSessions
+            .sorted { lhs, rhs in
+                let l = ((lhs.value.cwd ?? lhs.key) as NSString).lastPathComponent
+                let r = ((rhs.value.cwd ?? rhs.key) as NSString).lastPathComponent
+                return l == r ? lhs.key < rhs.key : l < r
+            }
+            .map(\.key)
+
+        guard !ordered.isEmpty else {
+            appendEntry(.system, "No remote sessions seen yet — focus needs read-back activity first.")
+            errorHaptic()
+            return
+        }
+
+        haptic(intensity: 0.5, duration: 0.05)
+        let next: String?
+        if let current = remoteFocusSessionID, let index = ordered.firstIndex(of: current) {
+            next = index + 1 < ordered.count ? ordered[index + 1] : nil   // wrap to All
+        } else {
+            next = ordered.first
+        }
+        remoteFocusSessionID = next
+        refreshRemoteTurnActive()
+
+        if let label = remoteFocusLabel {
+            appendEntry(.system, "Focus → \(label) — only this session is spoken now.")
+            announce("Focus: \(label)")
+        } else {
+            appendEntry(.system, "Focus → all sessions.")
+            announce("Focus: everything")
+        }
+        updateStatus()
     }
 
     private func addToRecents(_ path: String, front: Bool) {
@@ -1169,7 +1259,7 @@ final class AppState: ObservableObject {
         guard key != lastHarnessKey else { return }
         lastHarnessKey = key
 
-        pendingPermissionID = nil
+        pendingPermission = nil
         cancelPendingSummary()
         acpAdapter?.stop()
         if claude.state != .stopped {
@@ -1191,6 +1281,11 @@ final class AppState: ObservableObject {
         lastControlMode = mode
 
         clearRemoteTurns()
+        remoteFocusSessionID = nil
+        // A pending harness permission request belongs to the mode being left —
+        // in remote mode the same buttons mean Enter/Escape, so a wedged banner
+        // would have the user injecting keys into their real session.
+        pendingPermission = nil
         liveAssistantText = ""
 
         if mode == "remote" {
@@ -1313,14 +1408,37 @@ final class AppState: ObservableObject {
 
         let turnKey = event.sessionID ?? "unknown-session"
 
+        // Every hook is a sighting: keep the session registry fresh so Cycle
+        // Session Focus knows what exists (SessionEnd removes instead).
+        if event.kind != .sessionEnd {
+            knownRemoteSessions[turnKey] = (cwd: event.cwd ?? knownRemoteSessions[turnKey]?.cwd,
+                                            lastSeen: Date())
+        }
+        // Focus gating: when a focus is set, only the focused session speaks,
+        // buzzes, and drives the working light; everything still logs.
+        let isFocused = remoteFocusSessionID == nil || remoteFocusSessionID == turnKey
+
         switch event.kind {
         case .userPromptSubmit:
+            beginRemoteTurn(key: turnKey)
+
+        case .postToolUse:
+            // Heartbeat: a tool call proves the turn is alive — refresh (or
+            // start) its entry so long working turns never expire mid-flight.
+            // Through beginRemoteTurn, so every heartbeat RE-ARMS the expiry
+            // sweep: a turn kept alive by heartbeats that then dies silently
+            // must still go idle 15 minutes after its last sign of life.
             beginRemoteTurn(key: turnKey)
 
         case .sessionEnd:
             // The only signal a session that dies mid-turn ever sends. Only a
             // session we believed was working is worth a note — sessions end
             // on this machine all the time.
+            knownRemoteSessions.removeValue(forKey: turnKey)
+            if remoteFocusSessionID == turnKey {
+                remoteFocusSessionID = nil
+                appendEntry(.system, "Focused session ended — back to hearing everything.")
+            }
             if remoteActiveTurns.removeValue(forKey: turnKey) != nil {
                 appendEntry(.system, remoteCwdPrefix(event.cwd) + "Claude session ended before replying.")
             }
@@ -1332,6 +1450,7 @@ final class AppState: ObservableObject {
             let reply = (event.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !reply.isEmpty else { break }
             appendEntry(.assistant, remoteCwdPrefix(event.cwd) + reply)
+            guard isFocused else { break }      // logged, not spoken
             // Unprefixed, so Replay Last Reply speaks the reply and not the label.
             lastAssistantReply = reply
             haptic(intensity: 0.8, duration: 0.1)
@@ -1345,7 +1464,9 @@ final class AppState: ObservableObject {
             }
             let message = (event.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             appendEntry(.system, message.isEmpty ? "Claude needs your attention." : message)
-            announce("Claude needs your attention")
+            if isFocused {
+                announce("Claude needs your attention")
+            }
         }
 
         updateStatus()
@@ -1370,7 +1491,13 @@ final class AppState: ObservableObject {
     private func refreshRemoteTurnActive() {
         let cutoff = Date().addingTimeInterval(-AppState.remoteTurnExpiry)
         remoteActiveTurns = remoteActiveTurns.filter { $0.value > cutoff }
-        let active = !remoteActiveTurns.isEmpty
+        // With a focus set, only the focused session's turn lights the bar.
+        let active: Bool
+        if let focus = remoteFocusSessionID {
+            active = remoteActiveTurns[focus] != nil
+        } else {
+            active = !remoteActiveTurns.isEmpty
+        }
         if remoteTurnActive != active {
             remoteTurnActive = active
         }
@@ -1491,7 +1618,7 @@ final class AppState: ObservableObject {
             appendEntry(.tool, trimmedDetail.isEmpty ? name : "\(name) — \(trimmedDetail)")
 
         case .turnCompleted(let resultText, _, let isError, let subtype):
-            pendingPermissionID = nil
+            pendingPermission = nil
             liveAssistantText = ""
             let result = (resultText ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             if isError {
@@ -1524,12 +1651,16 @@ final class AppState: ObservableObject {
         case .controlResult(let action, let ok, let detail, let value):
             handleControlResult(action: action, ok: ok, detail: detail, value: value)
 
-        case .permissionRequest(let id, let name, let detail):
-            pendingPermissionID = id
+        case .permissionRequest(let id, let name, let kind, let detail):
+            let destructive = DestructiveActionClassifier.isDestructive(kind: kind, title: name, detail: detail)
+            pendingPermission = PendingPermission(id: id, name: name, detail: detail,
+                                                 isDestructive: destructive)
             let what = detail.isEmpty ? name : "\(name) — \(detail)"
-            appendEntry(.system, "The agent wants to: \(what). Press ✕ to allow or ○ to deny.")
+            appendEntry(.system, destructive
+                ? "⚠️ The agent wants to: \(what). Destructive — ✕ twice to allow, ○ to deny."
+                : "The agent wants to: \(what). Press ✕ to allow or ○ to deny.")
             haptic(intensity: 0.8, duration: 0.1)
-            announce("Approval needed")
+            announce(destructive ? "Destructive approval needed" : "Approval needed")
 
         case .notification(let message):
             let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1540,7 +1671,7 @@ final class AppState: ObservableObject {
             appendEntry(.error, message)
 
         case .ended(let exitCode):
-            pendingPermissionID = nil
+            pendingPermission = nil
             handleTermination(exitCode: exitCode)
         }
 

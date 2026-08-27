@@ -94,6 +94,7 @@ enum Theme {
         case .cycleEffort: return "gauge"
         case .cyclePermissionMode: return "hand.raised.fill"
         case .cycleProject: return "folder.badge.gearshape"
+        case .cycleFocus: return "scope"
         case .toggleControlMode: return "antenna.radiowaves.left.and.right"
         case .pushToTalkDraft: return "mic.badge.plus"
         case .sendDraft: return "paperplane.fill"

@@ -84,6 +84,7 @@ enum ControllerAction: Codable, Hashable {
     case cycleEffort              // step config.effort through the fixed effort cycle (restart + resume)
     case cyclePermissionMode      // step config.permissionMode through the fixed cycle (live)
     case cycleProject             // step config.projectDir through recentProjectDirs (own session each)
+    case cycleFocus               // remote mode: step read-back focus through active sessions
     case pushToTalkDraft          // hold to dictate into the prompt box; nothing is sent
     case sendDraft                // send whatever the prompt box currently holds
     case toggleControlMode        // flip config.controlMode between "builtin" and "remote"
@@ -105,6 +106,7 @@ enum ControllerAction: Codable, Hashable {
         case .cycleEffort: return "Cycle Effort"
         case .cyclePermissionMode: return "Cycle Permission Mode"
         case .cycleProject: return "Cycle Project"
+        case .cycleFocus: return "Cycle Session Focus"
         case .pushToTalkDraft: return "Dictate to Prompt Box"
         case .sendDraft: return "Send Prompt Box"
         case .toggleControlMode: return "Toggle Built-in / Remote"
@@ -201,12 +203,13 @@ struct AppConfig: Codable, Equatable {
     static let harnessKindOptions: [String] = ["claude", "acp"]
 
     /// Preset agents the ACP adapter can spawn (plus a custom command).
-    static let acpAgentOptions: [String] = ["opencode", "claudeBridge", "custom"]
+    static let acpAgentOptions: [String] = ["opencode", "claudeBridge", "codexBridge", "custom"]
 
     static func acpAgentDisplayName(_ agent: String) -> String {
         switch agent {
         case "opencode": return "opencode"
         case "claudeBridge": return "Claude Code (ACP bridge)"
+        case "codexBridge": return "Codex (ACP bridge)"
         case "custom": return "Custom command"
         default: return agent
         }

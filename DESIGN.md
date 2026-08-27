@@ -1568,6 +1568,71 @@ addendum and the adapter together.
 
 ---
 
+# v2.2 addendum — M3 batch two: heartbeat, focus, destructive confirm, tokens, Codex
+
+Supersedes anything above where it conflicts. Five changes.
+
+## A. PostToolUse heartbeat (#61)
+
+`HookInstaller.hookEvents` gains `PostToolUse` (fires per tool call; older
+installs report `.outOfDate` → Settings prompts reinstall).
+`RemoteHookEvent.Kind` gains `.postToolUse` (`tool_name` as text). AppState:
+a PostToolUse refreshes — or CREATES — the session's `remoteActiveTurns`
+entry, so a long tool-using turn never expires mid-flight and a turn already
+running when PowerUp launches shows amber. The 15-minute expiry now only
+bites turns with no tool activity at all.
+
+## B. Remote session focus (#5)
+
+- `knownRemoteSessions: [id: (cwd, lastSeen)]` — every hook is a sighting
+  (SessionEnd removes; entries older than 30 min are pruned at cycle time).
+  In-memory only, never persisted.
+- `@Published remoteFocusSessionID: String?` — nil = everything (default).
+  With a focus set: only the focused session's Stop speaks/haptics/sets
+  `lastAssistantReply`, only its Notification announces, and only its turn
+  drives `remoteTurnActive`; everything still logs (cwd-prefixed).
+- New `ControllerAction`/`Intent`/wire-name `cycleFocus` ("Cycle Session
+  Focus"; not in the default mapping): All → each session (ordered by cwd
+  basename) → All, announcing "Focus: <folder>" / "Focus: everything".
+  Built-in mode → explanatory note + error haptic. Focus clears on
+  control-mode switch and when the focused session ends.
+- `FocusChip` (amber, `scope`) appears in the top bar while focused.
+
+## C. Destructive-action confirmation (#47)
+
+New file `DestructiveActionClassifier.swift` (pure, tested):
+`isDestructive(kind:title:detail:)` — true for tool kind "delete" or any
+pinned pattern (`rm -rf`, `git reset --hard`, force-push, `drop table`,
+`terraform destroy`, …). Deliberately substring-conservative: a false
+positive costs one extra press.
+
+`HarnessEvent.permissionRequest` gains `kind: String` (ACPAdapter passes the
+toolCall kind). `AppState.pendingPermission` becomes a published struct
+`PendingPermission {id, name, detail, isDestructive, armed}`. Approve on a
+destructive request first ARMS it (transcript ⚠️ + "Destructive. Press again
+to confirm" + error haptic); the second ✕ approves; ○ denies at any point.
+`PermissionRequestBanner` (MainView) shows every pending request under the
+top bar — amber normally, red for destructive, with the ✕/○ legend.
+
+## D. Cost/usage normalization step (#12)
+
+`HarnessAdapter` gains `totalTokens: Int` (extension default 0). ACPAdapter
+accumulates per-turn `usage.inputTokens + outputTokens` from prompt results
+(the Claude bridge reports them; opencode doesn't) and resets on start.
+`CostChip`: dollars when `reportsCostUSD`, else "N.Nk tok" when tokens are
+known, else hidden — never a false $0.00. The protocol `session` message
+gains optional `tokens` (present when > 0); broadcast change-key includes it.
+
+## E. Codex bridge preset (#9, partial)
+
+`acpAgentOptions` gains `codexBridge` ("Codex (ACP bridge)") →
+`npx -y @agentclientprotocol/codex-acp`. Handshake verified live 2026-08-27
+(bridge 1.7.0 responds to initialize; session/new requires the user's Codex
+login, surfaced by the existing friendly error). ModeChip shows the harness
+in built-in mode ("Built-in · opencode").
+
+---
+
 # v2.1 addendum — Ultra effort (dynamic workflows) + multiple conversations
 
 Supersedes anything above where it conflicts. Two built-in-mode features.

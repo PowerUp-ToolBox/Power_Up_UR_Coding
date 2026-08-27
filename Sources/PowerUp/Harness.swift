@@ -37,8 +37,10 @@ enum HarnessEvent: Equatable {
     /// Answer to a control request (interrupt / set model / set permission
     /// mode). Semantics match `ClaudeEvent.controlResult`.
     case controlResult(action: String, ok: Bool, detail: String, value: String?)
-    /// The harness is asking the user to approve something (reserved).
-    case permissionRequest(id: String, name: String, detail: String)
+    /// The harness is asking the user to approve something. `kind` is the
+    /// harness's own tool category ("edit", "execute", "delete", … — empty
+    /// when unknown) and feeds the destructive-action classifier.
+    case permissionRequest(id: String, name: String, kind: String, detail: String)
     /// The harness wants the user's attention outside a turn (reserved).
     case notification(String)
     case runtimeError(String)
@@ -85,6 +87,9 @@ protocol HarnessAdapter: AnyObject {
     // Capability flags — the app degrades honestly instead of faking support.
     var supportsEffort: Bool { get }       // effort switch via restart+resume
     var reportsCostUSD: Bool { get }       // dollar cost in turnCompleted
+    /// Total tokens the session has consumed, when the harness reports usage
+    /// (the Claude ACP bridge does); 0 when unknown.
+    var totalTokens: Int { get }
 
     /// Always invoked on the main actor.
     var onHarnessEvent: ((HarnessEvent) -> Void)? { get set }
@@ -103,5 +108,6 @@ protocol HarnessAdapter: AnyObject {
 extension HarnessAdapter {
     var supportsEffort: Bool { false }
     var reportsCostUSD: Bool { false }
+    var totalTokens: Int { 0 }
     func respondToPermission(id: String, allow: Bool) {}
 }

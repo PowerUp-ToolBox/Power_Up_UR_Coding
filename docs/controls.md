@@ -131,6 +131,12 @@ keyboard:
   so you can bounce between several pieces of work from the pad. Folders join
   the recent list whenever you pick them with the folder picker (kept in
   Settings → General → Project, up to 8).
+- **Cycle Session Focus** *(unmapped by default; Remote Control mode)* — when
+  several Claude sessions are running (cmux workspaces, background agents),
+  every reply is spoken by default. Focus steps through **All → each active
+  session → All**; with a focus set, only that session is read aloud, buzzes,
+  and drives the amber light — everything else still logs (folder-prefixed)
+  in the transcript. The focused folder shows as an amber chip in the top bar.
 - **Cycle Permission Mode** — advances through `acceptEdits → plan →
   default → acceptEdits…` and applies live. `bypassPermissions` is
   deliberately left out of this cycle — a stray button press should never

@@ -34,6 +34,7 @@ enum Intent: Equatable {
     case cycleEffort
     case cyclePermissionMode
     case cycleProject
+    case cycleFocus
     case toggleControlMode
 }
 
@@ -75,6 +76,7 @@ enum IntentMapper {
             case .cycleEffort: return .cycleEffort
             case .cyclePermissionMode: return .cyclePermissionMode
             case .cycleProject: return .cycleProject
+            case .cycleFocus: return .cycleFocus
             case .toggleControlMode: return .toggleControlMode
             }
         }
@@ -109,6 +111,7 @@ enum IntentMapper {
         case "cycleEffort": return .cycleEffort
         case "cyclePermissionMode": return .cyclePermissionMode
         case "cycleProject": return .cycleProject
+        case "cycleFocus": return .cycleFocus
         case "toggleControlMode": return .toggleControlMode
         default: return nil
         }

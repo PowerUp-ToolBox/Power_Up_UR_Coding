@@ -172,7 +172,11 @@ closes mid-turn. Three layers of recovery:
 
 Also worth knowing: the hooks fire for **every** Claude session on your
 machine, so any session mid-turn — including a background one — shows as
-"working". When a session that never replied goes away, the transcript notes
+"working" (map **Cycle Session Focus** to a button to pick ONE session for
+read-back and the light; the rest still log into the transcript). Tool calls
+act as a heartbeat (`PostToolUse`), so a long busy turn stays visibly alive —
+after updating PowerUp, reinstall the hooks when Settings says "out of date"
+to get the heartbeat event added. When a session that never replied goes away, the transcript notes
 "Claude session ended before replying."
 
 **Text isn't appearing in the target app (keystroke injection).** This requires

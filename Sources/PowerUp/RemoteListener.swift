@@ -13,8 +13,10 @@ import Network
 /// - `Notification` → `message` (per docs).
 /// - `SessionEnd` → `session_id`, `cwd`, `reason` (per docs) — the only
 ///   signal a session that closes mid-turn ever sends.
+/// - `PostToolUse` → `session_id`, `cwd`, `tool_name` — fires per tool call;
+///   used purely as a liveness heartbeat for the working indicator.
 struct RemoteHookEvent {
-    enum Kind { case stop, userPromptSubmit, notification, sessionEnd }
+    enum Kind { case stop, userPromptSubmit, notification, sessionEnd, postToolUse }
 
     let kind: Kind
     /// `last_assistant_message` / `prompt` / `message`, whichever the kind carries.
@@ -776,6 +778,9 @@ private final class HookConnection: @unchecked Sendable {
         case "SessionEnd":
             kind = .sessionEnd
             textKey = "reason"
+        case "PostToolUse":
+            kind = .postToolUse
+            textKey = "tool_name"
         default:
             // SubagentStop, PreToolUse, anything future — not ours to act on.
             return nil

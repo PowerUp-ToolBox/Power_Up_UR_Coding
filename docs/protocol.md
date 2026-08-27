@@ -69,7 +69,7 @@ On success the server replies with `welcome`, then a snapshot (current
 | `welcome` | `protocol`, `app`, `version` | After a successful `hello` |
 | `status` | `status`: `noController` \| `idle` \| `listening` \| `thinking` \| `speaking` | On every status change (mirrors the light bar) |
 | `transcript` | `entry`: `{id, kind, text, date}` — `kind`: `user` \| `assistant` \| `tool` \| `system` \| `error`; `date`: epoch seconds | On every new transcript entry |
-| `session` | `model`, `liveModel`?, `effort`, `permissionMode`, `controlMode` (`builtin` \| `remote`), `sessionID`?, `costUSD` | On any session-fact change. `model` is the configured alias (`"default"` = adapter default); `liveModel` is what the running session reports |
+| `session` | `model`, `liveModel`?, `effort`, `permissionMode`, `controlMode` (`builtin` \| `remote`), `sessionID`?, `costUSD`, `tokens`? (present when the harness reports usage) | On any session-fact change. `model` is the configured alias (`"default"` = adapter default); `liveModel` is what the running session reports |
 | `pong` | — | Answer to a JSON `ping` |
 | `error` | `code`, `message` | See error codes below |
 
@@ -91,8 +91,8 @@ controller button could perform:
 
 `approve`, `reject`, `interrupt`, `stopSpeaking`, `replayLastReply`,
 `toggleTTS`, `newSession`, `showWindow`, `cycleModel`, `cycleEffort`,
-`cyclePermissionMode`, `cycleProject`, `toggleControlMode`, `sendDraft`, and
-`sendPrompt` (requires non-empty `text`).
+`cyclePermissionMode`, `cycleProject`, `cycleFocus`, `toggleControlMode`,
+`sendDraft`, and `sendPrompt` (requires non-empty `text`).
 
 Deliberately **not** in the vocabulary:
 

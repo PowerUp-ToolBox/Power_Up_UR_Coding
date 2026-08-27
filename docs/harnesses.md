@@ -10,7 +10,8 @@ General → Harness** picks what the controller and your voice actually drive:
 | **Claude Code (built-in)** | The `claude` CLI over its streaming protocol | The default. Full feature set: live model switch, effort, cost display, session resume |
 | **ACP agent → opencode** | [opencode](https://opencode.ai) natively | Needs `opencode` installed and logged in (`opencode auth login`) |
 | **ACP agent → Claude Code (ACP bridge)** | Claude Code through the standard [Agent Client Protocol](https://agentclientprotocol.com) bridge | Same login as the CLI; useful as a fallback path |
-| **ACP agent → Custom command** | Any ACP-speaking agent you point it at | e.g. a Codex or Gemini ACP bridge — paste the command line |
+| **ACP agent → Codex (ACP bridge)** | OpenAI Codex through [codex-acp](https://github.com/agentclientprotocol/codex-acp) | Needs a Codex login; the bridge downloads itself via `npx` |
+| **ACP agent → Custom command** | Any ACP-speaking agent you point it at | e.g. a Gemini ACP bridge — paste the command line |
 
 Switching takes effect with your **next message** (the old session is
 stopped; nothing is sent anywhere until you speak or type again). Everything
@@ -27,6 +28,12 @@ main.swift. Press ✕ to allow or ○ to deny."*
 - **✕ (Approve)** allows it — always as *allow once*, never "always allow":
   a controller press must not silently grant standing permissions.
 - **○ (Reject)** denies it (also *once*).
+- **Destructive requests take two presses.** If the request looks like it
+  deletes or rewrites things (`rm -rf`, `git reset --hard`, force-push, drop
+  table, a `delete`-kind tool…), the first ✕ only *arms* it — PowerUp says
+  "Destructive — press again to confirm" and the banner turns red. The second
+  ✕ approves; ○ cancels at any point. One misheard word can never approve a
+  deleted branch.
 - A request left hanging when the turn ends or you interrupt is cancelled
   automatically — the agent never waits on a button you'll never press.
 
@@ -39,13 +46,15 @@ main.swift. Press ✕ to allow or ○ to deny."*
   setting back.
 - **No effort setting** (including Ultra/dynamic workflows) — Cycle Effort
   tells you so instead of pretending.
-- **No cost display** — ACP doesn't report dollars; the cost readout stays
-  at zero for ACP sessions.
+- **No dollar cost** — ACP doesn't report dollars. When the agent reports
+  token usage (the Claude bridge does), the cost chip shows tokens instead
+  ("12.3k tok"); when nothing is reported (opencode), the chip hides rather
+  than show a misleading $0.00.
 - **No session resume** — an ACP session starts fresh each time (the
   transcript history in the window still restores as usual).
-- **Codex / Gemini**: not preinstalled presets yet — install their ACP
-  bridge and use *Custom command*. First-class presets land when we can
-  verify them live (issue #9).
+- **Gemini**: no preset yet — install its ACP bridge and use *Custom
+  command*. (Codex has a preset; its native cost/resume integration is
+  tracked in issue #9.)
 
 ## Troubleshooting
 

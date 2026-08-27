@@ -178,6 +178,25 @@ final class ProtocolServerTests: XCTestCase {
         await fulfillment(of: [gotHook], timeout: 5)
     }
 
+    func testPostToolUseHeartbeatIsParsedAndDelivered() async throws {
+        let gotHook = expectation(description: "PostToolUse delivered")
+        listener.onEvent = { event in
+            XCTAssertEqual(event.kind, .postToolUse)
+            XCTAssertEqual(event.sessionID, "s-9")
+            XCTAssertEqual(event.text, "Bash")
+            gotHook.fulfill()
+        }
+
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/event")!)
+        request.httpMethod = "POST"
+        request.setValue(token, forHTTPHeaderField: "X-PowerUp-Token")
+        request.httpBody = Data(#"{"hook_event_name":"PostToolUse","session_id":"s-9","tool_name":"Bash"}"#.utf8)
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 204)
+        await fulfillment(of: [gotHook], timeout: 5)
+    }
+
     func testWrongHookTokenIs403() async throws {
         var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/event")!)
         request.httpMethod = "POST"

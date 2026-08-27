@@ -122,7 +122,15 @@ final class PowerUpProtocolTests: XCTestCase {
                                               sessionID: nil, costUSD: 0)
         XCTAssertNil(message["liveModel"])
         XCTAssertNil(message["sessionID"])
+        XCTAssertNil(message["tokens"], "zero tokens must be omitted, not sent as 0")
         XCTAssertEqual(message["model"] as? String, "default")
+    }
+
+    func testSessionMessageCarriesTokensWhenKnown() {
+        let message = PowerUpProtocol.session(model: "default", liveModel: nil, effort: "high",
+                                              permissionMode: "acceptEdits", controlMode: "builtin",
+                                              sessionID: nil, costUSD: 0, tokens: 55888)
+        XCTAssertEqual(message["tokens"] as? Int, 55888)
     }
 
     func testStatusNamesAreStable() {

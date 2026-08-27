@@ -21,6 +21,7 @@ struct MainView: View {
         VStack(spacing: 0) {
             TopInfoBar()
             RemoteAXWarningBanner()
+            PermissionRequestBanner()
 
             Rectangle()
                 .fill(Theme.hairline)
@@ -67,6 +68,7 @@ private struct TopInfoBar: View {
     var body: some View {
         HStack(spacing: 10) {
             ModeChip()
+            FocusChip()
             ControllerInfoChip()
             BarStatusPill()
 
@@ -179,7 +181,12 @@ private struct ModeChip: View {
     }
 
     private var label: String {
-        guard isRemote else { return "Built-in" }
+        guard isRemote else {
+            if configStore.config.harnessKind == "acp" {
+                return "Built-in · \(AppConfig.acpAgentDisplayName(configStore.config.acpAgent))"
+            }
+            return "Built-in"
+        }
         switch configStore.config.remoteTargetKind {
         case "cmux": return "Remote · cmux ws \(cmuxWorkspaceLabel)"
         case "app": return "Remote · \(appLabel)"
@@ -282,15 +289,94 @@ private struct PermissionChip: View {
     }
 }
 
+/// Dollars when the harness reports them (built-in Claude), token count when
+/// only usage is known (the Claude ACP bridge), hidden when the harness
+/// reports nothing (opencode) — never a misleading $0.00 (issue #12).
 @MainActor
 private struct CostChip: View {
-    @EnvironmentObject private var claude: ClaudeService
+    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var claude: ClaudeService     // re-render driver
 
     var body: some View {
-        SessionChip(symbol: "sum",
-                    label: Theme.costString(claude.totalCostUSD),
-                    tint: Theme.textSecondary,
-                    help: "Total cost of this session so far")
+        if appState.harness.reportsCostUSD {
+            SessionChip(symbol: "sum",
+                        label: Theme.costString(appState.harness.totalCostUSD),
+                        tint: Theme.textSecondary,
+                        help: "Total cost of this session so far (CLI estimate)")
+        } else if appState.harness.totalTokens > 0 {
+            SessionChip(symbol: "sum",
+                        label: tokenLabel,
+                        tint: Theme.textSecondary,
+                        help: "Tokens this session — this harness doesn't report dollar cost")
+        }
+    }
+
+    private var tokenLabel: String {
+        let tokens = appState.harness.totalTokens
+        if tokens >= 1000 { return String(format: "%.1fk tok", Double(tokens) / 1000) }
+        return "\(tokens) tok"
+    }
+}
+
+/// Shown only in remote mode with a session focus set: which session's
+/// replies are being spoken (everything else still logs to the transcript).
+@MainActor
+private struct FocusChip: View {
+    @EnvironmentObject private var appState: AppState
+
+    var body: some View {
+        if let label = appState.remoteFocusLabel {
+            SessionChip(symbol: "scope",
+                        label: label,
+                        tint: Theme.amber,
+                        help: "Read-back focus: only \(label) is spoken — Cycle Session Focus to change")
+        }
+    }
+}
+
+/// Prominent banner while a harness permission request awaits ✕ / ○ — the
+/// moment the app most needs the user's eyes (or ears; it was announced too).
+@MainActor
+private struct PermissionRequestBanner: View {
+    @EnvironmentObject private var appState: AppState
+
+    var body: some View {
+        if let pending = appState.pendingPermission {
+            HStack(spacing: 8) {
+                Image(systemName: pending.isDestructive ? "exclamationmark.octagon.fill" : "hand.raised.fill")
+                    .foregroundStyle(pending.isDestructive ? Theme.danger : Theme.amber)
+                Text(bannerText(pending))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(2)
+                Spacer()
+                Text(pending.armed ? "✕ confirm  ·  ○ deny" : "✕ allow  ·  ○ deny")
+                    .font(Theme.monoSmall)
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill((pending.isDestructive ? Theme.danger : Theme.amber).opacity(0.12))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke((pending.isDestructive ? Theme.danger : Theme.amber).opacity(0.4), lineWidth: 1)
+            )
+            .padding(.horizontal, 12)
+            .padding(.bottom, 10)
+        }
+    }
+
+    private func bannerText(_ pending: AppState.PendingPermission) -> String {
+        let what = pending.detail.isEmpty ? pending.name : "\(pending.name) — \(pending.detail)"
+        if pending.isDestructive {
+            return pending.armed
+                ? "DESTRUCTIVE: \(what) — press ✕ again to confirm"
+                : "DESTRUCTIVE: \(what)"
+        }
+        return "The agent wants to: \(what)"
     }
 }
 

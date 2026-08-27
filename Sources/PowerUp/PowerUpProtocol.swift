@@ -160,7 +160,8 @@ enum PowerUpProtocol {
                         permissionMode: String,
                         controlMode: String,
                         sessionID: String?,
-                        costUSD: Double) -> [String: Any] {
+                        costUSD: Double,
+                        tokens: Int = 0) -> [String: Any] {
         var message: [String: Any] = [
             "type": "session",
             "model": model,
@@ -169,6 +170,7 @@ enum PowerUpProtocol {
             "controlMode": controlMode,
             "costUSD": costUSD
         ]
+        if tokens > 0 { message["tokens"] = tokens }
         if let liveModel, !liveModel.isEmpty { message["liveModel"] = liveModel }
         if let sessionID, !sessionID.isEmpty { message["sessionID"] = sessionID }
         return message

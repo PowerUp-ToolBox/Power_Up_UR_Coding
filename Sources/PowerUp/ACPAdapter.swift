@@ -17,6 +17,9 @@ final class ACPAdapter: ObservableObject, HarnessAdapter {
     @Published private(set) var sessionID: String?
     @Published private(set) var modelName: String?
     private(set) var totalCostUSD: Double = 0        // ACP reports tokens, not dollars
+    /// Accumulated from per-turn `usage` in prompt results (the Claude bridge
+    /// reports it; opencode currently doesn't).
+    private(set) var totalTokens: Int = 0
 
     var onHarnessEvent: ((HarnessEvent) -> Void)?
 
@@ -67,6 +70,13 @@ final class ACPAdapter: ObservableObject, HarnessAdapter {
                 return nil
             }
             return [npx, "-y", "@agentclientprotocol/claude-agent-acp"]
+        case "codexBridge":
+            // Handshake verified live 2026-08-27 (bridge 1.7.0 via npx).
+            let candidates = ["/opt/homebrew/bin/npx", "/usr/local/bin/npx", "/usr/bin/npx"]
+            guard let npx = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
+                return nil
+            }
+            return [npx, "-y", "@agentclientprotocol/codex-acp"]
         case "custom":
             let parts = config.acpCustomCommand
                 .split(separator: " ", omittingEmptySubsequences: true)
@@ -118,6 +128,7 @@ final class ACPAdapter: ObservableObject, HarnessAdapter {
         stopRequested = false
         sessionID = nil
         modelName = nil
+        totalTokens = 0
         state = .starting
 
         guard let command = configuration.agentCommand, let executable = command.first else {
@@ -291,7 +302,10 @@ final class ACPAdapter: ObservableObject, HarnessAdapter {
 
     private func drainLines(from queue: LineQueue, generation: Int) {
         let batch = queue.drain()
-        guard launchGeneration == generation else { return }
+        guard launchGeneration == generation, state != .stopped else { return }
+        // (state guard: after stop(), the pipe stays readable until the 2s
+        // terminate grace — a dying agent's late permission request must not
+        // resurrect UI state the caller just cleared.)
         for line in batch {
             guard let parsed = try? JSONSerialization.jsonObject(with: line),
                   let message = parsed as? [String: Any] else { continue }
@@ -354,6 +368,11 @@ final class ACPAdapter: ObservableObject, HarnessAdapter {
             }
 
         case .prompt:
+            if let usage = result?["usage"] as? [String: Any] {
+                let input = (usage["inputTokens"] as? NSNumber)?.intValue ?? 0
+                let output = (usage["outputTokens"] as? NSNumber)?.intValue ?? 0
+                if input + output > 0 { totalTokens += input + output }
+            }
             let stopReason = (result?["stopReason"] as? String) ?? (error != nil ? "error" : "end_turn")
             let text = replyBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
             replyBuffer = ""
@@ -395,6 +414,7 @@ final class ACPAdapter: ObservableObject, HarnessAdapter {
             }
             let toolCall = params?["toolCall"] as? [String: Any]
             let title = (toolCall?["title"] as? String) ?? "run a tool"
+            let kind = (toolCall?["kind"] as? String) ?? ""
             let detail = ACPAdapter.toolDetail(from: toolCall)
             let options = ((params?["options"] as? [[String: Any]]) ?? []).compactMap { option -> (id: String, kind: String)? in
                 guard let optionID = option["optionId"] as? String else { return nil }
@@ -402,7 +422,7 @@ final class ACPAdapter: ObservableObject, HarnessAdapter {
             }
             let eventID = String(rpcID)
             pendingPermissions[eventID] = (rpcID, options)
-            emit(.permissionRequest(id: eventID, name: title, detail: detail))
+            emit(.permissionRequest(id: eventID, name: title, kind: kind, detail: detail))
 
         default:
             // fs/*, terminal/* — we declared no such capabilities; refuse politely.

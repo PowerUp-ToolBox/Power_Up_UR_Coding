@@ -140,11 +140,12 @@ final class ACPAdapterIntegrationTests: XCTestCase {
         XCTAssertFalse(events.contains { if case .replyDelta("thinking") = $0 { return true }; return false },
                        "thought chunks must not leak into the reply stream")
 
-        guard case .permissionRequest(let id, let name, _)? =
+        guard case .permissionRequest(let id, let name, let kind, _)? =
                 events.first(where: { if case .permissionRequest = $0 { return true }; return false }) else {
             return XCTFail("no permission request captured")
         }
         XCTAssertEqual(name, "Edit a.swift")
+        XCTAssertEqual(kind, "edit", "the harness's tool kind must reach the classifier")
 
         // Approve → the mock reports which option we chose, then ends the turn.
         adapter.respondToPermission(id: id, allow: true)
@@ -160,6 +161,26 @@ final class ACPAdapterIntegrationTests: XCTestCase {
         XCTAssertEqual(detail, "end_turn")
         XCTAssertTrue(events.contains { if case .reply("Working. choice=allow-once") = $0 { return true }; return false })
         XCTAssertEqual(adapter.state, .ready)
+        XCTAssertEqual(adapter.totalTokens, 150, "per-turn usage must accumulate (100 in + 50 out)")
+
+        // A second turn must ADD to the total, not replace it.
+        adapter.send("again")
+        try await waitForEvent {
+            if case .permissionRequest = $0 { return self.events.filter {
+                if case .permissionRequest = $0 { return true }; return false }.count == 2 }
+            return false
+        }
+        guard case .permissionRequest(let secondID, _, _, _)? =
+                events.last(where: { if case .permissionRequest = $0 { return true }; return false }) else {
+            return XCTFail("no second permission request")
+        }
+        adapter.respondToPermission(id: secondID, allow: true)
+        try await waitForEvent {
+            if case .turnCompleted = $0 { return self.events.filter {
+                if case .turnCompleted = $0 { return true }; return false }.count == 2 }
+            return false
+        }
+        XCTAssertEqual(adapter.totalTokens, 300, "usage must accumulate across turns")
     }
 
     func testSetModelSuccessAndRejection() async throws {
@@ -212,7 +233,7 @@ final class ACPAdapterIntegrationTests: XCTestCase {
                     "locations": [{"path": "/tmp/a.swift", "line": 1}]})
             send({"jsonrpc": "2.0", "id": 100, "method": "session/request_permission",
                   "params": {"sessionId": sid,
-                             "toolCall": {"title": "Edit a.swift",
+                             "toolCall": {"title": "Edit a.swift", "kind": "edit",
                                           "rawInput": {"file_path": "/tmp/a.swift"}},
                              "options": [
                                  {"optionId": "allow-always", "name": "Always", "kind": "allow_always"},
@@ -228,7 +249,8 @@ final class ACPAdapterIntegrationTests: XCTestCase {
                     break
             update({"sessionUpdate": "agent_message_chunk",
                     "content": {"type": "text", "text": "choice=" + chosen}})
-            send({"jsonrpc": "2.0", "id": mid, "result": {"stopReason": "end_turn"}})
+            send({"jsonrpc": "2.0", "id": mid, "result": {"stopReason": "end_turn",
+                  "usage": {"inputTokens": 100, "outputTokens": 50}}})
         elif method == "session/set_model":
             if m["params"].get("modelId") == "bad":
                 send({"jsonrpc": "2.0", "id": mid,

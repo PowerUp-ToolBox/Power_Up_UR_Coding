@@ -16,8 +16,9 @@ enum HookInstaller {
     /// Hook events PowerUp subscribes to, in a stable order. SessionEnd is
     /// how a session that closes MID-TURN releases the "Claude is working"
     /// state — its Stop hook never fires, and without SessionEnd the light
-    /// bar would stay amber forever.
-    static let hookEvents = ["Stop", "UserPromptSubmit", "Notification", "SessionEnd"]
+    /// bar would stay amber forever. PostToolUse is the turn HEARTBEAT: it
+    /// fires on every tool call, keeping long working turns visibly alive.
+    static let hookEvents = ["Stop", "UserPromptSubmit", "Notification", "SessionEnd", "PostToolUse"]
 
     // MARK: - Errors
 

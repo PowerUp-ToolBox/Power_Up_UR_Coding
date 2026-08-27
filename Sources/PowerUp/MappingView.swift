@@ -103,6 +103,7 @@ private struct MappingRow: View {
                         actionRow(.cycleEffort)
                         actionRow(.cyclePermissionMode)
                         actionRow(.cycleProject)
+                        actionRow(.cycleFocus)
                         actionRow(.toggleControlMode)
                     }
                     Section("App") {
@@ -149,6 +150,7 @@ private enum ActionKind: String, CaseIterable, Identifiable, Hashable {
     case cycleEffort
     case cyclePermissionMode
     case cycleProject
+    case cycleFocus
     case toggleControlMode
     case sendPrompt
     case pushToTalkDraft
@@ -172,6 +174,7 @@ private enum ActionKind: String, CaseIterable, Identifiable, Hashable {
         case .cycleEffort: return "Cycle Effort"
         case .cyclePermissionMode: return "Cycle Permission Mode"
         case .cycleProject: return "Cycle Project"
+        case .cycleFocus: return "Cycle Session Focus"
         case .toggleControlMode: return "Toggle Built-in / Remote"
         case .sendPrompt: return "Send Prompt…"
         case .pushToTalkDraft: return "Dictate to Prompt Box"
@@ -196,6 +199,7 @@ private enum ActionKind: String, CaseIterable, Identifiable, Hashable {
         case .cycleEffort: self = .cycleEffort
         case .cyclePermissionMode: self = .cyclePermissionMode
         case .cycleProject: self = .cycleProject
+        case .cycleFocus: self = .cycleFocus
         case .toggleControlMode: self = .toggleControlMode
         case .pushToTalkDraft: self = .pushToTalkDraft
         case .sendDraft: self = .sendDraft
@@ -221,6 +225,7 @@ private enum ActionKind: String, CaseIterable, Identifiable, Hashable {
         case .cycleEffort: return .cycleEffort
         case .cyclePermissionMode: return .cyclePermissionMode
         case .cycleProject: return .cycleProject
+        case .cycleFocus: return .cycleFocus
         case .toggleControlMode: return .toggleControlMode
         case .pushToTalkDraft: return .pushToTalkDraft
         case .sendDraft: return .sendDraft
