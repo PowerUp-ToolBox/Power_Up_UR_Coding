@@ -212,8 +212,14 @@ Plugin discovery index (HACS-style, not an app store), device-plugin SDKs
 
 ## 5. Workstreams and tasks
 
-Labels double as GitHub issue labels: `ws:core`, `ws:harness`, `ws:device`,
-`ws:speech`, `ws:platform`, `ws:ux`, `ws:community`, `ws:release`, `ws:security`.
+**Every task below is tracked as a GitHub issue** — see the
+[issue tracker](https://github.com/PowerUp-ToolBox/Power_Up_UR_Coding/issues)
+(filter by workstream label) and the
+[milestones](https://github.com/PowerUp-ToolBox/Power_Up_UR_Coding/milestones)
+(M1–M6). The issues are the live status; the lists here are the narrative map.
+Labels: `ws:core`, `ws:harness`, `ws:device`, `ws:speech`, `ws:platform`,
+`ws:ux`, `ws:community`, `ws:release`, `ws:security`, plus `decision` for the
+ADR-gated choices in §7.
 
 ### WS-A · Core & protocol (`ws:core`)
 
