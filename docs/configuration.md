@@ -30,6 +30,20 @@ button) whenever you want to discard that history and start clean. If a
 resumed session fails to start (for example because the session ID has gone
 stale), PowerUp automatically retries once as a fresh session.
 
+## Transcript history
+
+The transcript survives relaunch: entries are saved per project (as JSON Lines
+under `~/Library/Application Support/PowerUp/transcripts/`), and when PowerUp
+starts — or you switch project folders — the recent history of that project is
+restored into the window, marked with "Earlier conversation restored". Since
+sessions resume via `--resume`, that means you see the conversation you're
+resuming, not an empty window.
+
+History is a local convenience: about the last 200 entries are restored, files
+are trimmed to the newest 2,000 entries automatically, and deleting the
+`transcripts` folder (or any file in it) simply clears the scrollback — see
+[Privacy](privacy.md) for the full data story.
+
 ## Cost display
 
 PowerUp accumulates the `total_cost_usd` reported after each turn and shows

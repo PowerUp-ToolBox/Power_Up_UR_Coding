@@ -347,8 +347,8 @@ enum AppStatus: Equatable {
 
 // MARK: - TranscriptEntry
 
-struct TranscriptEntry: Identifiable, Equatable {
-    enum Kind: Equatable { case user, assistant, tool, system, error }
+struct TranscriptEntry: Identifiable, Equatable, Codable {
+    enum Kind: String, Equatable, Codable { case user, assistant, tool, system, error }
 
     let id: UUID
     let kind: Kind

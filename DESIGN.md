@@ -1028,3 +1028,64 @@ Make it visible up front:
   apps need Accessibility (+ the stable-signing note already added), and that
   voice/prompts are delivered by `cmux send` (socket) or keystroke injection
   depending on target.
+
+---
+
+# v1.6 addendum — transcript persistence
+
+Supersedes anything above where it conflicts. One feature: the transcript
+survives relaunch, per project, so a session resumed with `--resume` shows the
+conversation it is resuming.
+
+## New file: TranscriptStore.swift
+
+```swift
+@MainActor final class TranscriptStore {
+    static var supportDirectoryOverride: URL?      // test seam, mirrors HookInstaller's
+    static let maxStoredEntries = 2000             // compaction threshold on load
+    static let defaultRestoreCount = 200
+
+    static var transcriptsDirectory: URL           // <Application Support>/PowerUp/transcripts/
+    static func fileURL(forProjectDir path: String) -> URL
+        // "<slug of basename ≤40 chars>-<first 12 hex of SHA-256(standardized path)>.jsonl";
+        // slug empty → hash alone. Same path → same file; same basename in
+        // different parents → different files.
+
+    private(set) var projectDir: String?
+    func setProject(_ path: String?)               // nil/empty disables persistence
+    func append(_ entry: TranscriptEntry)          // one JSON line; ALL failures swallowed
+    func loadTail(maxEntries: Int = defaultRestoreCount) -> [TranscriptEntry]
+        // newest maxEntries, oldest first; undecodable lines skipped; a file
+        // holding > maxStoredEntries decodable entries is rewritten (atomic)
+        // down to its newest maxStoredEntries during the load.
+}
+```
+
+On-disk format: JSON Lines, one object per entry
+(`{"id":"<UUID>","kind":"user","text":"…","date":<epoch seconds>}`), encoded
+with `.secondsSince1970` dates. Parse defensively: unknown fields and
+undecodable lines are ignored, never fatal.
+
+## Models.swift
+
+`TranscriptEntry` gains `Codable`; `Kind` gains `String` raw values
+(`user`, `assistant`, `tool`, `system`, `error`). Nothing else changes.
+
+## AppState behavior
+
+- Owns a `private let transcriptStore = TranscriptStore()`. `init` sets the
+  store's project from config and restores; `chooseProjectDirectory` re-points
+  the store, and on an actual project change clears `transcript` and restores
+  the new project's history — all before the "Project folder: …" entry is
+  appended (so that entry lands in the new project's file).
+- `appendEntry` persists every entry it accepts via `transcriptStore.append`.
+- Restore replaces `transcript` with the loaded tail (capped to
+  `maxTranscriptEntries - 1`) plus a trailing `.system` marker
+  "Earlier conversation restored — New Session starts clean." The marker is
+  set directly, NOT via `appendEntry` — it must never be persisted, or every
+  launch would stack another one into the file.
+- Restore happens only when the store returns at least one entry; an empty or
+  missing history changes nothing.
+
+Tests must use `supportDirectoryOverride` (see `TranscriptStoreTests`) — a
+live installation's history is never touched.

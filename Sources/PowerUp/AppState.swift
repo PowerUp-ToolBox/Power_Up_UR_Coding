@@ -52,6 +52,10 @@ final class AppState: ObservableObject {
     /// Keeps the transcript from growing without bound during very long sessions.
     private static let maxTranscriptEntries = 800
 
+    /// Per-project transcript history on disk, so the conversation a resumed
+    /// session (`--resume`) continues is actually visible after a relaunch.
+    private let transcriptStore = TranscriptStore()
+
     private var cancellables: Set<AnyCancellable> = []
     private var statusUpdateScheduled = false
 
@@ -123,6 +127,9 @@ final class AppState: ObservableObject {
         // ConfigStore mints a token on first launch; adopt whatever mode the
         // config already holds without running the mode-switch side effects.
         lastControlMode = AppState.normalizedControlMode(store.config.controlMode)
+
+        transcriptStore.setProject(store.config.projectDir)
+        restorePersistedTranscript()
 
         wireController()
         wireClaude()
@@ -743,6 +750,15 @@ final class AppState: ObservableObject {
             configStore.config.lastSessionID = nil
         }
         hasRetriedWithoutResume = false
+
+        // Transcript history is per project: switch the store over and swap the
+        // window's scrollback for the new project's restored history.
+        transcriptStore.setProject(path)
+        if changedProject {
+            transcript = []
+            restorePersistedTranscript()
+        }
+
         appendEntry(.system, "Project folder: \(url.lastPathComponent)")
 
         // In remote mode PowerUp runs no session of its own — the folder is then
@@ -1173,11 +1189,28 @@ final class AppState: ObservableObject {
     private func appendEntry(_ kind: TranscriptEntry.Kind, _ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        transcript.append(TranscriptEntry(kind: kind, text: trimmed))
+        let entry = TranscriptEntry(kind: kind, text: trimmed)
+        transcript.append(entry)
+        transcriptStore.append(entry)
         let overflow = transcript.count - AppState.maxTranscriptEntries
         if overflow > 0 {
             transcript.removeFirst(overflow)
         }
+    }
+
+    /// Replaces the window's scrollback with the stored history of the current
+    /// project (newest entries, oldest first), topped with a marker so it's
+    /// obvious where the earlier conversation ends. The marker is deliberately
+    /// NOT persisted — it's set directly instead of going through
+    /// `appendEntry`, or every launch would stack another one into the file.
+    private func restorePersistedTranscript() {
+        var restored = transcriptStore.loadTail()
+        guard !restored.isEmpty else { return }
+        if restored.count > AppState.maxTranscriptEntries - 1 {
+            restored.removeFirst(restored.count - (AppState.maxTranscriptEntries - 1))
+        }
+        restored.append(TranscriptEntry(kind: .system, text: "Earlier conversation restored — New Session starts clean."))
+        transcript = restored
     }
 
     // MARK: - Derived state
