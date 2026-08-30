@@ -18,10 +18,14 @@ final class ControllerService: ObservableObject {
     /// Fired when the current controller disconnects (after any fallback and
     /// after stuck-hold releases). Lets AppState force-release a stranded hold.
     var onDisconnect: (() -> Void)?
+    /// Fired at most once per connection when the polled battery first drops
+    /// below the warning threshold while discharging. Carries the 0...1 level.
+    var onLowBattery: ((Float) -> Void)?
 
     private var currentController: GCController?
     private var hapticEngine: CHHapticEngine?
     private var batteryTimer: Timer?
+    private var batteryWarningLatch = BatteryWarningLatch()
 
     /// Buttons currently held down. Used to de-dup analog-trigger threshold
     /// jitter / duplicate events, and to release stuck holds on disconnect.
@@ -84,6 +88,7 @@ final class ControllerService: ObservableObject {
         isDualSense = controller.productCategory == GCProductCategoryDualSense
 
         hapticEngine = nil // recreate lazily for the new connection
+        batteryWarningLatch.reset() // one warning per connection, even a swap
         wireButtons(on: controller)
         pollBattery()
 
@@ -119,6 +124,7 @@ final class ControllerService: ObservableObject {
             isDualSense = false
             batteryLevel = nil
             isCharging = false
+            batteryWarningLatch.reset()
         }
 
         // Release any buttons still pressed when the pad dropped BEFORE clearing
@@ -276,5 +282,29 @@ final class ControllerService: ObservableObject {
         }
         batteryLevel = battery.batteryLevel
         isCharging = battery.batteryState == .charging || battery.batteryState == .full
+
+        if batteryWarningLatch.shouldWarn(level: battery.batteryLevel,
+                                          state: battery.batteryState) {
+            onLowBattery?(battery.batteryLevel)
+        }
+    }
+}
+
+/// Once-per-connection latch behind the low-battery warning. Fires only while
+/// the pack is actually discharging (never charging/full/unknown), and treats
+/// a 0.0 level as "not populated yet" — GameController reports zeros briefly
+/// around connect before the real reading arrives.
+struct BatteryWarningLatch {
+    static let threshold: Float = 0.2
+
+    private var didWarn = false
+
+    mutating func reset() { didWarn = false }
+
+    mutating func shouldWarn(level: Float?, state: GCDeviceBattery.State) -> Bool {
+        guard !didWarn, state == .discharging,
+              let level, level > 0, level < Self.threshold else { return false }
+        didWarn = true
+        return true
     }
 }

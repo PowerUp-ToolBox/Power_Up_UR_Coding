@@ -1683,3 +1683,39 @@ and its own transcript history (v1.6).
   "Project: <folder>".
 - SettingsView Project section lists the recents with Switch buttons and a
   "current" marker.
+
+---
+
+# v2.3 addendum — low-battery warning + haptics capability note
+
+Supersedes anything above where it conflicts.
+
+## A. Low-battery warning (#56)
+
+- `ControllerService` gains `var onLowBattery: ((Float) -> Void)?` and an
+  internal pure `BatteryWarningLatch` (threshold `0.2`). The battery poll
+  fires the callback at most once per connection, only while the pack is
+  `.discharging` (charging/full/unknown never warn), and treats a `0.0`
+  level as "not populated yet" — GameController reports zeros briefly
+  around connect. The latch resets on every (re)connect, including a
+  fallback swap to another pad, and on full disconnect.
+- `AppState` surfaces it as a `.system` transcript entry ("🔋 Controller
+  battery is low (N%) — plug it in soon.") plus the error haptic. No new
+  config; the existing `hapticsEnabled` gate applies to the buzz as usual.
+- Pinned by `BatteryWarningLatchTests` (once per connection, discharging
+  only — charging/full/unknown never warn, reset-on-reconnect, zero/nil
+  ignored, threshold boundary, and non-firing readings never consume the
+  latch). The latch takes the raw `GCDeviceBattery.State`, so the state
+  mapping itself is test-pinned.
+- The transcript percent is truncated, not rounded, so a sub-threshold
+  reading can never display as the contradictory "20%".
+
+## B. Haptics capability note (#18)
+
+Clarifies the base spec's "light/haptics/touchpad become no-ops" line for
+non-DualSense pads: haptics and the light bar are capability-gated, not
+DualSense-gated — `rumble(...)` is gated on `controller.haptics` (not
+`isDualSense`; haptics stay best-effort, engine failures swallowed), and
+`setLight(...)` is likewise a no-op only when `controller.light == nil`.
+Any pad exposing `GCDeviceHaptics` (e.g. Xbox pads on macOS 11+) rumbles.
+Only the touchpad button remains genuinely DualSense-only.

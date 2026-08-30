@@ -279,6 +279,16 @@ final class AppState: ObservableObject {
         controller.onDisconnect = { [weak self] in
             self?.forceReleaseHold()
         }
+        // Low battery: ControllerService latches this to once per connection;
+        // surface it like any other system event — transcript entry + error buzz.
+        controller.onLowBattery = { [weak self] level in
+            guard let self else { return }
+            // Truncate, don't round: the latch admits (0, 0.2) exclusive, so a
+            // 0.196 reading must not display as the contradictory "20%".
+            let percent = Int(level * 100)
+            self.appendEntry(.system, "🔋 Controller battery is low (\(percent)%) — plug it in soon.")
+            self.errorHaptic()
+        }
     }
 
     private func wireClaude() {
