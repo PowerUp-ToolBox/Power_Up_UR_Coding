@@ -15,6 +15,8 @@ no third-party dependencies.
   (getting-started, controls, voice, harnesses, remote-control, configuration,
   troubleshooting, privacy, protocol). Feature changes must update the
   matching `docs/` guide, not re-grow the README. ADRs live in `docs/adr/`.
+  README.md changes must be mirrored in README.zh-CN.md and README.ja.md
+  (English is canonical).
 
 ## The binding contract
 

@@ -1,5 +1,7 @@
 # PowerUp — a DualSense remote for Claude Code
 
+**English** | [简体中文](README.zh-CN.md) | [日本語](README.ja.md)
+
 PowerUp turns a PS5 DualSense controller into a hands-on remote for
 [Claude Code](https://www.anthropic.com/claude-code). Hold a trigger to speak
 an instruction, hear Claude's replies read back to you, and map every button

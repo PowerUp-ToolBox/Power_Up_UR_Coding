@@ -27,7 +27,8 @@ Swift 5.9 / SwiftPM, no Xcode project, no third-party dependencies.
   `docs/` (getting-started, controls, voice, harnesses, remote-control,
   configuration, troubleshooting, privacy, protocol). A change that alters
   user-facing behavior must update the matching `docs/` guide in the same PR —
-  never re-grow the README. ADRs live in `docs/adr/`.
+  never re-grow the README. ADRs live in `docs/adr/`. README.md changes must
+  be mirrored in README.zh-CN.md and README.ja.md (English is canonical).
 
 ## Build, test, run
 
