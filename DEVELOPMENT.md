@@ -188,15 +188,19 @@ Each milestone is shippable and useful on its own. Rough order, not a schedule.
 ### M1 — Open-source launch (make the repo a project)
 The current app, made contributable. Exit criteria: a stranger can build it,
 understand it, and land a PR.
+**Status: shipped** (license, CoC, DCO, templates, CI, good-first-issues all in).
 
 ### M2 — Protocol extraction (macOS, internal refactor)
 Define the device/harness/intent contracts *inside* the Swift app; publish the
 PowerUp WebSocket protocol spec v0. Exit criteria: the DualSense code and the
 Claude adapter no longer know about each other.
+**Status: shipped** (intents, `HarnessAdapter`, protocol server + spec v0).
 
 ### M3 — Harness expansion (still macOS)
 ACP adapter lands; PowerUp drives Codex CLI, Gemini CLI, and opencode. Exit
 criteria: switch harness in Settings, same controller/voice experience.
+**Status: in progress** — ACP adapter and Codex-via-ACP shipped; remaining:
+the Codex-native adapter (#9) and cost normalization (#12).
 
 ### M4 — Cross-platform core
 Rust core + Tauri shell reaches DualSense-parity on Windows and Linux/X11 with

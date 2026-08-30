@@ -10,17 +10,18 @@ no third-party dependencies.
 - **DEVELOPMENT.md** — the cross-platform/multi-device/multi-harness roadmap:
   architecture direction, workstreams, milestones, open decisions (ADR-gated).
 - **CONTRIBUTING.md** — contributor-facing build/test/PR rules.
+- **AGENTS.md** — the same rules for AI coding agents that don't read this file.
 - **README.md** is a short front page; user documentation lives in `docs/`
-  (getting-started, controls, voice, remote-control, configuration,
-  troubleshooting). Feature changes must update the matching `docs/` guide,
-  not re-grow the README. ADRs live in `docs/adr/`.
+  (getting-started, controls, voice, harnesses, remote-control, configuration,
+  troubleshooting, privacy, protocol). Feature changes must update the
+  matching `docs/` guide, not re-grow the README. ADRs live in `docs/adr/`.
 
 ## The binding contract
 
 **DESIGN.md is the binding implementation contract.** It specifies exact
 cross-module signatures, the verified `claude` CLI wire protocol, and default
-behavior, amended by addenda v1.1–v1.5 (later addenda supersede earlier text
-where they conflict). Code against it exactly; don't invent, rename, or widen
+behavior, amended by addenda v1.1–v2.2 (higher-numbered addenda supersede
+lower-numbered text where they conflict). Code against it exactly; don't invent, rename, or widen
 cross-module APIs. If a module needs something the contract doesn't provide,
 solve it privately inside that module's file.
 
@@ -67,3 +68,7 @@ open build/PowerUp.app # ALWAYS launch as a bundle — TCC permissions track
   is never touched.
 - Don't spawn real `claude` sessions from tests; the stream parser is
   testable via `ClaudeService.events(fromLine:)`.
+- Don't spawn real ACP agents or npx bridges (opencode, `claude-agent-acp`,
+  `codex-acp`) from tests or ad-hoc verification — they hit the network and
+  run under the user's real agent logins. ACPAdapter is tested against the
+  scripted mock agent (see `ACPAdapterTests`).
