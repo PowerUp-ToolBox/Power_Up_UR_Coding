@@ -1,5 +1,7 @@
 import Foundation
 import AVFAudio
+import AudioToolbox
+import CoreAudio
 import NaturalLanguage
 
 /// Text-to-speech service wrapping AVSpeechSynthesizer. Also hosts the pure
@@ -26,6 +28,28 @@ final class TTSService: NSObject, ObservableObject {
     /// inside speak() must not clear the *new* utterance's isSpeaking.
     private var currentUtterance: AVSpeechUtterance?
 
+    // MARK: Routed output (verified by the #65 spike)
+
+    /// Resolves the user's chosen output device to a live id at speak time;
+    /// nil (or an unplugged pick) means the system default and the plain
+    /// `speak()` path. Set by AppState so this service never has to know
+    /// about config or the device store.
+    var preferredOutputDeviceID: (() -> AudioDeviceID?)?
+
+    /// A DEDICATED synthesizer for `write(_:toBufferCallback:)` renders: the
+    /// spike proved a render fires the same delegate callbacks as `speak()`
+    /// and leaves `isSpeaking` false, so a shared instance couldn't tell the
+    /// modes apart. This one has no delegate; completion comes from the
+    /// render's end marker plus the player's `.dataPlayedBack` callback.
+    private let renderSynthesizer = AVSpeechSynthesizer()
+
+    /// Bumped by every speak()/stop(); routed callbacks stamped with an older
+    /// generation are stale and must do nothing.
+    private var renderGeneration = 0
+
+    private var routedEngine: AVAudioEngine?
+    private var routedPlayer: AVAudioPlayerNode?
+
     override init() {
         super.init()
         synthesizer.delegate = self
@@ -48,6 +72,13 @@ final class TTSService: NSObject, ObservableObject {
         utterance.rate = rate
         utterance.voice = Self.resolveVoice(text: text, voiceID: voiceID, language: language)
 
+        // A chosen (and currently connected) output device takes the routed
+        // render path; otherwise the plain system-route path, unchanged.
+        if let deviceID = preferredOutputDeviceID?() {
+            speakRouted(utterance, on: deviceID)
+            return
+        }
+
         currentUtterance = utterance
         isSpeaking = true
         synthesizer.speak(utterance)
@@ -58,7 +89,217 @@ final class TTSService: NSObject, ObservableObject {
         if synthesizer.isSpeaking {
             synthesizer.stopSpeaking(at: .immediate)
         }
+        // Invalidate any in-flight routed render/playback before tearing the
+        // engine down, so its callbacks land as stale no-ops. stopSpeaking is
+        // called unconditionally: `isSpeaking` stays FALSE during a write()
+        // render (spike-verified), so guarding on it would let a doomed
+        // render run to completion and queue the next one behind it.
+        renderGeneration += 1
+        renderSynthesizer.stopSpeaking(at: .immediate)
+        routedPlayer?.stop()
+        routedEngine?.stop()
+        routedPlayer = nil
+        routedEngine = nil
         isSpeaking = false
+    }
+
+    // MARK: - Routed rendering (write → buffers → engine on a chosen device)
+
+    /// Collects render buffers off whatever thread `write` delivers them on.
+    /// A plain locked box (not actor state) because the callback's thread is
+    /// undocumented; the main-actor hop happens once, at the end marker.
+    private final class RenderCollector: @unchecked Sendable {
+        private let lock = NSLock()
+        private var buffers: [AVAudioPCMBuffer] = []
+        private var ended = false
+
+        /// Returns the collected buffers exactly once, at the FIRST end
+        /// marker — the spike showed the zero-length marker arrives twice,
+        /// so completion must be idempotent.
+        func append(_ buffer: AVAudioBuffer) -> [AVAudioPCMBuffer]? {
+            lock.lock()
+            defer { lock.unlock() }
+            guard !ended else { return nil }
+            if let pcm = buffer as? AVAudioPCMBuffer, pcm.frameLength > 0 {
+                buffers.append(pcm)
+                return nil
+            }
+            ended = true
+            return buffers
+        }
+    }
+
+    private func speakRouted(_ utterance: AVSpeechUtterance, on deviceID: AudioDeviceID) {
+        renderGeneration += 1
+        let generation = renderGeneration
+        isSpeaking = true
+
+        let collector = RenderCollector()
+        renderSynthesizer.write(utterance) { [weak self] buffer in
+            guard let done = collector.append(buffer) else { return }
+            Task { @MainActor [weak self] in
+                self?.playCollected(done, on: deviceID, generation: generation)
+            }
+        }
+    }
+
+    private func playCollected(_ rendered: [AVAudioPCMBuffer], on deviceID: AudioDeviceID,
+                               generation: Int) {
+        guard generation == renderGeneration else { return }
+
+        // Exotic render formats (untested premium/personal voices) are
+        // normalized BEFORE touching the engine: connect(...) raises an
+        // uncatchable NSException on a format it refuses, so the do/catch
+        // below cannot be the guard for this.
+        let buffers = Self.normalizedForPlayback(rendered)
+
+        // Nothing rendered (cancelled voice, synthesis or conversion
+        // failure): finish the "speaking" state honestly rather than
+        // wedging it.
+        guard let format = buffers.first?.format else {
+            finishRouted(generation: generation)
+            return
+        }
+
+        let engine = AVAudioEngine()
+        let player = AVAudioPlayerNode()
+        engine.attach(player)
+        // Connect with the (normalized) render format; the mixer resamples
+        // to the hardware format (spike-verified).
+        engine.connect(player, to: engine.mainMixerNode, format: format)
+
+        var targetDevice = deviceID
+        let routed: OSStatus
+        if let outputUnit = engine.outputNode.audioUnit {
+            routed = AudioUnitSetProperty(
+                outputUnit,
+                kAudioOutputUnitProperty_CurrentDevice,
+                kAudioUnitScope_Global,
+                0,
+                &targetDevice,
+                UInt32(MemoryLayout<AudioDeviceID>.size))
+        } else {
+            routed = kAudioUnitErr_Uninitialized
+        }
+
+        do {
+            guard routed == noErr else { throw NSError(domain: NSOSStatusErrorDomain,
+                                                       code: Int(routed)) }
+            try engine.start()
+        } catch {
+            // Device vanished between resolve and start, or an unroutable
+            // format: fall back to the plain system route so speech is never
+            // silently lost.
+            engine.stop()
+            fallBackToDirect(utteranceLike: buffers, generation: generation)
+            return
+        }
+
+        routedEngine = engine
+        routedPlayer = player
+
+        for (index, buffer) in buffers.enumerated() {
+            if index == buffers.count - 1 {
+                player.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { _ in
+                    Task { @MainActor [weak self] in
+                        self?.finishRouted(generation: generation)
+                    }
+                }
+            } else {
+                player.scheduleBuffer(buffer)
+            }
+        }
+        player.play()
+    }
+
+    /// The routed path failed after rendering: replay the already-rendered
+    /// audio is impossible through `speak()`, but the buffers exist — play
+    /// them through a default-device engine (no device override), which is
+    /// the closest thing to the old behavior.
+    private func fallBackToDirect(utteranceLike buffers: [AVAudioPCMBuffer], generation: Int) {
+        guard generation == renderGeneration, let format = buffers.first?.format else {
+            finishRouted(generation: generation)
+            return
+        }
+        let engine = AVAudioEngine()
+        let player = AVAudioPlayerNode()
+        engine.attach(player)
+        engine.connect(player, to: engine.mainMixerNode, format: format)
+        do {
+            try engine.start()
+        } catch {
+            finishRouted(generation: generation)
+            return
+        }
+        routedEngine = engine
+        routedPlayer = player
+        for (index, buffer) in buffers.enumerated() {
+            if index == buffers.count - 1 {
+                player.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { _ in
+                    Task { @MainActor [weak self] in
+                        self?.finishRouted(generation: generation)
+                    }
+                }
+            } else {
+                player.scheduleBuffer(buffer)
+            }
+        }
+        player.play()
+    }
+
+    private func finishRouted(generation: Int) {
+        guard generation == renderGeneration else { return }
+        routedPlayer?.stop()
+        routedEngine?.stop()
+        routedPlayer = nil
+        routedEngine = nil
+        isSpeaking = false
+        onFinished?()
+    }
+
+    /// Belt-and-braces for the chosen output device unplugging mid-playback:
+    /// if the routed engine halted on its own (configuration change) it is
+    /// undocumented whether the pending `.dataPlayedBack` completion still
+    /// fires — resolve the utterance explicitly so status can never wedge.
+    /// AppState calls this whenever the audio device list changes.
+    func recoverIfEngineDied() {
+        guard let engine = routedEngine, !engine.isRunning else { return }
+        finishRouted(generation: renderGeneration)
+    }
+
+    /// The spike verified only float32/deinterleaved renders (compact +
+    /// legacy voices); anything else is converted to that shape — same
+    /// sample rate and channel count — before the engine sees it. Returns []
+    /// when conversion fails, which the caller resolves honestly.
+    private static func normalizedForPlayback(_ buffers: [AVAudioPCMBuffer]) -> [AVAudioPCMBuffer] {
+        guard let format = buffers.first?.format else { return buffers }
+        if format.commonFormat == .pcmFormatFloat32, !format.isInterleaved {
+            return buffers
+        }
+        guard let target = AVAudioFormat(commonFormat: .pcmFormatFloat32,
+                                         sampleRate: format.sampleRate,
+                                         channels: format.channelCount,
+                                         interleaved: false),
+              let converter = AVAudioConverter(from: format, to: target) else { return [] }
+        var converted: [AVAudioPCMBuffer] = []
+        for source in buffers {
+            guard let out = AVAudioPCMBuffer(pcmFormat: target,
+                                             frameCapacity: source.frameLength) else { return [] }
+            var provided = false
+            var conversionError: NSError?
+            converter.convert(to: out, error: &conversionError) { _, status in
+                if provided {
+                    status.pointee = .noDataNow
+                    return nil
+                }
+                provided = true
+                status.pointee = .haveData
+                return source
+            }
+            guard conversionError == nil else { return [] }
+            if out.frameLength > 0 { converted.append(out) }
+        }
+        return converted
     }
 
     // MARK: - Language detection

@@ -175,6 +175,8 @@ struct AppConfig: Codable, Equatable {
     var summaryModel: String              // alias for the summary model; default "haiku"
     var localeID: String                  // STT locale; default "en-US"
     var onDeviceRecognition: Bool         // default false
+    var audioInputUID: String?            // STT microphone device UID; nil = system default
+    var audioOutputUID: String?           // TTS output device UID; nil = system default
     var hapticsEnabled: Bool              // default true
     var lightEnabled: Bool                // default true
     var effort: String                    // "default" (omit the flag) | "low" | "medium" | "high" | "xhigh"
@@ -336,6 +338,8 @@ struct AppConfig: Codable, Equatable {
             summaryModel: "haiku",
             localeID: "en-US",
             onDeviceRecognition: false,
+            audioInputUID: nil,
+            audioOutputUID: nil,
             hapticsEnabled: true,
             lightEnabled: true,
             effort: "default",
@@ -396,7 +400,8 @@ struct AppConfig: Codable, Equatable {
         case projectDir, model, permissionMode, claudePath, lastSessionID
         case ttsEnabled, ttsRate, ttsVoiceID, maxSpokenChars
         case speakSummaries, summaryModel
-        case localeID, onDeviceRecognition, hapticsEnabled, lightEnabled
+        case localeID, onDeviceRecognition, audioInputUID, audioOutputUID
+        case hapticsEnabled, lightEnabled
         case effort, modelCycle
         case harnessKind, acpAgent, acpCustomCommand
         case controlMode, remoteTargetKind, remoteCmuxWorkspace, remoteCmuxSurface
@@ -459,6 +464,8 @@ extension AppConfig {
             }(),
             localeID: value(.localeID, fallback.localeID),
             onDeviceRecognition: value(.onDeviceRecognition, fallback.onDeviceRecognition),
+            audioInputUID: optionalString(.audioInputUID),
+            audioOutputUID: optionalString(.audioOutputUID),
             hapticsEnabled: value(.hapticsEnabled, fallback.hapticsEnabled),
             lightEnabled: value(.lightEnabled, fallback.lightEnabled),
             effort: value(.effort, fallback.effort),

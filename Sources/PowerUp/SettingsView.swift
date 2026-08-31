@@ -361,6 +361,7 @@ private struct VoiceSettingsTab: View {
     @EnvironmentObject var configStore: ConfigStore
     @EnvironmentObject var speech: SpeechService
     @EnvironmentObject var tts: TTSService
+    @EnvironmentObject var audioDevices: AudioDeviceStore
 
     private var authLabel: String {
         switch speech.authState {
@@ -422,6 +423,41 @@ private struct VoiceSettingsTab: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                SettingsSection(title: "Audio Devices") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Picker("Microphone", selection: $configStore.config.audioInputUID) {
+                            Text("System Default").tag(String?.none)
+                            ForEach(audioDevices.inputDevices) { device in
+                                Text(device.name).tag(String?.some(device.uid))
+                            }
+                            // Keep an unplugged pick selectable/visible instead
+                            // of silently snapping the picker back to default.
+                            if let uid = configStore.config.audioInputUID,
+                               audioDevices.inputDevice(forUID: uid) == nil {
+                                Text("(Disconnected device)").tag(String?.some(uid))
+                            }
+                        }
+                        .pickerStyle(.menu)
+
+                        Picker("Speech Output", selection: $configStore.config.audioOutputUID) {
+                            Text("System Default").tag(String?.none)
+                            ForEach(audioDevices.outputDevices) { device in
+                                Text(device.name).tag(String?.some(device.uid))
+                            }
+                            if let uid = configStore.config.audioOutputUID,
+                               audioDevices.outputDevice(forUID: uid) == nil {
+                                Text("(Disconnected device)").tag(String?.some(uid))
+                            }
+                        }
+                        .pickerStyle(.menu)
+
+                        Text("Dictation listens on the chosen microphone and replies speak through the chosen output. If a device unplugs mid-session, PowerUp falls back to the system default and switches back when it returns.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
                 SettingsSection(title: "Text to Speech") {
                     VStack(alignment: .leading, spacing: 12) {
                         Toggle("Speak Claude's replies", isOn: $configStore.config.ttsEnabled)

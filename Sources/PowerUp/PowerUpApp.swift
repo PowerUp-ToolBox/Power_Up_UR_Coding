@@ -46,5 +46,6 @@ private extension View {
             .environmentObject(appState.claude)
             .environmentObject(appState.remote)
             .environmentObject(appState.listener)
+            .environmentObject(appState.audioDevices)
     }
 }

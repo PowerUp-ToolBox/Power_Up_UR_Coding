@@ -86,3 +86,16 @@ The "Max spoken characters" stepper in the Voice tab caps how much of a long
 reply is spoken (the rest is truncated at a sentence boundary with a spoken
 "reply truncated" note). It can be set all the way down to **0**, which means
 *no limit* — Claude's full reply is read aloud instead of being truncated.
+
+## Choosing your microphone and speaker
+
+By default PowerUp listens on the system-default microphone and speaks
+through the system-default output. **Settings → Voice → Audio Devices** lets
+you pin either one — dictate through a USB mic while replies play through
+your headphones, or the other way around.
+
+Devices are remembered even when unplugged: if your chosen device disappears
+mid-session, PowerUp announces it in the transcript, falls back to the system
+default, and switches back automatically the moment the device returns. A
+disconnected pick shows in the menu as "(Disconnected device)" so you always
+see what's configured.

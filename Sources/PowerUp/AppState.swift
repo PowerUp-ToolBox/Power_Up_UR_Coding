@@ -55,6 +55,9 @@ final class AppState: ObservableObject {
     /// Delivers input to somebody else's Claude session (cmux surface, or any app
     /// via keystroke injection) when `config.controlMode` is "remote".
     let remote: RemoteControlService
+    /// Audio device catalogue: which mics/outputs exist, tracked by stable UID,
+    /// with hot-plug updates (Settings pickers + STT/TTS routing).
+    let audioDevices = AudioDeviceStore()
     /// Writes 1-2 sentence spoken conclusions of long replies (Settings → Voice).
     private let summary = SummaryService()
     /// Local HTTP endpoint the Claude Code hooks post replies back to.
@@ -236,9 +239,12 @@ final class AppState: ObservableObject {
         wireClaude()
         wireTTS()
         wireListener()
+        wireAudioDevices()
         observeServices()
 
         controller.start()
+        audioDevices.start()
+        syncAudioAvailabilityBaseline()
         syncSpeechConfiguration()
         syncListener()
         RemoteControlService.updateCmuxPassword(configStore.config.remoteCmuxPassword)
@@ -300,6 +306,75 @@ final class AppState: ObservableObject {
     private func wireTTS() {
         tts.onFinished = { [weak self] in
             self?.updateStatus()
+        }
+    }
+
+    /// Tracks the configured devices' presence for the came/went announcements.
+    private var inputAvailability = AudioAvailabilityTracker()
+    private var outputAvailability = AudioAvailabilityTracker()
+
+    private func wireAudioDevices() {
+        // The services resolve the chosen UID to a live device id at use time
+        // (each press / each utterance); an unplugged pick resolves nil and
+        // they fall back to the system default — which is also what makes
+        // auto-restore free when the device returns.
+        speech.preferredInputDeviceID = { [weak self] in
+            guard let self else { return nil }
+            return self.audioDevices.inputDeviceID(forUID: self.configStore.config.audioInputUID)
+        }
+        tts.preferredOutputDeviceID = { [weak self] in
+            guard let self else { return nil }
+            return self.audioDevices.outputDeviceID(forUID: self.configStore.config.audioOutputUID)
+        }
+        audioDevices.onDevicesChanged = { [weak self] in
+            // A routed utterance whose device just vanished may never fire
+            // its completion — resolve it before deciding what to announce.
+            self?.tts.recoverIfEngineDied()
+            self?.announceAudioDeviceChanges()
+        }
+    }
+
+    /// The (input, output) selection the trackers were last baselined on.
+    private var lastAudioUIDKey: String?
+
+    /// Re-baselines the availability trackers whenever the user's device
+    /// selection changes (the tracker consumes a UID change silently — picking
+    /// a device is not an unplug), so the FIRST real transition of the newly
+    /// picked device announces correctly. Runs from the derived-update path
+    /// like the other keyed syncs, and once at init to prime the baseline.
+    private func syncAudioAvailabilityBaseline() {
+        let config = configStore.config
+        let key = "\(config.audioInputUID ?? "")|\(config.audioOutputUID ?? "")"
+        guard key != lastAudioUIDKey else { return }
+        lastAudioUIDKey = key
+        announceAudioDeviceChanges()
+    }
+
+    /// One transcript note when a chosen device goes away (we're on the system
+    /// default until it returns) and one when it comes back. Selection changes
+    /// rebaseline silently inside the tracker.
+    private func announceAudioDeviceChanges() {
+        let config = configStore.config
+        let inputName = audioDevices.inputDevice(forUID: config.audioInputUID)?.name
+        switch inputAvailability.check(configuredUID: config.audioInputUID,
+                                       isAvailable: inputName != nil) {
+        case .becameUnavailable:
+            appendEntry(.system, "🎤 Your chosen microphone disconnected — using the system default until it returns.")
+        case .becameAvailable:
+            appendEntry(.system, "🎤 \(inputName ?? "Your chosen microphone") is back — using it again.")
+        case nil:
+            break
+        }
+
+        let outputName = audioDevices.outputDevice(forUID: config.audioOutputUID)?.name
+        switch outputAvailability.check(configuredUID: config.audioOutputUID,
+                                        isAvailable: outputName != nil) {
+        case .becameUnavailable:
+            appendEntry(.system, "🔊 Your chosen speaker disconnected — speaking through the system default until it returns.")
+        case .becameAvailable:
+            appendEntry(.system, "🔊 \(outputName ?? "Your chosen speaker") is back — speaking through it again.")
+        case nil:
+            break
         }
     }
 
@@ -371,7 +446,8 @@ final class AppState: ObservableObject {
             speech.objectWillChange,
             configStore.objectWillChange,
             remote.objectWillChange,
-            listener.objectWillChange
+            listener.objectWillChange,
+            audioDevices.objectWillChange
         ]
         for publisher in publishers {
             publisher.sink { [weak self] _ in
@@ -1804,6 +1880,7 @@ final class AppState: ObservableObject {
             guard let self else { return }
             self.statusUpdateScheduled = false
             self.syncSpeechConfiguration()
+            self.syncAudioAvailabilityBaseline()
             // Both are no-ops unless the config actually changed, so Settings
             // edits are picked up without the views having to tell us.
             self.syncControlMode()

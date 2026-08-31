@@ -1793,3 +1793,93 @@ press while one is active is ignored, and only the recorded control's
 release ends the capture (`pttHoldButton` logic is unchanged). Cross-device
 arbitration (several devices asserting holds) is deliberately deferred to
 the virtual-device work (#67), which introduces the second input source.
+
+---
+
+# v2.5 addendum — audio device selection and routed speech output
+
+Supersedes anything above where it conflicts. Implements #64, #65, #66
+(Track A Phase 3, minus the mic level check which ships with the first-run
+wizard, #30). Mechanisms verified by the 2026-08-30 spikes recorded on #65.
+
+## A. AudioDeviceStore.swift (new module in the documented layout)
+
+- `struct AudioDevice { id: AudioDeviceID, uid: String, name: String,
+  inputChannels: Int, outputChannels: Int }` — `uid` is the persisted,
+  stable identity; `id` is transient.
+- `@MainActor final class AudioDeviceStore: ObservableObject` —
+  `@Published inputDevices/outputDevices: [AudioDevice]`,
+  `var onDevicesChanged: (() -> Void)?`, `func start()` (enumerate + a
+  `kAudioHardwarePropertyDevices` listener block that hops to the main
+  actor), `inputDeviceID(forUID:)` / `outputDeviceID(forUID:)` /
+  `inputDevice(forUID:)` / `outputDevice(forUID:)`, and
+  `nonisolated static func systemDefaultInputDeviceID()`.
+- `struct AudioAvailabilityTracker` — pure came/went transition logic
+  behind the transcript announcements; changing the configured UID
+  rebaselines silently. Pinned by `AudioDeviceTests`.
+
+## B. AppConfig
+
+`audioInputUID: String?` and `audioOutputUID: String?` (nil = system
+default), tolerant optional-string decode like every other optional field.
+
+## C. SpeechService — chosen microphone
+
+`var preferredInputDeviceID: (() -> AudioDeviceID?)?` (set by AppState).
+`startListening()` resolves it and points the engine's input unit at the
+device via `kAudioOutputUnitProperty_CurrentDevice` BEFORE reading the tap
+format (the format follows the device); nil or an unplugged pick resolves
+to the system default (queried explicitly, so a previous override never
+sticks). Best-effort: a failed set leaves the current device, and the
+existing 0 Hz format guard still protects. Resolution happens per press —
+that is what makes unplug-fallback and auto-restore automatic.
+
+## D. TTSService — routed speech output
+
+`var preferredOutputDeviceID: (() -> AudioDeviceID?)?` (set by AppState).
+When it resolves, `speak(...)` takes the routed path; otherwise the plain
+system-route path is byte-for-byte unchanged.
+
+Routed path (all spike-verified): a DEDICATED `renderSynthesizer` renders
+via `write(_:toBufferCallback:)` (a shared instance cannot distinguish
+renders from speech — `write` fires the same delegate callbacks and leaves
+`isSpeaking` false); a locked `RenderCollector` gathers PCM buffers off the
+callback's undocumented thread and completes idempotently at the FIRST
+zero-length end marker (it arrives twice); buffers in any format other than
+float32/deinterleaved (untested premium/personal voices) are normalized via
+`AVAudioConverter` BEFORE the engine sees them — `connect(...)` raises an
+uncatchable NSException on refused formats, so do/catch cannot be that
+guard; playback goes collect-then-play through a fresh `AVAudioEngine` +
+`AVAudioPlayerNode` connected with the normalized format (the mixer
+resamples) and bound to the device via `kAudioOutputUnitProperty_CurrentDevice`
+before `engine.start()`; the last buffer's `.dataPlayedBack` completion
+ends the utterance. Failures (device vanished at start, conversion failure)
+fall back to a default-route engine or resolve `isSpeaking`/`onFinished`
+honestly. A device unplugged MID-playback is covered by
+`recoverIfEngineDied()` — AppState calls it on every device-list change and
+it resolves the utterance when the routed engine halted on its own (whether
+the self-halt fires pending completions is undocumented; the hook makes
+wedging impossible either way — physical-unplug verification pending).
+`stop()` bumps the render generation (stale callbacks no-op), cancels the
+render with an UNCONDITIONAL `stopSpeaking` (`isSpeaking` stays false
+during renders, so guarding on it would orphan the render), and tears the
+engine down. `isSpeaking`/`onFinished` semantics are unchanged for callers.
+
+## E. AppState + Settings
+
+- `let audioDevices = AudioDeviceStore()`, started with the other services
+  and observed for derived updates; closures wire the two services'
+  preferred-device resolution to config + store.
+- Transcript announcements on a chosen device's unplug/return (via
+  `AudioAvailabilityTracker`; selection changes are silent). The trackers
+  are baselined at init and re-baselined by `syncAudioAvailabilityBaseline`
+  (keyed on the two UIDs, run from the derived-update path) whenever the
+  selection changes — without that, the first transition after launch or
+  after a pick would be swallowed as a rebaseline.
+- Settings → Voice gains an **Audio Devices** section: Microphone and
+  Speech Output pickers ("System Default" + live device lists, with a
+  "(Disconnected device)" placeholder entry so an unplugged pick stays
+  visible instead of snapping back).
+
+Premium/enhanced-voice render formats remain unverified (none installed on
+the dev machine); the fallback chain covers a format the engine refuses.

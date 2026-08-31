@@ -1,6 +1,7 @@
 import Foundation
 import Speech
 import AVFAudio
+import AudioToolbox
 
 /// Push-to-talk speech-to-text service. Owns the audio engine tap and the
 /// SFSpeechRecognizer request/task lifecycle, tearing both down fully on
@@ -15,6 +16,16 @@ final class SpeechService: ObservableObject {
 
     private var localeID: String = "en-US"
     private var onDevice: Bool = false
+
+    /// Resolves the user's chosen microphone to a live device id at press
+    /// time; nil (or an unplugged pick) means the system default. Set by
+    /// AppState so this service never has to know about config or the
+    /// device store.
+    var preferredInputDeviceID: (() -> AudioDeviceID?)?
+
+    /// The device id the engine's input unit was last pointed at, so the
+    /// override is only rewritten when the choice actually changed.
+    private var appliedInputDeviceID: AudioDeviceID?
 
     private var recognizer: SFSpeechRecognizer?
     private let audioEngine = AVAudioEngine()
@@ -108,6 +119,7 @@ final class SpeechService: ObservableObject {
         self.request = newRequest
 
         let inputNode = audioEngine.inputNode
+        applyPreferredInputDevice(to: inputNode)
         let format = inputNode.outputFormat(forBus: 0)
 
         // No usable input device leaves the node reporting a 0 Hz / 0-channel
@@ -173,6 +185,31 @@ final class SpeechService: ObservableObject {
                     }
                 }
             }
+        }
+    }
+
+    /// Points the engine's input unit at the user's chosen microphone before
+    /// the tap goes in — the tap format follows the device. When nothing is
+    /// chosen and nothing was ever pinned, the unit is left alone so it keeps
+    /// tracking live system-default changes (pinning the default explicitly
+    /// would freeze it); after a pin, "no choice" re-applies the CURRENT
+    /// default each press, which both undoes the pin and self-heals a unit
+    /// reset out from under us. Best-effort: a failed set leaves the current
+    /// device, and the 0 Hz format guard below still protects.
+    private func applyPreferredInputDevice(to inputNode: AVAudioInputNode) {
+        let preferred = preferredInputDeviceID?()
+        if preferred == nil && appliedInputDeviceID == nil { return }
+        let target = preferred ?? AudioDeviceStore.systemDefaultInputDeviceID()
+        guard var deviceID = target, let audioUnit = inputNode.audioUnit else { return }
+        let status = AudioUnitSetProperty(
+            audioUnit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &deviceID,
+            UInt32(MemoryLayout<AudioDeviceID>.size))
+        if status == noErr {
+            appliedInputDeviceID = deviceID
         }
     }
 
