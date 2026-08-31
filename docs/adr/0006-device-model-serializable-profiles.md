@@ -4,8 +4,8 @@ Date: 2026-08-30
 
 ## Status
 
-Proposed (gates #14; consumers: #63, #67, #70, #31, the M7 phone track, the
-M4 Rust core)
+Accepted (2026-08-30; gates #14; consumers: #63, #67, #70, #31, the M7 phone
+track, the M4 Rust core)
 
 ## Context
 
@@ -43,6 +43,26 @@ Nothing in the serialized form uses Swift-only constructs — no enums with
 associated values, no GameController types — so the identical schema serves
 protocol `registerDevice` (#67), bundled HID profile files (#70), the phone,
 and the Rust core.
+
+## Amendments (2026-08-30, with the keystone implementation)
+
+- The no-Swift-only-constructs rule is scoped to **profiles and
+  descriptors**. Mapping *values* keep `ControllerAction`'s pre-existing
+  Codable shape (including associated values) until the published JSON
+  schema (#71) freezes a language-neutral `{intent, params}` encoding —
+  changing the value encoding and the storage shape in one step would
+  double the migration surface for consumers that don't exist yet.
+- Staging: string-typed `(profileId, controlId, phase)` emission from input
+  services lands with the second input source (#67/#70). Until then the
+  DualSense service speaks the enum whose raw values *are* the control ids,
+  and AppState adapts at the single resolution point.
+- Hold semantics: the shipped single-device rule is **first-assert-wins** —
+  a second hold press while one is active is ignored, and the control that
+  started the recorder is the one that can stop it. Cross-device
+  arbitration is #67's decision; the original "last assert wins" wording is
+  superseded by this note until then.
+- `ControlDescriptor` capability hints arrive with the schema draft (#71);
+  the field is deliberately absent until a consumer needs it.
 
 ## Consequences
 

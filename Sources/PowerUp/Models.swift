@@ -118,6 +118,47 @@ enum ControllerAction: Codable, Hashable {
     var isHoldAction: Bool { self == .pushToTalk || self == .pushToTalkDraft }
 }
 
+// MARK: - Device profiles (ADR 0006)
+
+/// One control on a device, described as data. String ids are the stable
+/// identity, so profiles can cross the wire (protocol device registration),
+/// live in bundled JSON files (HID profiles), and be consumed by non-Swift
+/// cores — never Swift enum cases.
+struct ControlDescriptor: Codable, Equatable, Hashable, Identifiable {
+    enum Kind: String, Codable { case button, hold, axis, key }
+
+    let id: String
+    var kind: Kind
+    var displayName: String
+    var symbolName: String
+}
+
+/// A device described as data: identity plus its controls. The DualSense
+/// ships as the first built-in profile; HID and virtual devices add theirs
+/// as data later.
+struct DeviceProfile: Codable, Equatable, Identifiable {
+    let id: String
+    var displayName: String
+    var controls: [ControlDescriptor]
+
+    static let dualSenseID = "dualsense"
+
+    /// The built-in profile carrying today's DualSense controls. Descriptor
+    /// values mirror `ControllerButton`'s display metadata, so the serialized
+    /// profile and the Swift enum can never disagree.
+    static let dualSense = DeviceProfile(
+        id: dualSenseID,
+        displayName: "DualSense",
+        controls: ControllerButton.allCases.map {
+            ControlDescriptor(id: $0.rawValue, kind: .button,
+                              displayName: $0.displayName, symbolName: $0.symbolName)
+        }
+    )
+}
+
+/// controlId → action; stored per profile id in `AppConfig.deviceMappings`.
+typealias DeviceMapping = [String: ControllerAction]
+
 // MARK: - AppConfig
 
 struct AppConfig: Codable, Equatable {
@@ -162,7 +203,41 @@ struct AppConfig: Codable, Equatable {
     var recentProjectDirs: [String]       // most-recent-first, capped; Cycle Project steps through it
     var sessionIDsByProject: [String: String]  // project path -> resumable session id
 
-    var mapping: [ControllerButton: ControllerAction]
+    /// The mapping truth: profile id → (control id → action). The DualSense
+    /// lives under `DeviceProfile.dualSenseID`; future devices add their own
+    /// entries without touching this shape (ADR 0006).
+    var deviceMappings: [String: DeviceMapping]
+
+    /// Compatibility view of the DualSense profile's mapping, keyed by the
+    /// enum. Reads and writes route to `deviceMappings`, so there is exactly
+    /// one source of truth and every existing call site keeps working.
+    var mapping: [ControllerButton: ControllerAction] {
+        get {
+            var out: [ControllerButton: ControllerAction] = [:]
+            for (controlID, action) in deviceMappings[DeviceProfile.dualSenseID] ?? [:] {
+                if let button = ControllerButton(rawValue: controlID) { out[button] = action }
+            }
+            return out
+        }
+        set {
+            // Merge, don't replace: enum-keyed writes carry full button
+            // semantics (a button absent from newValue is unmapped), but
+            // control ids that aren't buttons (a future axis, a hand-added
+            // entry) must survive a bridge edit untouched.
+            var merged = deviceMappings[DeviceProfile.dualSenseID] ?? [:]
+            for key in merged.keys where ControllerButton(rawValue: key) != nil {
+                merged.removeValue(forKey: key)
+            }
+            for (button, action) in newValue { merged[button.rawValue] = action }
+            deviceMappings[DeviceProfile.dualSenseID] = merged
+        }
+    }
+
+    /// The action mapped to (profile, control); `.none` when unmapped. The
+    /// single resolution point every input surface routes through.
+    func action(onProfile profileID: String, control controlID: String) -> ControllerAction {
+        deviceMappings[profileID]?[controlID] ?? .none
+    }
 
     // MARK: Fixed option sets
 
@@ -281,8 +356,15 @@ struct AppConfig: Codable, Equatable {
             listenerToken: "",
             recentProjectDirs: [],
             sessionIDsByProject: [:],
-            mapping: defaultMapping()
+            deviceMappings: defaultDeviceMappings()
         )
+    }
+
+    /// The stored default: the DualSense profile carrying `defaultMapping()`
+    /// keyed by control id.
+    static func defaultDeviceMappings() -> [String: DeviceMapping] {
+        [DeviceProfile.dualSenseID:
+            Dictionary(uniqueKeysWithValues: defaultMapping().map { ($0.key.rawValue, $0.value) })]
     }
 
     static func defaultMapping() -> [ControllerButton: ControllerAction] {
@@ -320,7 +402,12 @@ struct AppConfig: Codable, Equatable {
         case controlMode, remoteTargetKind, remoteCmuxWorkspace, remoteCmuxSurface
         case remoteAppBundleID, remoteCmuxPassword, remoteAutoSubmit, listenerPort, listenerToken
         case recentProjectDirs, sessionIDsByProject
-        case mapping
+        case deviceMappings
+    }
+
+    /// Keys older builds wrote that the tolerant decoder still reads.
+    fileprivate enum LegacyCodingKeys: String, CodingKey {
+        case mapping    // [ControllerButton: ControllerAction], pre-ADR-0006
     }
 }
 
@@ -390,8 +477,49 @@ extension AppConfig {
             listenerToken: value(.listenerToken, fallback.listenerToken),
             recentProjectDirs: value(.recentProjectDirs, fallback.recentProjectDirs),
             sessionIDsByProject: value(.sessionIDsByProject, fallback.sessionIDsByProject),
-            mapping: value(.mapping, fallback.mapping)
+            deviceMappings: {
+                // New shape wins outright when present, decoded per-entry
+                // tolerantly (house rule: unknown types are ignored) — one
+                // unrecognized action, e.g. written by a newer build, drops
+                // that one binding, never the profile or the tree.
+                // Otherwise migrate the legacy button-keyed mapping
+                // losslessly into the DualSense profile. Either way
+                // ConfigStore keeps a one-time backup before the first save
+                // rewrites a file lossily. Neither key → defaults.
+                if let raw = ((try? container.decodeIfPresent(
+                        [String: TolerantDeviceMapping].self, forKey: .deviceMappings)) ?? nil) {
+                    return raw.compactMapValues(\.value)
+                }
+                let legacy = try? decoder.container(keyedBy: AppConfig.LegacyCodingKeys.self)
+                if let old = ((try? legacy?.decodeIfPresent(
+                        [ControllerButton: ControllerAction].self, forKey: .mapping)) ?? nil) {
+                    return [DeviceProfile.dualSenseID:
+                        Dictionary(uniqueKeysWithValues: old.map { ($0.key.rawValue, $0.value) })]
+                }
+                return fallback.deviceMappings
+            }()
         )
+    }
+}
+
+/// Per-entry tolerant wrappers for `deviceMappings`: a malformed or unknown
+/// action (written by a newer build, or hand-edited) drops that one binding —
+/// never the profile, never the whole tree.
+private struct TolerantAction: Decodable {
+    let value: ControllerAction?
+    init(from decoder: Decoder) {
+        value = try? ControllerAction(from: decoder)
+    }
+}
+
+private struct TolerantDeviceMapping: Decodable {
+    let value: DeviceMapping?
+    init(from decoder: Decoder) {
+        guard let entries = try? [String: TolerantAction](from: decoder) else {
+            value = nil // the profile's value isn't even an object — drop it
+            return
+        }
+        value = entries.compactMapValues(\.value)
     }
 }
 

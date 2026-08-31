@@ -384,7 +384,12 @@ final class AppState: ObservableObject {
     // MARK: - Button dispatch (device layer → intents)
 
     private func handleButtonDown(_ button: ControllerButton) {
-        let action = configStore.config.mapping[button] ?? .none
+        // Resolve through the (profile, control) mapper — the same path every
+        // future input surface (HID profiles, virtual devices) routes through.
+        // The DualSense service still speaks the enum; its control ids are the
+        // enum's raw values.
+        let action = configStore.config.action(onProfile: DeviceProfile.dualSenseID,
+                                               control: button.rawValue)
         if action.isHoldAction {
             // One hold at a time: a second hold press of either kind while one is
             // already running is ignored, so the button that started the recorder

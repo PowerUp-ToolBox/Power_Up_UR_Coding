@@ -1719,3 +1719,77 @@ DualSense-gated — `rumble(...)` is gated on `controller.haptics` (not
 `setLight(...)` is likewise a no-op only when `controller.light == nil`.
 Any pad exposing `GCDeviceHaptics` (e.g. Xbox pads on macOS 11+) rumbles.
 Only the touchpad button remains genuinely DualSense-only.
+
+---
+
+# v2.4 addendum — device profiles: the (profile, control) → action keystone
+
+Supersedes anything above where it conflicts. Implements the
+storage/resolution keystone of ADR 0006 (#63, #62, and #14's first half —
+string-typed event emission from input services lands with the second input
+source, #67/#70, per the ADR's amendments); zero visible behavior change.
+
+## A. Model types (Models.swift)
+
+- `struct ControlDescriptor: Codable, Equatable, Hashable, Identifiable`
+  — `{ id: String, kind: Kind (button|hold|axis|key), displayName: String,
+  symbolName: String }`. String ids are the stable identity; never Swift
+  enum cases in serialized form.
+- `struct DeviceProfile: Codable, Equatable, Identifiable`
+  — `{ id: String, displayName: String, controls: [ControlDescriptor] }`,
+  plus `static let dualSenseID = "dualsense"` and `static let dualSense`,
+  the built-in profile whose descriptors mirror `ControllerButton`'s
+  display metadata (ids are the enum raw values), so the serialized profile
+  and the enum can never disagree.
+- `typealias DeviceMapping = [String: ControllerAction]` (controlId →
+  action).
+
+## B. AppConfig storage
+
+- The stored mapping truth is now
+  `var deviceMappings: [String: DeviceMapping]` (profileId → controlId →
+  action); the on-disk key is `deviceMappings`, keyed objects all the way
+  down. `mapping` remains as a **computed** compatibility view of the
+  DualSense profile (get/set bridges to `deviceMappings`), so every
+  existing call site (`MappingView`, legend, hints,
+  `resetMappingToDefault`) keeps working against one source of truth.
+- `static func defaultDeviceMappings()` wraps the pinned
+  `defaultMapping()` under the dualsense profile id.
+- Resolution goes through
+  `func action(onProfile: String, control: String) -> ControllerAction`
+  (`.none` when unmapped) — the single point every input surface routes
+  through; `AppState.handleButtonDown` now resolves via it with
+  `(DeviceProfile.dualSenseID, button.rawValue)`.
+
+## C. Migration (tolerant decoder + ConfigStore)
+
+- Decoding: a `deviceMappings` key wins outright when present, and is read
+  **per-entry tolerantly** — an unrecognized action (a newer build's case,
+  a hand-edit) drops that one binding, a malformed profile value drops that
+  one profile, never the whole tree. Otherwise a legacy `mapping` key
+  (`[ControllerButton: ControllerAction]`, read via a separate
+  `LegacyCodingKeys`) migrates losslessly into the dualsense profile;
+  neither key → defaults. Encoding writes only the new shape.
+- `ConfigStore.backupConfigBeforeLossyLoadIfNeeded(at:data:)` (internal,
+  URL-injected for tests) copies `config.json` once to
+  `config.pre-profiles.json` before the first save can rewrite it lossily —
+  triggered by the legacy shape (migration) or by a `deviceMappings` whose
+  strict decode fails (entries would be dropped) — so a botched migration
+  or app downgrade can always recover the user's bindings.
+- The `mapping` bridge setter merges over the stored dualsense entry:
+  button-keyed writes keep full button semantics (an absent button is
+  unmapped), while non-button control ids under the profile survive bridge
+  edits untouched.
+- Pinned by `DeviceProfileTests` (profile↔enum agreement, lossless
+  migration incl. parameterized `sendPrompt`, new-key-wins, encode shape,
+  foreign-profile round-trip, per-entry tolerance, bridge write-through and
+  foreign-id preservation, backup triggers incl. once-only) and the updated
+  `AppConfigTests.testMappingEncodesAsKeyedObject`.
+
+## D. Hold semantics (unchanged, recorded)
+
+One hold at a time, owned by the control that started it: a second hold
+press while one is active is ignored, and only the recorded control's
+release ends the capture (`pttHoldButton` logic is unchanged). Cross-device
+arbitration (several devices asserting holds) is deliberately deferred to
+the virtual-device work (#67), which introduces the second input source.

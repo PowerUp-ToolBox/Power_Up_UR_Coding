@@ -34,6 +34,7 @@ final class ConfigStore: ObservableObject {
         }
         do {
             let data = try Data(contentsOf: url)
+            backupConfigBeforeLossyLoadIfNeeded(at: url, data: data)
             let decoder = JSONDecoder()
             let decoded = try decoder.decode(AppConfig.self, from: data)
             return decoded
@@ -42,6 +43,35 @@ final class ConfigStore: ObservableObject {
             backupCorruptFile(at: url)
             return AppConfig.defaultConfig()
         }
+    }
+
+    /// A config the next save would rewrite lossily gets copied once first,
+    /// so the user's bindings always stay recoverable on disk. Two triggers:
+    /// (1) a pre-ADR-0006 file whose button-keyed `mapping` is about to be
+    /// migrated into `deviceMappings`; (2) a `deviceMappings` containing
+    /// entries this build cannot represent (a newer build's action, a
+    /// hand-edit) that the tolerant decoder will drop. Internal, URL-injected,
+    /// so tests can exercise it against a temp directory.
+    nonisolated static func backupConfigBeforeLossyLoadIfNeeded(at url: URL, data: Data) {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        let lossy: Bool
+        if let subtree = object["deviceMappings"] {
+            lossy = !deviceMappingsDecodeStrictly(subtree)
+        } else {
+            lossy = object["mapping"] != nil    // legacy shape → migration
+        }
+        guard lossy else { return }
+        let backupURL = url.deletingPathExtension().appendingPathExtension("pre-profiles.json")
+        guard !FileManager.default.fileExists(atPath: backupURL.path) else { return }
+        try? FileManager.default.copyItem(at: url, to: backupURL)
+    }
+
+    /// True when every profile and action in the subtree decodes exactly —
+    /// i.e. the tolerant decoder would drop nothing.
+    private nonisolated static func deviceMappingsDecodeStrictly(_ subtree: Any) -> Bool {
+        guard JSONSerialization.isValidJSONObject(subtree),
+              let data = try? JSONSerialization.data(withJSONObject: subtree) else { return false }
+        return (try? JSONDecoder().decode([String: DeviceMapping].self, from: data)) != nil
     }
 
     private static func backupCorruptFile(at url: URL) {

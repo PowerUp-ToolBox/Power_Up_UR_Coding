@@ -82,12 +82,16 @@ final class AppConfigTests: XCTestCase {
     }
 
     func testMappingEncodesAsKeyedObject() throws {
+        // Since ADR 0006 the stored shape is deviceMappings:
+        // {profileId: {controlId: action}} — keyed objects all the way down.
         let config = AppConfig.defaultConfig()
         let data = try JSONEncoder().encode(config)
         let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
-        let mapping = try XCTUnwrap(root["mapping"] as? [String: Any],
-                                    "mapping must encode as {button: action}, not a flat array")
-        XCTAssertNotNil(mapping["r2"])
+        let profiles = try XCTUnwrap(root["deviceMappings"] as? [String: Any],
+                                     "deviceMappings must encode as {profileId: …}")
+        let dualsense = try XCTUnwrap(profiles[DeviceProfile.dualSenseID] as? [String: Any],
+                                      "a profile's mapping must encode as {controlId: action}, not a flat array")
+        XCTAssertNotNil(dualsense["r2"])
     }
 
     // MARK: Tolerant decoding

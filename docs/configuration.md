@@ -18,7 +18,10 @@ Under the hood, configuration is stored as JSON at:
 You normally never need to touch this file directly — it's just there for
 backup/inspection. If it ever becomes corrupted, PowerUp automatically backs
 it up to `config.json.bak` and starts fresh from defaults rather than
-crashing.
+crashing. Separately, the first time an app update needs to rewrite the file
+in a newer shape (for example the button-mapping format change), PowerUp
+keeps a one-time copy of the old file as `config.pre-profiles.json`, so your
+bindings are always recoverable.
 
 ## How sessions & resume work
 
