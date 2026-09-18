@@ -9,6 +9,12 @@ interrupt, send a prompt, …). It exists so new devices and surfaces can be
 built in any language without touching PowerUp's Swift internals
 ([DEVELOPMENT.md §3.1](../DEVELOPMENT.md), [ADR 0003](adr/0003-protocol-transport-websocket-json.md)).
 
+**Scope note (2026-09-17).** This is the **local plugin API**: it binds to
+127.0.0.1 only, and that is deliberate. Remote clients such as a phone app
+need the transport-trust work in ADR 0010, which is deferred; nothing here
+should be read as a phone feature. See ADR 0012 for where the protocol sits
+in the architecture (beside the core, not between an app and its own logic).
+
 **Version: 0 (pre-1.0).** The protocol may change incompatibly between app
 versions until v1; the `hello`/`welcome` exchange carries the version so
 mismatches fail loudly, not weirdly.

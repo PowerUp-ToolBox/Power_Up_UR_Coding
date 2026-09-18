@@ -4,7 +4,7 @@ Date: 2026-08-30
 
 ## Status
 
-Proposed (resolves #51)
+Superseded by ADR 0012 (2026-09-17). Was: Proposed (resolves #51)
 
 ## Context
 

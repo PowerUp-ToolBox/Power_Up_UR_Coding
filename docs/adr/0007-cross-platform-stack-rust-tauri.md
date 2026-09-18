@@ -4,7 +4,7 @@ Date: 2026-08-30
 
 ## Status
 
-Proposed (resolves #49)
+Accepted with amendments (2026-09-17; resolves #49; narrowed by ADR 0012)
 
 ## Context
 
@@ -30,6 +30,24 @@ ported (fallback scope: #89).
 deliver a concrete blocker — tray + global-shortcut behavior on all three
 OSes, or WebView parity on Linux — after a time-boxed spike, recorded here
 as an amendment if it happens.
+
+## Amendment (2026-09-17)
+
+Three points above are revised by ADR 0012 and the grilling session that
+produced it:
+
+- The Rust core is a **library compiled into every OS app, including
+  macOS**, not "a second client" of the protocol. The wire protocol stays for
+  local plugins and scripts; it is not the seam between an app and its own
+  logic.
+- The Claude stream-json parser **is ported**. It is the harness the
+  maintainer uses daily and the best-tested pure code in the repository;
+  leaving it behind would make ACP a hard dependency on Windows.
+- **Tauri v2 is confirmed** as the single UI codebase for Windows and Linux;
+  no command-line frontend is planned. The Electron fallback clause stands.
+- The `powerup-server` and `powerup-devices` crates are deferred to the
+  "new devices" stage, which comes after Windows and Linux ship with the
+  DualSense and the keyboard.
 
 ## Consequences
 

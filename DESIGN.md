@@ -2010,3 +2010,108 @@ before. Pinned by `StatusDerivationTests`.
   into the remote target (no Enter); locally it lands in the prompt box.
 - No protocol change: voice-capture intents remain local-only
   (IntentMapper's protocol vocabulary is unchanged).
+
+---
+
+# v2.7 addendum — vocabulary, device slots, and hold semantics (contract only)
+
+Supersedes anything above where it conflicts. Recorded on 2026-09-17 from a
+design session; the vocabulary is fixed in `CONTEXT.md`, the decisions in
+ADR 0012 (core library, per-OS UI) and ADR 0013 (three device slots). This
+addendum is the contract for the next code change; **no code has moved yet.**
+Implement it as step 5 of plan stage 1, with tests, before any logic
+migrates into the Rust core.
+
+## A. Renames (Models.swift, Intent.swift)
+
+- `enum ControllerAction` → `enum Action`. Every case, its `displayName`,
+  its Codable shape (`{"approve":{}}`, `{"sendPrompt":{"_0":"…"}}`) and
+  `isHoldAction` are unchanged, so on-disk `config.json` is byte-identical.
+  Keep `typealias ControllerAction = Action` marked `@available(*,
+  deprecated)` for one release so out-of-tree callers get a warning, not a
+  break; delete it in the release after.
+- `typealias DeviceMapping = [String: Action]`;
+  `IntentMapper.intent(for action: Action, phase: ControlPhase)`;
+  `AppConfig.action(onProfile:control:) -> Action`.
+- `ControlDescriptor.Kind` loses `hold`: `enum Kind: String, Codable { case
+  button, axis, key }`. Whether an action holds is a property of the
+  **action** (`isHoldAction`), never of the control. Decoding tolerates a
+  legacy `"hold"` value by mapping it to `.button`; encoding never writes
+  it. No shipped profile used it.
+- `ControllerButton` stays as the DualSense profile's display-metadata
+  source; nothing else is renamed in this addendum.
+
+## B. Device slots (AppConfig, ControllerService, AudioDeviceStore)
+
+Three slots, each holding at most one device (ADR 0013). Anything not in a
+slot is ignored, never merged.
+
+```swift
+// AppConfig (Codable, defaults shown)
+var controllerDeviceID: String?   // nil = Automatic; else a ControllerService instance id
+var audioInputUID: String?        // unchanged from v2.5 — the Input slot
+var audioOutputUID: String?       // unchanged from v2.5 — the Output slot
+
+// ControllerService
+struct ConnectedController: Identifiable, Equatable {
+    let id: String            // stable per connection: vendor/product + GCController identity
+    let profileID: String     // "dualsense" today; "xbox" / "generic-gamepad" in plan stage 4
+    let displayName: String
+}
+@Published private(set) var connected: [ConnectedController]
+@Published private(set) var active: ConnectedController?   // the Controller slot
+```
+
+- **Automatic** (`controllerDeviceID == nil`): the most recently connected
+  controller fills the slot; when it disconnects, the next most recent
+  takes over. An explicit id pins the slot to that device; if it is not
+  connected the slot is empty (nothing responds) until it returns, and the
+  Settings picker shows it greyed as "not connected". Input and Output keep
+  v2.5's rule: chosen UID, else the system default, hot-plug safe.
+- `ControllerService` delivers button events, light and haptic writes, and
+  battery for the **active** controller only. Other connected pads are
+  enumerated for the picker and otherwise inert: no events, no light, no
+  low-battery warning.
+- `AppState` continues to resolve through
+  `config.action(onProfile: active.profileID, control: id)`; no new
+  dispatch path.
+- The host keyboard and mouse are outside the slot model: the v2.6 local
+  NSEvent monitor and mic button keep working regardless of the slot's
+  contents.
+
+## C. Hold semantics (replaces v2.4 §D and the v2.6 "reverse direction" note)
+
+- **No cross-device arbitration.** Only the active controller can start a
+  hold, so ownership is the control that started it, as today
+  (`pttHoldButton`).
+- **Two holds on the active controller cancel both.** If a second
+  hold-mapped control is pressed while a hold capture is active, the
+  capture ends **without sending or drafting** (partial transcript
+  discarded), the owner clears, and the pad gets the error haptic
+  (`0.9/60 ms`). Neither control's later release does anything. The
+  existing trigger press threshold is unchanged so a brushed L2/R2 does not
+  cancel a dictation.
+- A hold press while a **toggle-started** capture (keyboard, mic button)
+  is active is still ignored (v2.6), not a cancel: the pad never owned that
+  capture.
+- `forceReleaseHold()` keeps its v2.6 narrowing (controller-owned holds
+  only) and also fires when the active controller changes slot.
+- Pinned by new tests: cancel-both discards and pulses; toggle-started
+  capture survives a hold press; slot change releases a controller hold.
+
+## D. Profiles (ADR 0006, amended)
+
+- Profiles describe **controllers** only. The Input and Output slots are
+  plain audio-device picks with no profile.
+- The profile JSON reserves two optional objects that this version neither
+  writes nor interprets: `match` (how to recognise the hardware: vendor id,
+  product id, product category, name pattern) and `report` (raw HID report
+  layout, format to be defined by us later). Codable ignores unknown keys
+  already; this note is so nobody claims those names for something else.
+
+## E. Protocol v0 (docs/protocol.md)
+
+Unchanged. Its role is the **local plugin API** for scripts and plugins on
+the same machine; remote clients (phones) are deferred with ADR 0010. The
+`intent` vocabulary, the loopback bind, the token and the Origin policy are
+not touched by this addendum.

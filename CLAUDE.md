@@ -6,6 +6,8 @@ no third-party dependencies.
 
 ## The documents
 
+- **CONTEXT.md** — the glossary. Use its terms (Device, Controller, Slot,
+  Action, Hold, Core, Platform adapter, …) in code, tests, issues and docs.
 - **DESIGN.md** — binding implementation contract for the current macOS app.
 - **DEVELOPMENT.md** — the cross-platform/multi-device/multi-harness roadmap:
   architecture direction, workstreams, milestones, open decisions (ADR-gated).
@@ -36,7 +38,7 @@ together if the CLI genuinely changes.
 
 ```sh
 swift build            # debug build
-swift test             # 66+ unit tests, no hardware needed
+swift test             # 195 unit tests, no hardware needed
 ./scripts/build.sh     # release build → build/PowerUp.app (assembled + signed)
 open build/PowerUp.app # ALWAYS launch as a bundle — TCC permissions track
                        # bundle identity; running the raw binary breaks them
@@ -74,3 +76,17 @@ open build/PowerUp.app # ALWAYS launch as a bundle — TCC permissions track
   `codex-acp`) from tests or ad-hoc verification — they hit the network and
   run under the user's real agent logins. ACPAdapter is tested against the
   scripted mock agent (see `ACPAdapterTests`).
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in this repo's GitHub Issues (`gh` CLI). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` at the repo root plus `docs/adr/`. See `docs/agents/domain.md`.

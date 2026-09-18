@@ -4,7 +4,7 @@ Date: 2026-08-30
 
 ## Status
 
-Proposed — gated on the iOS cert-trust spike (resolves #75; consumed by #76)
+Deferred (2026-09-17): the phone-as-remote track is off the roadmap until the core library and the Windows/Linux app ship (plan stage 5). Was: Proposed — gated on the iOS cert-trust spike (resolves #75; consumed by #76)
 
 ## Context
 

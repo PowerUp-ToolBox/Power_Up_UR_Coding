@@ -142,7 +142,7 @@ flowchart LR
   someone's ESP32 gizmo) can be written in any language without touching the
   core. This is how the community scales past the maintainers.
 
-### 3.2 Technology direction (proposed — needs an ADR)
+### 3.2 Technology direction (decided — ADR 0007 as amended, ADR 0012)
 
 Research across stacks (Tauri, Electron, Flutter, Wails, Avalonia, native
 shells) points to **Rust core + Tauri v2 UI** for the cross-platform app:
@@ -158,10 +158,15 @@ shells) points to **Rust core + Tauri v2 UI** for the cross-platform app:
 - Electron is the fallback if the community turns out JS-only; Flutter and
   Wails were assessed and rejected (thin tray/HID ecosystems).
 
-**The Swift app is not thrown away.** It is the reference implementation and
-remains *the* macOS product until the cross-platform app reaches parity. Its
-protocol knowledge (stream-json quirks, hook payloads, cmux, TCC dances) is
-codified in DESIGN.md and the test suite — that's what makes the port tractable.
+**The shape, decided 2026-09-17 (ADR 0012):** the Rust core is a **library**
+compiled into every OS app, including the macOS one — not a daemon, and not
+a second client of the protocol. Each OS ships its own UI (SwiftUI on macOS;
+one Tauri v2 codebase for Windows and Linux) and its own platform adapters
+(device input, speech, TTS, audio devices, the injector). The Swift app
+keeps its UI and adapters permanently; its orchestration logic migrates into
+the core module by module, each move gated on the shared fixtures. The
+protocol stays as the local plugin API. Vocabulary lives in `CONTEXT.md`;
+the staged plan lives in `PLAN-any-device-any-os.md`.
 
 ### 3.3 Per-OS reality check (from the research)
 
@@ -202,13 +207,19 @@ criteria: switch harness in Settings, same controller/voice experience.
 **Status: in progress** — ACP adapter and Codex-via-ACP shipped; remaining:
 the Codex-native adapter (#9) and cost normalization (#12).
 
-### M4 — Cross-platform core
-Rust core + Tauri shell reaches DualSense-parity on Windows and Linux/X11 with
-Claude Code + one more harness. macOS Swift app still the mac flagship.
+### M4 — Core library + Windows/Linux app
+Stage 1: the macOS app's four untested areas get fixtures and the v2.7
+contract lands. Stage 2: logic migrates into the Rust core library behind
+the unchanged SwiftUI. Stage 3: one Tauri v2 app for Windows 11 and Linux/X11
+with the DualSense, keyboard and a headset mic, driving Claude Code, Codex
+and opencode. No headless or CLI mode on any OS (ADR 0007 as amended).
 
 ### M5 — Device expansion
-Headset push-to-talk, foot pedals, macropads, Stream Deck, wake word — each as
-a plugin over the protocol, at least two contributed rather than maintainer-built.
+Xbox and keyboard (F13–F24) profiles first-party on all three OSes; a
+community profile file format (controls + match rules, `report` reserved);
+`registerDevice` over the protocol; a plugin list in Settings. Pedals,
+macropads, Stream Deck, wake word: community-built and community-tested
+(ADR 0013 fixes the three-slot model they plug into).
 
 ### M6 — Ecosystem
 Plugin discovery index (HACS-style, not an app store), device-plugin SDKs
@@ -373,7 +384,9 @@ ADR-gated choices in §7.
 ## 6. What we deliberately do NOT build
 
 - **A mobile companion app** — happy/Omnara/omg.dev own this; integrate later
-  if anything, never compete.
+  if anything, never compete. The phone-as-remote track (listener TLS, iOS
+  cert trust, ADR 0010) is deferred; the protocol endpoint stays a local
+  plugin API.
 - **In-editor structural voice editing** — Talon + Cursorless territory.
 - **Another terminal or multiplexer** — integrate cmux (and its Linux port),
   don't duplicate it.
@@ -385,13 +398,14 @@ ADR-gated choices in §7.
 | # | Decision | Leading option (from research) | Needed by |
 |---|---|---|---|
 | 1 | License | Apache-2.0 | M1 |
-| 2 | Cross-platform stack | Rust core + Tauri v2 (Electron fallback) | M4 |
+| 2 | Cross-platform stack | **Decided**: Rust core library + Tauri v2, one UI for Windows/Linux (ADR 0007 amended, ADR 0012) | M4 |
 | 3 | Harness abstraction | ACP-first + native fallbacks | M3 |
 | 4 | Claude built-in transport | Keep raw stream-json vs adopt Agent SDK | M3 |
-| 5 | Swift app's fate | Reference impl until parity, then maintenance mode | M4 |
+| 5 | Swift app's fate | **Decided**: permanent macOS UI + adapters; logic migrates into the core (ADR 0012 supersedes 0008) | M4 |
 | 6 | Protocol transport | WebSocket JSON (OBS-style) | M2 |
 | 7 | Wayland stance | Portal/uinput with consent; cmux-first on Linux | M4 |
 | 8 | Speech defaults per OS | SpeechAnalyzer / whisper.cpp / Kokoro matrix (§WS-D) | M4 |
+| 9 | Device concurrency | **Decided**: three slots (Controller / Input / Output), one device each, no arbitration (ADR 0013) | M4 |
 
 ## 8. Risks
 

@@ -4,8 +4,11 @@ Date: 2026-08-30
 
 ## Status
 
-Accepted (2026-08-30; gates #14; consumers: #63, #67, #70, #31, the M7 phone
-track, the M4 Rust core)
+Accepted (2026-08-30; gates #14; consumers: #63, #67, #70, #31, the M4 Rust
+core). Amended 2026-09-17 by ADR 0013: the "first-assert-wins, second press
+ignored" hold rule below is replaced by cancel-both, and there is no
+cross-device arbitration because only one controller is ever active. The
+phone track is deferred (ADR 0010).
 
 ## Context
 
