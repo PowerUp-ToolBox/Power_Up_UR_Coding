@@ -255,6 +255,8 @@ final class AppState: ObservableObject {
         }
         updateStatus()
 
+        installKeyMonitor()
+
         willTerminateObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification,
             object: nil,
@@ -490,11 +492,142 @@ final class AppState: ObservableObject {
 
     /// Safety net for a hold that can no longer be released the normal way —
     /// e.g. the controller disconnected between the button's down and up events.
-    /// Ends any active push-to-talk so the mic and status can never stay wedged.
+    /// Ends a CONTROLLER-owned hold so the mic and status can never stay
+    /// wedged. Deliberately scoped to `pttHoldButton != nil`: a capture
+    /// started from the mic button or the keyboard has nothing to do with the
+    /// pad, keeps its working stop affordances (mic click, ⌘D/⇧⌘D), and must
+    /// survive a pad powering off mid-dictation — ending a `.send` capture
+    /// here would fire the half-finished transcript at Claude uninvited.
     func forceReleaseHold() {
-        guard isPTTActive || pttHoldButton != nil else { return }
+        guard pttHoldButton != nil else { return }
         pttHoldButton = nil
         stopPushToTalk()
+    }
+
+    /// Toggle-style voice capture for input sources that have no press/release
+    /// pair — the on-screen mic button and the keyboard shortcuts. A click (or
+    /// key press) while idle starts a capture in `mode`; the next one ends
+    /// whatever capture is active, regardless of who started it or in which
+    /// mode. Clearing `pttHoldButton` on the way out means a controller
+    /// trigger still physically held after a keyboard stop can't end the
+    /// *next* capture when it is finally released.
+    func toggleVoiceCapture(_ mode: VoiceCaptureMode) {
+        if isPTTActive {
+            pttHoldButton = nil
+            handle(.endVoiceCapture)
+        } else {
+            // The UI disables its mic button and menu items on this same
+            // condition, but a command menu's disabled state can lag the
+            // config — the model-level guard is the one that holds.
+            guard canAcceptInput else { return }
+            handle(.beginVoiceCapture(mode))
+        }
+    }
+
+    /// True when there is somewhere for input to go: a project folder for the
+    /// built-in session, or remote mode (where input targets someone else's
+    /// session). Gates the mic button and the Voice menu items, mirroring the
+    /// composer's own rule.
+    var canAcceptInput: Bool {
+        configStore.config.projectDir != nil || isRemoteMode
+    }
+
+    /// Mouse path for a pending harness permission request — the banner's
+    /// Allow/Deny buttons, so tool approvals don't require a controller.
+    /// Routes through the same intents as ✕/○ (destructive arming included),
+    /// but no-ops when nothing is pending: a click that races the request
+    /// being resolved elsewhere must not fall through to approve()'s
+    /// "send Yes/No as text" branch.
+    func answerPendingPermission(allow: Bool) {
+        guard pendingPermission != nil else { return }
+        handle(allow ? .approve : .reject)
+    }
+
+    // MARK: - Keyboard shortcuts (local event monitor)
+
+    /// The app's keyboard shortcut vocabulary. Delivered by the NSEvent
+    /// monitor below — NOT by SwiftUI key equivalents: on macOS 26, AppKit's
+    /// key-equivalent routing into a commands-menu Button traps in
+    /// `MainActor.assumeIsolated` inside SwiftUI's `ButtonAction` (an OS bug
+    /// with macOS 14 SDK builds; the crash fires before the action closure
+    /// ever runs). The menu items keep their `.keyboardShortcut` modifiers
+    /// purely so the menu displays the glyphs; the monitor sees every key
+    /// event first and consumes ours, so that routing is never reached.
+    enum KeyboardCommand: Equatable {
+        case dictateToggle   // ⌘D
+        case talkToggle      // ⇧⌘D
+        case newSession      // ⌘N
+        case sendDraft       // ⌘↩
+        case openSettings    // ⌘, — the system item's key routing traps too
+    }
+
+    /// Pure chord → command mapping, pinned by `KeyboardCommandTests`.
+    /// `key` is `charactersIgnoringModifiers` lowercased; extra modifiers
+    /// (⌥, ⌃) make a chord not-ours so text-editing combos pass through.
+    nonisolated static func keyboardCommand(forKey key: String,
+                                            modifiers: NSEvent.ModifierFlags) -> KeyboardCommand? {
+        let chord = modifiers.intersection([.command, .shift, .option, .control])
+        if key == "d" {
+            if chord == [.command] { return .dictateToggle }
+            if chord == [.command, .shift] { return .talkToggle }
+            return nil
+        }
+        if key == "n", chord == [.command] { return .newSession }
+        if key == ",", chord == [.command] { return .openSettings }
+        // Return and keypad Enter both mean "send" under ⌘.
+        if key == "\r" || key == "\u{3}" {
+            if chord == [.command] { return .sendDraft }
+        }
+        return nil
+    }
+
+    private var keyMonitor: Any?
+
+    private func installKeyMonitor() {
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self,
+                  let key = event.charactersIgnoringModifiers?.lowercased(),
+                  let command = AppState.keyboardCommand(forKey: key, modifiers: event.modifierFlags)
+            else { return event }
+            self.perform(command)
+            return nil    // consumed — never reaches menu key-equivalent routing
+        }
+    }
+
+    private func perform(_ command: KeyboardCommand) {
+        switch command {
+        case .dictateToggle:
+            toggleVoiceCapture(.draft)
+        case .talkToggle:
+            toggleVoiceCapture(.send)
+        case .newSession:
+            newSession()
+        case .sendDraft:
+            // Mirror the composer's gate: with nowhere for input to go its
+            // send button is disabled, and ⌘↩ must not behave differently.
+            guard canAcceptInput else { return }
+            sendDraft()
+        case .openSettings:
+            openSettingsWindow()
+        }
+    }
+
+    /// Opens the Settings scene by firing the app menu's own "Settings…"
+    /// item (action → target). Every conventional route is broken on
+    /// macOS 26 for macOS 14 SDK builds — `SettingsLink` silently does
+    /// nothing, and `showSettingsWindow:` is accepted (sendAction returns
+    /// true) but never presents the window; firing the menu item's own
+    /// wiring is what the OS still honors (probe-verified 2026-08-31).
+    /// The item is found by its ⌘, key equivalent, not its localized title.
+    func openSettingsWindow() {
+        if let appMenu = NSApp.mainMenu?.items.first?.submenu,
+           let item = appMenu.items.first(where: { $0.keyEquivalent == "," }),
+           let action = item.action {
+            NSApp.sendAction(action, to: item.target, from: item)
+            return
+        }
+        // No Settings… item found (unexpected) — try the legacy selector.
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
     }
 
     // MARK: - Intent dispatch
@@ -1894,26 +2027,34 @@ final class AppState: ObservableObject {
 
     /// Single source of truth for `status`, per the design's precedence order.
     private func updateStatus() {
-        let newStatus: AppStatus
-        if !controller.isConnected {
-            newStatus = .noController
-        } else if isPTTActive {
-            newStatus = .listening
-        } else if tts.isSpeaking {
-            newStatus = .speaking
-        } else if harness.state == .working || (isRemoteMode && remoteTurnActive) {
-            // Remote mode has no process of ours to watch: the hooks bracket the
-            // turn instead (UserPromptSubmit → Stop).
-            newStatus = .thinking
-        } else {
-            newStatus = .idle
-        }
+        // Remote mode has no process of ours to watch: the hooks bracket the
+        // turn instead (UserPromptSubmit → Stop) — hence remoteTurnActive.
+        let newStatus = AppState.derivedStatus(
+            controllerConnected: controller.isConnected,
+            isPTTActive: isPTTActive,
+            isSpeaking: tts.isSpeaking,
+            isWorking: harness.state == .working || (isRemoteMode && remoteTurnActive))
 
         if newStatus != status {
             status = newStatus
             listener.broadcast(PowerUpProtocol.status(newStatus))
         }
         applyLight(for: newStatus)
+    }
+
+    /// Pure status derivation (DESIGN v2.6). Live activity outranks the
+    /// missing controller: the pad is optional — voice capture can be started
+    /// from the mic button or the keyboard, replies still speak, and turns
+    /// still run — so "No Controller" is only the *resting* state, never a
+    /// mask over what the app is doing right now.
+    nonisolated static func derivedStatus(controllerConnected: Bool,
+                                          isPTTActive: Bool,
+                                          isSpeaking: Bool,
+                                          isWorking: Bool) -> AppStatus {
+        if isPTTActive { return .listening }
+        if isSpeaking { return .speaking }
+        if isWorking { return .thinking }
+        return controllerConnected ? .idle : .noController
     }
 
     private func applyLight(for status: AppStatus) {
@@ -1930,7 +2071,13 @@ final class AppState: ObservableObject {
             color = (0.0, 0.0, 0.0)
         }
 
-        let key = "\(color.r),\(color.g),\(color.b)"
+        // The key includes connection state: with activity now outranking
+        // .noController, a pad that (re)connects mid-listening/-thinking sees
+        // no status change, so the color alone would memo-match and the fresh
+        // pad's light bar would keep its firmware default. setLight on a
+        // disconnected pad is a harmless no-op, so keying on isConnected is
+        // exactly the re-push needed.
+        let key = "\(controller.isConnected)|\(color.r),\(color.g),\(color.b)"
         guard key != lastLightKey else { return }
         lastLightKey = key
         controller.setLight(r: color.r, g: color.g, b: color.b)

@@ -1883,3 +1883,130 @@ engine down. `isSpeaking`/`onFinished` semantics are unchanged for callers.
 
 Premium/enhanced-voice render formats remain unverified (none installed on
 the dev machine); the fallback chain covers a format the engine refuses.
+
+---
+
+# v2.6 addendum — keyboard & mouse voice control (the controller is optional)
+
+Supersedes anything above where it conflicts. Motivation: the composer's mic
+circle *looked* like a button (it even had "Push to talk" help text) but had
+no action, and every voice path required a controller. The controller is now
+an accessory, not a requirement: the full loop — record, review, send — works
+from the keyboard and the mouse alone.
+
+## A. AppState — toggle-style capture
+
+```swift
+func toggleVoiceCapture(_ mode: VoiceCaptureMode)  // mic button + keyboard
+var canAcceptInput: Bool   // projectDir chosen, or remote mode
+func answerPendingPermission(allow: Bool)  // banner Allow/Deny buttons
+```
+
+- `toggleVoiceCapture` is the entry point for input sources that have no
+  press/release pair. Idle → `handle(.beginVoiceCapture(mode))`; active →
+  clear `pttHoldButton`, then `handle(.endVoiceCapture)` — ending whatever
+  capture is active, whichever source and mode started it.
+- Clearing `pttHoldButton` on a toggle-stop is deliberate: a controller
+  trigger still physically held after a keyboard stop must not end the
+  *next* capture when it is finally released (`handleButtonUp` guards on
+  `pttHoldButton == button` and then finds nothing to match).
+- The reverse direction is already covered by v2.4's "one hold at a time":
+  a hold press while a toggle-started capture is active is ignored
+  (`guard pttHoldButton == nil, !isPTTActive`).
+- `canAcceptInput` mirrors the composer's `canCompose` rule and gates the
+  mic button and the Voice menu items. `toggleVoiceCapture` also refuses to
+  *start* a capture while `!canAcceptInput` (stopping is always allowed) —
+  a command menu's disabled state can lag the config, so the model-level
+  guard is the one that holds. The UI gates make the same start/stop
+  distinction: the mic button and the menu items disable on
+  `!gate && !isPTTActive`, so the stop half of the toggle stays reachable
+  when a capture is active while the gate is false (a controller hold with
+  no project folder; a control-mode flip mid-recording).
+- `forceReleaseHold()` (the controller-disconnect safety net) is narrowed
+  to `guard pttHoldButton != nil`: it releases CONTROLLER-owned holds only.
+  A toggle-started capture has nothing to do with the pad, keeps its
+  working stop affordances, and must survive a pad powering off
+  mid-dictation — force-ending a `.send` capture there would fire the
+  half-finished transcript at the harness uninvited.
+- `answerPendingPermission(allow:)` is the mouse path for a pending harness
+  permission request: it routes through the same `.approve`/`.reject`
+  intents as ✕/○ (destructive two-press arming included) and no-ops when
+  nothing is pending, so a click racing the request's resolution can never
+  fall through to approve()'s "send Yes/No as text" branch.
+- `applyLight`'s memo key is `"\(controller.isConnected)|r,g,b"`: with
+  activity outranking `.noController`, a pad that (re)connects mid-activity
+  sees no status change, so color alone would memo-match and leave the
+  fresh pad's light bar at its firmware default. Keying on `isConnected`
+  forces the re-push (setLight while disconnected is a harmless no-op).
+
+## B. Status derivation — activity outranks the missing controller
+
+```swift
+nonisolated static func derivedStatus(controllerConnected:isPTTActive:isSpeaking:isWorking:) -> AppStatus
+```
+
+`updateStatus()` now routes through this pure function. NEW precedence:
+listening > speaking > thinking > (noController | idle). The v1 order put
+`.noController` first, which would freeze the pill on "No Controller" while
+a keyboard-started capture was recording. `.noController` is only the
+resting state. `isWorking` folds in remote turns
+(`harness.state == .working || (isRemoteMode && remoteTurnActive)`), as
+before. Pinned by `StatusDerivationTests`.
+
+## C. UI
+
+- **ComposerBar (MainView.swift)**: the `PTTIndicator` is wrapped in a
+  plain-style `Button` calling `appState.toggleVoiceCapture(.draft)`;
+  disabled (0.6 opacity) when `!canCompose`. Click to start dictating into
+  the prompt box, click again to stop — same review-then-send contract as
+  the L2 hold.
+- **PowerUpApp.swift**: a `CommandMenu("Voice")` with two items, both
+  calling `toggleVoiceCapture`: "Dictate to Prompt Box" — retitled "Dictate
+  to Remote Session" in remote mode, where that is where the words go —
+  (⌘D, `.draft`) and "Talk to Claude (Sends on Stop)" (⇧⌘D, `.send`), each
+  disabled when `!canAcceptInput && !isPTTActive`. Titles never swap
+  Start/Stop (a closed menu could show it stale); only the dictation target
+  varies.
+- **Keyboard delivery (normative)**: every app shortcut — ⌘D, ⇧⌘D, ⌘N,
+  ⌘↩, ⌘, — is performed by a local `NSEvent` keyDown monitor in AppState
+  (`KeyboardCommand` + the pure `keyboardCommand(forKey:modifiers:)`,
+  pinned by `KeyboardCommandTests`), which consumes the event. The
+  `.keyboardShortcut` modifiers on menu items exist ONLY so the menu shows
+  the glyphs: on macOS 26, AppKit's key-equivalent routing into a SwiftUI
+  commands Button traps in `MainActor.assumeIsolated` inside
+  `ButtonAction.callAsFunction` (verified crash, 2026-08-31, macOS 26.3
+  25D5087f, macOS 14 SDK build) — the monitor runs first, so that path is
+  never reached. Clicking the menu items still works normally. ⌘↩ through
+  the monitor mirrors the composer's gate (`canAcceptInput`).
+- **Opening Settings (normative)**: `AppState.openSettingsWindow()` is the
+  ONLY route — the gear button and the monitor's ⌘, both call it. It fires
+  the app menu's own "Settings…" item (found by its "," key equivalent)
+  via `sendAction(action, to: item.target, from: item)`. Probe-verified on
+  macOS 26.3 (2026-08-31): `SettingsLink` silently does nothing in
+  macOS 14 SDK builds, `showSettingsWindow:` is accepted (returns true)
+  but never presents the window, and `openSettings` does not exist in the
+  14.2 SDK — while firing the menu item's own action/target does open the
+  Settings scene. The legacy selector remains only as the no-item fallback.
+- **PermissionRequestBanner (MainView.swift)**: gains clickable **Allow**
+  (retitled **Confirm** once a destructive request is armed) and **Deny**
+  buttons calling `answerPendingPermission(allow:)`, so tool approvals
+  never require a controller. The ✕/○ hint text stays.
+- **PTTIndicator (ComponentViews.swift)**: new `isRemoteMode: Bool = false`
+  parameter so the *idle* tooltip can say "dictate into the remote session"
+  in remote mode (`isRemoteDraft` only exists once a capture runs).
+- **Sidebar (MainView.swift)**: a small `KeyboardHintsCard` (⌘D, ⇧⌘D, ⌘↩,
+  ⌘N) under the Controls card, always visible.
+- Copy: `PTTIndicator` help/accessibility now describes click-to-dictate
+  (and "click again to stop" while active); `EmptyTranscriptCard` and
+  `PairingHintCard` mention the mic button and ⌘D so a controller-less
+  launch never reads as a dead end.
+
+## D. Semantics notes
+
+- A `.send`-mode toggle capture sends the transcript when stopped — same as
+  releasing an R2 hold. The `.draft` mode is the one wired to the mic
+  button precisely so a *click* can never send anything by itself.
+- Draft captures keep all v1.8 behavior: in remote mode the text is typed
+  into the remote target (no Enter); locally it lands in the prompt box.
+- No protocol change: voice-capture intents remain local-only
+  (IntentMapper's protocol vocabulary is unchanged).

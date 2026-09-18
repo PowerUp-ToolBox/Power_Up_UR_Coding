@@ -353,6 +353,22 @@ private struct PermissionRequestBanner: View {
                 Text(pending.armed ? "✕ confirm  ·  ○ deny" : "✕ allow  ·  ○ deny")
                     .font(Theme.monoSmall)
                     .foregroundStyle(Theme.textSecondary)
+
+                // Mouse path, so a tool approval never requires a controller.
+                // Same intents as ✕/○ — a destructive request still takes two
+                // Allow clicks (arm, then confirm).
+                Button(pending.armed ? "Confirm" : "Allow") {
+                    appState.answerPendingPermission(allow: true)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .tint(pending.isDestructive ? Theme.danger : Theme.amber)
+
+                Button("Deny") {
+                    appState.answerPendingPermission(allow: false)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -468,9 +484,21 @@ private struct NewSessionButton: View {
     }
 }
 
+@MainActor
 private struct SettingsGearButton: View {
+    /// A plain Button routed through `AppState.openSettingsWindow()` instead
+    /// of `SettingsLink`: on macOS 26, SettingsLink's internal scene-open
+    /// action silently does nothing in macOS 14 SDK builds — the click lands
+    /// but Settings never appears (and `openSettings` doesn't exist in the
+    /// 14.2 SDK). DESIGN's MainView spec explicitly allows a fallback
+    /// mechanism; the working one is firing the app menu's own Settings…
+    /// item, which is what openSettingsWindow does.
+    @EnvironmentObject private var appState: AppState
+
     var body: some View {
-        SettingsLink {
+        Button {
+            appState.openSettingsWindow()
+        } label: {
             Label("Settings", systemImage: "gearshape.fill")
         }
         .help("Open PowerUp settings")
@@ -488,6 +516,8 @@ private struct SidebarPane: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 ControlsCard(showsAllButtons: $showsAllButtons)
+
+                KeyboardHintsCard()
 
                 if !controller.isConnected {
                     PairingHintCard()
@@ -593,6 +623,40 @@ private struct ControlsCard: View {
             guard !buttons.isEmpty else { return nil }
             return ControlHint(label: entry.label, buttons: buttons)
         }
+    }
+}
+
+/// Slim card under the controls: the keyboard covers the whole loop too, so
+/// the app is fully usable with no controller connected (or a broken button).
+private struct KeyboardHintsCard: View {
+
+    private static let rows: [(keys: String, label: String)] = [
+        ("⌘D", "Dictate to prompt box (press again to stop)"),
+        ("⇧⌘D", "Talk to Claude (sends when stopped)"),
+        ("⌘↩", "Send prompt box"),
+        ("⌘N", "New session")
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            SectionLabel(text: "Keyboard", symbol: "keyboard")
+
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(Self.rows, id: \.keys) { row in
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(row.keys)
+                            .font(Theme.monoSmall)
+                            .foregroundStyle(Theme.accentBright)
+                            .frame(width: 34, alignment: .leading)
+                        Text(row.label)
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+        .powerUpCard(padding: 12)
     }
 }
 
@@ -713,11 +777,7 @@ private struct ComposerBar: View {
             }
 
             HStack(alignment: .center, spacing: 12) {
-                PTTIndicator(isActive: appState.isPTTActive,
-                             isDraft: appState.isDraftDictation,
-                             isRemoteDraft: appState.draftDictationTargetsRemote,
-                             partialTranscript: speech.partialTranscript,
-                             hint: pushToTalkButtonName(in: configStore.config.mapping))
+                micButton
                 inputField
                 sendButton
             }
@@ -736,6 +796,32 @@ private struct ComposerBar: View {
         let localeID = configStore.config.localeID
         guard !localeID.lowercased().hasPrefix("en") else { return nil }
         return Locale.current.localizedString(forIdentifier: localeID) ?? localeID
+    }
+
+    /// The mic is a real button, not just an indicator: a click starts
+    /// dictation into the prompt box and the next click stops it — the whole
+    /// voice loop works with no controller at all (⌘D does the same from the
+    /// keyboard). A click while any capture is active stops that capture,
+    /// whichever input started it.
+    private var micButton: some View {
+        Button {
+            appState.toggleVoiceCapture(.draft)
+        } label: {
+            PTTIndicator(isActive: appState.isPTTActive,
+                         isDraft: appState.isDraftDictation,
+                         isRemoteDraft: appState.draftDictationTargetsRemote,
+                         isRemoteMode: isRemote,
+                         partialTranscript: speech.partialTranscript,
+                         hint: pushToTalkButtonName(in: configStore.config.mapping))
+        }
+        .buttonStyle(.plain)
+        // The gate must never block the STOP half of the toggle: a capture can
+        // be active while canCompose is false (a controller hold with no
+        // project folder; a mode flip mid-recording), and this click is then
+        // its only mouse affordance. toggleVoiceCapture's own guard already
+        // refuses disallowed *starts*.
+        .disabled(!canCompose && !appState.isPTTActive)
+        .opacity(canCompose || appState.isPTTActive ? 1 : 0.6)
     }
 
     /// Bound to `AppState.draftText` (not a local `@State`) so dictation from the

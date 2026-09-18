@@ -8,9 +8,12 @@
 - The `claude` CLI installed and logged in (`claude` should work from your
   Terminal). See the [Claude Code docs](https://docs.claude.com/claude-code)
   if you haven't set it up yet.
-- A PS5 DualSense controller, paired over Bluetooth (System Settings →
-  Bluetooth → pair as usual — hold the PS button + Create button together to
-  put the controller into pairing mode).
+- Optionally, a PS5 DualSense controller, paired over Bluetooth (System
+  Settings → Bluetooth → pair as usual — hold the PS button + Create button
+  together to put the controller into pairing mode). The controller is the
+  best way to drive PowerUp, but not a requirement — dictation and every
+  other control also work from the
+  [keyboard and mouse](controls.md#no-controller-keyboard-and-mouse-cover-everything).
 - Xcode Command Line Tools (for `swift build`), or a full Xcode install.
 
 ## Building
@@ -47,9 +50,10 @@ speech-recognition permission — approve both, or push-to-talk won't work.
 You'll also be asked to choose a project folder on first launch (the
 directory PowerUp runs `claude` in); use the folder picker in the toolbar.
 
-Once a project folder is chosen and your controller is connected, PowerUp
-spawns a persistent `claude` session for you automatically the moment you
-send your first message or press a mapped button.
+Once a project folder is chosen, PowerUp spawns a persistent `claude` session
+for you automatically the moment your first message is sent — typed, dictated
+and then sent with ⌘↩, spoken with ⇧⌘D, or fired from a mapped controller
+button. (Merely starting a dictation doesn't spawn anything.)
 
 ## Next steps
 

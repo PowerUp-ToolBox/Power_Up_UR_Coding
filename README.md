@@ -37,10 +37,12 @@ open build/PowerUp.app    # always launch as a bundle (macOS permissions
                           # track the bundle identity)
 ```
 
-You'll need macOS 14+, the `claude` CLI logged in, a DualSense paired over
-Bluetooth, and the Xcode Command Line Tools. On first use, approve the
-microphone and speech-recognition prompts and pick a project folder — full
-details in **[Getting started](docs/getting-started.md)**.
+You'll need macOS 14+, the `claude` CLI logged in, and the Xcode Command
+Line Tools; a DualSense paired over Bluetooth is recommended but optional —
+the on-screen mic button and the keyboard cover the whole loop without one.
+On first use, approve the microphone and speech-recognition prompts and pick
+a project folder — full details in
+**[Getting started](docs/getting-started.md)**.
 
 ## The three core controls
 
@@ -58,6 +60,10 @@ Everything else — approve (✕), interrupt (○), quick prompts on the D-pad,
 cycling model/effort/permission mode on the sticks and touchpad — builds on
 that loop, and every button is remappable in **Settings → Buttons**. The full
 default mapping table is in **[Buttons & controls](docs/controls.md)**.
+
+No controller handy? The same loop runs from the keyboard: **⌘D** dictates
+into the prompt box (click the mic button for the same thing), **⇧⌘D** talks
+straight to Claude, **⌘↩** sends.
 
 ## Documentation
 

@@ -444,6 +444,10 @@ struct PairingHintCard: View {
                 .font(.system(size: 10.5))
                 .foregroundStyle(Theme.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
+            Text("No controller? No problem — everything works from the keyboard and the mic button below the transcript.")
+                .font(.system(size: 10.5))
+                .foregroundStyle(Theme.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .powerUpCard(fill: Theme.accent.opacity(0.07), stroke: Theme.accent.opacity(0.22))
     }
@@ -532,9 +536,9 @@ struct EmptyTranscriptCard: View {
 
     private var hintText: String {
         if let pushToTalkHint {
-            return "Hold \(pushToTalkHint) on the controller and speak, or type a message below."
+            return "Hold \(pushToTalkHint) on the controller and speak, click the mic (or press ⌘D) to dictate, or type a message below."
         }
-        return "Type a message below, or map a button to Push to Talk in Settings."
+        return "Click the mic (or press ⌘D) to dictate, or type a message below — no controller needed."
     }
 }
 
@@ -964,6 +968,10 @@ struct PTTIndicator: View {
     var isDraft: Bool = false
     /// The active draft hold types into the remote session instead of the box.
     var isRemoteDraft: Bool = false
+    /// Remote Control mode is on — a click would dictate into the remote
+    /// session, and the *idle* tooltip must say so (isRemoteDraft only exists
+    /// once a capture is running).
+    var isRemoteMode: Bool = false
     let partialTranscript: String
     var hint: String?
 
@@ -999,19 +1007,21 @@ struct PTTIndicator: View {
         .onAppear { ring = isActive }
         .onChange(of: isActive) { _, newValue in ring = newValue }
         .help(helpText)
-        .accessibilityLabel(isActive ? "Listening" : "Push to talk")
+        .accessibilityLabel(isActive ? "Stop recording" : "Start dictation")
     }
 
     private var helpText: String {
         if isActive {
             if partialTranscript.isEmpty {
-                if isRemoteDraft { return "Listening… your words will be typed into the remote session." }
-                return isDraft ? "Listening… your words go to the prompt box." : "Listening…"
+                if isRemoteDraft { return "Listening… your words will be typed into the remote session. Click again to stop." }
+                return isDraft ? "Listening… your words go to the prompt box. Click again to stop."
+                               : "Listening… click again to stop."
             }
             return partialTranscript
         }
-        if let hint { return "Hold \(hint) on the controller to talk" }
-        return "Map a controller button to Push to Talk in Settings"
+        let target = isRemoteMode ? "the remote session" : "the prompt box"
+        if let hint { return "Click to dictate into \(target) (⌘D) — or hold \(hint) on the controller" }
+        return "Click to dictate into \(target) (⌘D) — no controller needed"
     }
 }
 

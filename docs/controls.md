@@ -95,13 +95,42 @@ A few details worth knowing:
   buzzes the controller twice — your typed text is never eaten by a failed
   dictation.
 - Holding a second voice button while one is already recording does nothing;
-  only the button that started the recording can end it.
+  only the button that started the recording can end it. (The mic button and
+  ⌘D are the exception: a click or press always stops whatever is recording.)
 - **In [Remote Control mode](remote-control.md)** the review happens where
   your session lives: releasing L2 **types the words into the remote input
   box** (cmux or the terminal) without pressing Enter — edit them there if
   needed, then send with **L1** (with PowerUp's own box empty, Send Prompt Box
   presses Enter in the target), the Approve button (✕), or Enter in that app.
   The L2 → L1 flow works the same in both modes.
+
+## No controller? Keyboard and mouse cover everything
+
+The controller is an accessory, not a requirement — the whole record →
+review → send loop works without one:
+
+- **Click the mic button** (the round button left of the prompt box) to start
+  dictating into the prompt box; click it again to stop. Exactly like the L2
+  hold, nothing is sent until you send it.
+- **⌘D — Dictate to Prompt Box.** Same as clicking the mic: press once to
+  start, press again to stop. Also in the **Voice** menu.
+- **⇧⌘D — Talk to Claude.** The keyboard version of R2: press to start
+  recording, press again to stop — and the transcript is **sent immediately**
+  when you stop.
+- **⌘↩ (or the send arrow)** sends the prompt box, same as L1. **⌘N** starts
+  a new session.
+
+A click of the mic (or ⌘D / ⇧⌘D) while *anything* is recording — including a
+capture started from a controller hold — stops that recording. The keyboard
+shortcuts live in the sidebar's **Keyboard** card too, so you never have to
+remember them.
+
+Tool permission prompts are covered as well: the banner that appears when the
+agent asks to run something has **Allow** and **Deny** buttons you can click —
+the same rules as ✕/○, including the two-click confirm on destructive
+requests. In [Remote Control mode](remote-control.md), clicking the mic (or
+⌘D) dictates into the **remote session's** input box, exactly like an L2
+hold there.
 
 ## Session control actions
 

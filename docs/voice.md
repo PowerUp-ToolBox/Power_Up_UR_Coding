@@ -6,6 +6,11 @@ Voice settings live in **Settings → Voice**: text-to-speech on/off, voice
 picker, speaking rate, max spoken characters, and the speech-recognition
 language and on-device options.
 
+You don't need a controller to use your voice: click the **mic button** next
+to the prompt box (or press **⌘D**) to start and stop dictation, and **⇧⌘D**
+to talk straight to Claude. Details in
+[Buttons & controls](controls.md#no-controller-keyboard-and-mouse-cover-everything).
+
 ## The language you speak (speech recognition)
 
 Push-to-talk transcribes what you say **in the language selected under

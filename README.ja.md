@@ -41,9 +41,11 @@ open build/PowerUp.app    # 必ず .app バンドルとして起動する（macO
                           # バンドルの同一性に紐づくため）
 ```
 
-必要なもの：macOS 14 以上、ログイン済みの `claude` CLI、Bluetooth で
-ペアリングした DualSense、Xcode Command Line Tools。初回起動時にマイクと
-音声認識の許可を与え、プロジェクトフォルダを選んでください。詳しくは
+必要なもの：macOS 14 以上、ログイン済みの `claude` CLI、Xcode Command
+Line Tools。Bluetooth でペアリングした DualSense があると快適ですが、
+必須ではありません——画面上のマイクボタンとキーボードだけでも一通り
+使えます。初回起動時にマイクと音声認識の許可を与え、プロジェクト
+フォルダを選んでください。詳しくは
 **[はじめに](docs/getting-started.md)** をどうぞ。
 
 ## 基本の 3 ボタン
@@ -63,6 +65,10 @@ open build/PowerUp.app    # 必ず .app バンドルとして起動する（macO
 すべてこのループの上に載っていて、どのボタンも **Settings → Buttons** で
 割り当て直せます。デフォルト割り当ての全一覧は
 **[ボタンと操作](docs/controls.md)** にあります。
+
+コントローラーが手元になくても、同じループはキーボードで回せます：
+**⌘D** でプロンプト欄へ音声入力（マイクボタンのクリックでも同じ）、
+**⇧⌘D** で Claude に直接話す、**⌘↩** で送信。
 
 ## ドキュメント
 
