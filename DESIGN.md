@@ -1,5 +1,6 @@
 # PowerUp — DualSense controller for Claude Code (macOS)
 
+
 A native SwiftUI macOS app that turns a PS5 DualSense controller into a remote for
 Claude Code: hold a trigger to speak an instruction (speech-to-text → sent to a
 persistent Claude Code session), hear replies via text-to-speech, and map every
