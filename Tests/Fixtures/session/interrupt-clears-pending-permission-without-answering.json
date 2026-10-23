@@ -1,0 +1,43 @@
+{
+  "formatVersion": 1,
+  "name": "interrupt-clears-pending-permission-without-answering",
+  "description": "While the agent waits on a permission request, the person interrupts the turn. The interrupt is sent, the pending request is cleared at once, and no permission answer (allow or deny) is sent for it.",
+  "reason": "Interrupting cancels the turn the request belongs to; the adapter cancels the agent's side of it. A banner left behind would invite a press that answers nothing (or, after a second press, 'approves' a cancelled destructive action).",
+  "source": "Epic #92 rule 'interrupt clears pending permission'; docs/harnesses.md 'A request left hanging when the turn ends or you interrupt is cancelled automatically'; DESIGN.md v2.0 ACPAdapter 'unanswered requests are cancelled on stop/interrupt'; AppState.interruptClaude",
+  "verifiedBy": ["swift"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "builtin",
+    "project": true
+  },
+  "script": [
+    {
+      "call": "sendUserText",
+      "text": "Tidy up main.swift"
+    },
+    {
+      "harnessEvent": { "type": "permissionRequest", "id": "perm-1", "name": "Edit", "kind": "edit", "detail": "main.swift" },
+      "reason": "An ordinary (not destructive) request is waiting."
+    },
+    {
+      "intent": "interrupt",
+      "reason": "The person stops the turn instead of answering."
+    }
+  ],
+  "expect": {
+    "harnessCalls": [
+      { "type": "start", "resumeSessionID": null },
+      { "type": "send", "text": "Tidy up main.swift" },
+      { "type": "interrupt" }
+    ],
+    "transcript": [
+      { "kind": "user", "text": "Tidy up main.swift" },
+      { "kind": "system", "text": "The agent wants to: Edit — main.swift. Press ✕ to allow or ○ to deny." },
+      { "kind": "system", "text": "Interrupt sent." }
+    ],
+    "errorShown": false,
+    "pendingPermission": false,
+    "pendingPermissionArmed": false,
+    "status": "thinking"
+  }
+}

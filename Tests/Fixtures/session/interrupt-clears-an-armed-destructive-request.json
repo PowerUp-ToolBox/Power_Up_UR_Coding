@@ -1,0 +1,45 @@
+{
+  "formatVersion": 1,
+  "name": "interrupt-clears-an-armed-destructive-request",
+  "description": "A destructive request is armed by one Approve, then the person interrupts. The request is cleared without an answer, so a later Approve can never complete the confirmation.",
+  "reason": "The interrupt is the strongest 'not this': an armed confirmation must not outlive the turn it belongs to.",
+  "source": "Epic #92 rules 'interrupt clears pending permission' and 'the armed state resets on any other intent'; ticket #116; AppState.interruptClaude",
+  "verifiedBy": ["swift"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "builtin",
+    "project": true
+  },
+  "script": [
+    {
+      "call": "sendUserText",
+      "text": "Throw away my last three commits"
+    },
+    {
+      "harnessEvent": { "type": "permissionRequest", "id": "perm-1", "name": "Bash", "kind": "execute", "detail": "git reset --hard HEAD~3" }
+    },
+    {
+      "intent": "approve",
+      "reason": "First press arms."
+    },
+    {
+      "intent": "interrupt",
+      "reason": "The person stops the turn instead of confirming."
+    },
+    {
+      "harnessEvent": { "type": "turnCompleted", "resultText": null, "costUSD": null, "isError": false, "detail": "cancelled" },
+      "reason": "The cancelled turn resolves; there is nothing left to answer."
+    }
+  ],
+  "expect": {
+    "harnessCalls": [
+      { "type": "start", "resumeSessionID": null },
+      { "type": "send", "text": "Throw away my last three commits" },
+      { "type": "interrupt" }
+    ],
+    "errorShown": false,
+    "pendingPermission": false,
+    "pendingPermissionArmed": false,
+    "status": "noController"
+  }
+}

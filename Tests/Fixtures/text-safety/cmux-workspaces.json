@@ -1,0 +1,381 @@
+{
+  "description": "Parsing `cmux list-workspaces` output (run with CMUX_QUIET=1) into rows of ref, title and selected. One row per line that starts (after an optional leading `*` and whitespace) with a workspace ref: `workspace:N` with a non-empty N, or a bare UUID. The selected row is marked by a leading `*` in column 0, a trailing `[selected]` tag, or both, because cmux changed its format once and both must keep working. Only the trailing tag counts, never `[selected]` elsewhere in a title, and if several rows claim selection while a `*` row exists, the `*` row wins. The title is the rest of the line with one leading status glyph stripped (see status-glyph.json). Anything else (blank lines, the legacy-alias notice, headers, other object kinds) is skipped. Lines are split on LF only; cmux on macOS never emits CRLF. A wrong parse sends dictated text into a workspace the person never chose.",
+  "function": "RemoteControlService.parseWorkspaces(_:) — raw stdout string in, ordered list of {ref, title, selected} out",
+  "verifiedBy": "Characterization of the Swift implementation (spec #93, ticket #121); Tests/PowerUpTests/CmuxReportingFixtureTests.swift. The documented sample row and both selection markers come from live `cmux list-workspaces` output recorded in DESIGN.md (remote-control addendum).",
+  "capturedAgainst": "cmux 0.64.17 (97) [9ed29d81a] (`cmux --version`, /Applications/cmux.app/Contents/Resources/bin/cmux, 2026-10-23); PowerUp macOS app, branch stage-1-text-views-spikes, 2026-10-23",
+  "cases": [
+    {
+      "name": "empty output",
+      "input": "",
+      "expected": [],
+      "reason": "No workspaces open: the parser must return nothing (the caller then explains), never a phantom row."
+    },
+    {
+      "name": "blank lines only",
+      "input": "\n  \n\t\n",
+      "expected": [],
+      "reason": "Whitespace-only output must not produce rows."
+    },
+    {
+      "name": "documented sample: both markers on the selected row",
+      "input": "* workspace:11  ⠐ Build PS5 controller voice app  [selected]\n  workspace:7   ✳ Design the WeChat mini program\n",
+      "expected": [
+        {
+          "ref": "workspace:11",
+          "title": "Build PS5 controller voice app",
+          "selected": true
+        },
+        {
+          "ref": "workspace:7",
+          "title": "Design the WeChat mini program",
+          "selected": false
+        }
+      ],
+      "reason": "The format recorded in DESIGN.md: leading * and trailing [selected] together; status glyphs stripped from both titles."
+    },
+    {
+      "name": "leading * marker alone",
+      "input": "  workspace:3  Alpha\n* workspace:4  Beta\n  workspace:5  Gamma",
+      "expected": [
+        {
+          "ref": "workspace:3",
+          "title": "Alpha",
+          "selected": false
+        },
+        {
+          "ref": "workspace:4",
+          "title": "Beta",
+          "selected": true
+        },
+        {
+          "ref": "workspace:5",
+          "title": "Gamma",
+          "selected": false
+        }
+      ],
+      "reason": "cmux has printed the selection as only a leading *; auto-targeting must still find it."
+    },
+    {
+      "name": "trailing [selected] marker alone",
+      "input": "  workspace:3  Alpha\n  workspace:4  Beta  [selected]\n  workspace:5  Gamma",
+      "expected": [
+        {
+          "ref": "workspace:3",
+          "title": "Alpha",
+          "selected": false
+        },
+        {
+          "ref": "workspace:4",
+          "title": "Beta",
+          "selected": true
+        },
+        {
+          "ref": "workspace:5",
+          "title": "Gamma",
+          "selected": false
+        }
+      ],
+      "reason": "cmux has printed the selection as only a trailing [selected] tag (the format changed once); both markers must keep working."
+    },
+    {
+      "name": "* with no space before the ref",
+      "input": "*workspace:9 Notes",
+      "expected": [
+        {
+          "ref": "workspace:9",
+          "title": "Notes",
+          "selected": true
+        }
+      ],
+      "reason": "The star is a column-0 marker, not a separate token; it must be recognised without a following space."
+    },
+    {
+      "name": "[selected] glued to the title",
+      "input": "  workspace:2  Notes[selected]",
+      "expected": [
+        {
+          "ref": "workspace:2",
+          "title": "Notes",
+          "selected": true
+        }
+      ],
+      "reason": "The tag is matched as a suffix of the line, so it is honoured even without a separating space."
+    },
+    {
+      "name": "name containing [selected] mid-title is not selected",
+      "input": "* workspace:1  Main\n  workspace:2  Fix the [selected] filter bug",
+      "expected": [
+        {
+          "ref": "workspace:1",
+          "title": "Main",
+          "selected": true
+        },
+        {
+          "ref": "workspace:2",
+          "title": "Fix the [selected] filter bug",
+          "selected": false
+        }
+      ],
+      "reason": "A title that merely mentions [selected] must not steal auto-targeting and route input into a workspace the user never chose."
+    },
+    {
+      "name": "name ending in [selected] on the selected row keeps its literal",
+      "input": "* workspace:1  Review [selected]  [selected]",
+      "expected": [
+        {
+          "ref": "workspace:1",
+          "title": "Review [selected]",
+          "selected": true
+        }
+      ],
+      "reason": "Only the one trailing tag is removed; the user's own literal stays in the title."
+    },
+    {
+      "name": "name ending in [selected] loses to the * row",
+      "input": "* workspace:1  ⠐ Main  [selected]\n  workspace:2  ✳ Review [selected]",
+      "expected": [
+        {
+          "ref": "workspace:1",
+          "title": "Main",
+          "selected": true
+        },
+        {
+          "ref": "workspace:2",
+          "title": "Review",
+          "selected": false
+        }
+      ],
+      "reason": "When a title ends in the tag text, the leading * is authoritative and the impostor row is demoted. (Its title loses the literal: cosmetic only, targeting uses ref.)"
+    },
+    {
+      "name": "name containing * is not selected",
+      "input": "  workspace:5  fix * in glob\n* workspace:6  Main",
+      "expected": [
+        {
+          "ref": "workspace:5",
+          "title": "fix * in glob",
+          "selected": false
+        },
+        {
+          "ref": "workspace:6",
+          "title": "Main",
+          "selected": true
+        }
+      ],
+      "reason": "A * inside a title is not the column-0 selection marker."
+    },
+    {
+      "name": "name starting with * is not selected",
+      "input": "  workspace:5  *starred* notes\n* workspace:6  Main",
+      "expected": [
+        {
+          "ref": "workspace:5",
+          "title": "*starred* notes",
+          "selected": false
+        },
+        {
+          "ref": "workspace:6",
+          "title": "Main",
+          "selected": true
+        }
+      ],
+      "reason": "The marker is only recognised before the ref, never at the start of a title."
+    },
+    {
+      "name": "case-sensitive [SELECTED] is part of the title",
+      "input": "  workspace:3  Alpha [SELECTED]\n* workspace:4  Beta",
+      "expected": [
+        {
+          "ref": "workspace:3",
+          "title": "Alpha [SELECTED]",
+          "selected": false
+        },
+        {
+          "ref": "workspace:4",
+          "title": "Beta",
+          "selected": true
+        }
+      ],
+      "reason": "Only cmux's exact lowercase tag marks selection."
+    },
+    {
+      "name": "trailing whitespace after the tag",
+      "input": "* workspace:11  Build app  [selected]   \t\n  workspace:7  Design  \t",
+      "expected": [
+        {
+          "ref": "workspace:11",
+          "title": "Build app",
+          "selected": true
+        },
+        {
+          "ref": "workspace:7",
+          "title": "Design",
+          "selected": false
+        }
+      ],
+      "reason": "Padding after the tag or title must neither hide the tag nor leak into the title."
+    },
+    {
+      "name": "trailing newline and wide column padding",
+      "input": "  workspace:7       Design\n* workspace:11      Build\n\n",
+      "expected": [
+        {
+          "ref": "workspace:7",
+          "title": "Design",
+          "selected": false
+        },
+        {
+          "ref": "workspace:11",
+          "title": "Build",
+          "selected": true
+        }
+      ],
+      "reason": "cmux aligns columns with runs of spaces; the title starts at the first non-space."
+    },
+    {
+      "name": "legacy-alias notice is skipped",
+      "input": "cmux: 'list-workspaces' is now an alias for 'workspace list'\n* workspace:1  Main",
+      "expected": [
+        {
+          "ref": "workspace:1",
+          "title": "Main",
+          "selected": true
+        }
+      ],
+      "reason": "Without CMUX_QUIET cmux prints a notice line first; it must not become a workspace."
+    },
+    {
+      "name": "rows that are not workspace refs are skipped",
+      "input": "Workspaces:\n  window:1  Main window\n  workspace:  empty ref\n* workspace:2  Real",
+      "expected": [
+        {
+          "ref": "workspace:2",
+          "title": "Real",
+          "selected": true
+        }
+      ],
+      "reason": "Headers, other object kinds and a bare 'workspace:' are not targets; skipping beats guessing."
+    },
+    {
+      "name": "ref with no title",
+      "input": "* workspace:12",
+      "expected": [
+        {
+          "ref": "workspace:12",
+          "title": "",
+          "selected": true
+        }
+      ],
+      "reason": "An untitled workspace is still a target; its picker label falls back to the short ref."
+    },
+    {
+      "name": "UUID refs from --id-format uuids",
+      "input": "* 3F2504E0-4F89-11D3-9A0C-0305E82C3301  Main\n  3f2504e0-4f89-11d3-9a0c-0305e82c3301  Side",
+      "expected": [
+        {
+          "ref": "3F2504E0-4F89-11D3-9A0C-0305E82C3301",
+          "title": "Main",
+          "selected": true
+        },
+        {
+          "ref": "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
+          "title": "Side",
+          "selected": false
+        }
+      ],
+      "reason": "With uuid ids cmux prints bare UUIDs instead of workspace:N; both letter cases parse."
+    },
+    {
+      "name": "glyph without a following space",
+      "input": "* workspace:3  ⠐Build app",
+      "expected": [
+        {
+          "ref": "workspace:3",
+          "title": "Build app",
+          "selected": true
+        }
+      ],
+      "reason": "cmux sometimes prints the activity glyph glued to the title."
+    },
+    {
+      "name": "emoji title and ellipsis title survive parsing",
+      "input": "  workspace:4  🚀 Ship it\n* workspace:5  ✳ …/git/Mose/Mose-UI",
+      "expected": [
+        {
+          "ref": "workspace:4",
+          "title": "🚀 Ship it",
+          "selected": false
+        },
+        {
+          "ref": "workspace:5",
+          "title": "…/git/Mose/Mose-UI",
+          "selected": true
+        }
+      ],
+      "reason": "Only the status glyph is stripped: the user's emoji and cmux's truncation ellipsis stay, so the title is recognisable."
+    },
+    {
+      "name": "CJK title",
+      "input": "* workspace:8  ⠋ 修复登录页面",
+      "expected": [
+        {
+          "ref": "workspace:8",
+          "title": "修复登录页面",
+          "selected": true
+        }
+      ],
+      "reason": "Non-Latin titles pass through intact after the glyph."
+    },
+    {
+      "name": "two * rows are both selected",
+      "input": "* workspace:1  A\n* workspace:2  B",
+      "expected": [
+        {
+          "ref": "workspace:1",
+          "title": "A",
+          "selected": true
+        },
+        {
+          "ref": "workspace:2",
+          "title": "B",
+          "selected": true
+        }
+      ],
+      "reason": "The parser reports what cmux printed; the auto-target picks the first selected row."
+    },
+    {
+      "name": "two [selected] rows without any * are both selected",
+      "input": "  workspace:1  A  [selected]\n  workspace:2  B  [selected]",
+      "expected": [
+        {
+          "ref": "workspace:1",
+          "title": "A",
+          "selected": true
+        },
+        {
+          "ref": "workspace:2",
+          "title": "B",
+          "selected": true
+        }
+      ],
+      "reason": "Demotion only happens when a * row exists to be authoritative; otherwise the auto-target picks the first."
+    },
+    {
+      "name": "no marker at all",
+      "input": "  workspace:1  A\n  workspace:2  B",
+      "expected": [
+        {
+          "ref": "workspace:1",
+          "title": "A",
+          "selected": false
+        },
+        {
+          "ref": "workspace:2",
+          "title": "B",
+          "selected": false
+        }
+      ],
+      "reason": "Nothing is invented as selected; the auto-target then falls back to the first row."
+    }
+  ]
+}

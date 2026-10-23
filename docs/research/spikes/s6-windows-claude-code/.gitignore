@@ -1,0 +1,2 @@
+# Screenshots and raw run output stay local unless reviewed (hook bodies can hold prompts and paths).
+results/*.png

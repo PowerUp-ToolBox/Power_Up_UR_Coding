@@ -161,8 +161,9 @@ final class HoldTrackerTests: XCTestCase {
         XCTAssertNil(owner)
     }
 
-    /// §C "ownership as today (`pttHoldButton`)": the owner's release ends the
-    /// capture whatever the control is mapped to *now*, so a mapping edit
+    /// §C: ownership is the control that started the hold (the tracker's
+    /// owner, which replaced `pttHoldButton`), so the owner's release ends the
+    /// capture whatever the control is mapped to *now*: a mapping edit
     /// mid-hold cannot strand the recorder or turn the next hold into a cancel.
     func testOwnerReleaseEndsTheCaptureEvenAfterAMidHoldRemap() {
         let (effects, owner) = run([

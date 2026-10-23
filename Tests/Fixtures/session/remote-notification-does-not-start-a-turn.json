@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "name": "remote-notification-does-not-start-a-turn",
+  "description": "A Notification arrives from a remote session that has no turn in flight. It is logged, but the status stays idle: a notification refreshes a turn that exists and never creates one.",
+  "reason": "Claude sends notifications outside turns too (for example an idle-input reminder). Treating one as a turn start would light the working status with nothing to ever clear it but the expiry.",
+  "source": "DESIGN.md v1.10 'a notification refreshes an existing entry's timestamp (a turn waiting on the user is alive) but never creates one'; AppState.handleRemoteEvent(.notification)",
+  "verifiedBy": ["swift"],
+  "config": {
+    "controlMode": "remote",
+    "controllerConnected": true
+  },
+  "script": [
+    {
+      "hookEvent": { "type": "notification", "sessionID": "session-alpha", "cwd": "/work/alpha", "text": "Claude is waiting for your input" },
+      "reason": "No turn is in flight for this session."
+    },
+    {
+      "hookEvent": { "type": "notification", "sessionID": "session-alpha", "cwd": "/work/alpha" },
+      "reason": "A notification without a message gets the generic line."
+    }
+  ],
+  "expect": {
+    "status": "idle",
+    "remoteTurnActive": false,
+    "transcript": [
+      { "kind": "system", "text": "Claude is waiting for your input" },
+      { "kind": "system", "text": "Claude needs your attention." }
+    ],
+    "injectorCalls": []
+  }
+}

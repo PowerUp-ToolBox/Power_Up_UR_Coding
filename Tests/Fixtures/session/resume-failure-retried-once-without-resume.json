@@ -1,0 +1,42 @@
+{
+  "formatVersion": 1,
+  "name": "resume-failure-retried-once-without-resume",
+  "description": "Launch resumes the folder's saved session; the CLI rejects the stale id and exits before system/init, so PowerUp starts again once without the resume flag and the fresh session takes over.",
+  "reason": "A stale session id (deleted or expired conversation) makes `claude --resume` exit before init. Without the retry the person is left with no session and no way to tell why.",
+  "source": "DESIGN.md core rule 'terminated … retry ONCE without resumeSessionID (covers stale session ids)'; AppState.handleTermination",
+  "verifiedBy": ["swift"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "builtin",
+    "project": true,
+    "lastSessionID": "stale-session-id"
+  },
+  "script": [
+    {
+      "call": "startSessionIfNeeded",
+      "reason": "App launch: the folder's saved conversation is resumed."
+    },
+    {
+      "harnessEvent": { "type": "ended", "exitCode": 1 },
+      "reason": "The CLI rejects the stale id and exits before any init message."
+    },
+    {
+      "harnessEvent": { "type": "sessionReady", "sessionID": "fresh-session-id", "model": "claude-sonnet-4-5" },
+      "reason": "The retry, started without --resume, comes up as a new session."
+    }
+  ],
+  "expect": {
+    "harnessCalls": [
+      { "type": "start", "projectDir": "$project", "resumeSessionID": "stale-session-id" },
+      { "type": "start", "projectDir": "$project", "resumeSessionID": null }
+    ],
+    "transcript": [
+      { "kind": "system", "text": "Couldn't resume the previous session — starting a fresh one." },
+      { "kind": "system", "text": "Session started (claude-sonnet-4-5)" }
+    ],
+    "errorShown": false,
+    "lastSessionID": "fresh-session-id",
+    "pendingPermission": false,
+    "status": "noController"
+  }
+}

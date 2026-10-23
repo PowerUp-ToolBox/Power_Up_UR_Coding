@@ -127,6 +127,10 @@ connection"). To let PowerUp drive a cmux session:
    the same password into "cmux socket password". Click **Test connection** — it
    should flip to "cmux is available" and list your workspaces.
 
+If PowerUp instead says "cmux isn’t running", the cmux app is closed (its control
+socket doesn't exist yet): open cmux and click **Test connection** again. No
+settings need changing.
+
 No Accessibility permission is needed for the cmux target. (The Terminal / Frontmost
 targets use keystroke injection instead and require Accessibility.)
 
@@ -167,7 +171,8 @@ closes mid-turn. Three layers of recovery:
    missing the `SessionEnd` hook, which is exactly what clears the state when
    a session dies without replying.
 3. As a last resort, a turn with no hook activity for 15 minutes expires on
-   its own. (Long-running turns can legitimately exceed this — the light may
+   its own, counted from its last sign of life (a tool call or a "Claude
+   needs your attention" notification counts). (Long-running turns can legitimately exceed this — the light may
    then go idle early and self-corrects on the session's next event.)
 
 Also worth knowing: the hooks fire for **every** Claude session on your

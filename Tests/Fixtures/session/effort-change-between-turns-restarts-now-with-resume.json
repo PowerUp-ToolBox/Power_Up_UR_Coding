@@ -1,0 +1,41 @@
+{
+  "formatVersion": 1,
+  "name": "effort-change-between-turns-restarts-now-with-resume",
+  "description": "Cycle Effort pressed while the session is idle between turns restarts the harness at once with the new effort, resuming the same session.",
+  "reason": "With no turn in flight there is nothing to cut off, so waiting would only leave the next prompt running on the old effort.",
+  "source": "DESIGN.md v1.2 E '.cycleEffort' ('Otherwise restart now with --resume current sessionID'); AppState.cycleEffort / restartForEffort",
+  "verifiedBy": ["swift"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "builtin",
+    "project": true,
+    "effort": "low"
+  },
+  "script": [
+    {
+      "call": "startSessionIfNeeded",
+      "reason": "App launch: a fresh session with effort low."
+    },
+    {
+      "harnessEvent": { "type": "sessionReady", "sessionID": "session-1", "model": "claude-sonnet-4-5" },
+      "reason": "The session is ready and idle."
+    },
+    {
+      "intent": "cycleEffort",
+      "reason": "Low → Medium with no turn in flight: restart right away."
+    }
+  ],
+  "expect": {
+    "harnessCalls": [
+      { "type": "start", "projectDir": "$project", "effort": "low", "resumeSessionID": null },
+      { "type": "start", "projectDir": "$project", "effort": "medium", "resumeSessionID": "session-1" }
+    ],
+    "transcript": [
+      { "kind": "system", "text": "Session started (claude-sonnet-4-5)" },
+      { "kind": "system", "text": "Effort → Medium" },
+      { "kind": "system", "text": "Resuming the session with effort medium…" }
+    ],
+    "errorShown": false,
+    "lastSessionID": "session-1"
+  }
+}

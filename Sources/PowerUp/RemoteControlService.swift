@@ -39,6 +39,21 @@ struct CmuxWorkspace: Identifiable, Hashable {
     }
 }
 
+// MARK: - RemoteInjector
+
+/// Where remote mode's text and keys are delivered, when something other than
+/// the real routes should receive them. Internal test seam (#118): a test
+/// injects a recorder so remote mode never types into the person's real
+/// terminal. Production passes nothing and keeps the cmux / Accessibility
+/// typing routes below. Completions are called on the main actor, once.
+@MainActor
+protocol RemoteInjector: AnyObject {
+    func injectText(_ text: String, submit: Bool, config: AppConfig,
+                    completion: @escaping (String?) -> Void)
+    func injectKey(_ key: RemoteControlService.RemoteKey, config: AppConfig,
+                   completion: @escaping (String?) -> Void)
+}
+
 // MARK: - RemoteControlService
 
 /// Delivers text and keystrokes into a Claude Code session PowerUp does not own.
@@ -112,6 +127,15 @@ final class RemoteControlService: ObservableObject {
 
     private var isRefreshing = false
     private var axRecheckCount = 0
+
+    /// Replaces every delivery route when set (test seam); nil in the app.
+    private let injector: (any RemoteInjector)?
+
+    /// - Parameter injector: nil (the app) delivers through cmux or
+    ///   Accessibility typing; a test passes a recorder.
+    init(injector: (any RemoteInjector)? = nil) {
+        self.injector = injector
+    }
 
     // MARK: - Status
 
@@ -206,6 +230,11 @@ final class RemoteControlService: ObservableObject {
         // Flatten real line breaks so the prompt arrives as one prompt.
         let text = RemoteControlService.flattenLineBreaks(in: text)
 
+        if let injector {
+            injector.injectText(text, submit: submit, config: config, completion: completion)
+            return
+        }
+
         switch RemoteControlService.route(for: config) {
         case .cmux:
             let workspace = RemoteControlService.trimmedOrNil(config.remoteCmuxWorkspace)
@@ -235,6 +264,11 @@ final class RemoteControlService: ObservableObject {
     func sendKey(_ key: RemoteKey,
                  config: AppConfig,
                  completion: @escaping (String?) -> Void) {
+
+        if let injector {
+            injector.injectKey(key, config: config, completion: completion)
+            return
+        }
 
         switch RemoteControlService.route(for: config) {
         case .cmux:
@@ -364,17 +398,10 @@ final class RemoteControlService: ObservableObject {
         return nil
     }
 
-    /// Splits text so that `cmux send` can't reinterpret it.
-    ///
-    /// `cmux send` turns the two-character sequences `\n`, `\r` and `\t` into
-    /// Enter and Tab — so a prompt containing literal backslash-n (a regex, a
-    /// code snippet) would submit itself half-typed. Verified live: a backslash
-    /// that isn't followed by n/r/t *within the same send* is delivered
-    /// literally, so ending a segment right after such a backslash defuses it.
-    /// Ordinary text (the overwhelming majority) yields exactly one segment and
-    /// therefore exactly one `cmux send`.
     /// Replaces every real line/paragraph break with a single space, so nothing
     /// the target terminal would interpret as Enter survives inside the text.
+    /// A run of breaks (CRLF, blank lines) becomes one space.
+    /// Cases: `Tests/Fixtures/text-safety/line-breaks.json`.
     nonisolated static func flattenLineBreaks(in text: String) -> String {
         guard text.unicodeScalars.contains(where: { lineBreakScalars.contains($0.value) }) else {
             return text
@@ -397,6 +424,16 @@ final class RemoteControlService: ObservableObject {
     /// LF, CR, and the Unicode line/paragraph separators.
     private nonisolated static let lineBreakScalars: Set<UInt32> = [0x0A, 0x0D, 0x2028, 0x2029]
 
+    /// Splits text so that `cmux send` can't reinterpret it.
+    ///
+    /// `cmux send` turns the two-character sequences `\n`, `\r` and `\t` into
+    /// Enter and Tab — so a prompt containing literal backslash-n (a regex, a
+    /// code snippet) would submit itself half-typed. Verified live: a backslash
+    /// that isn't followed by n/r/t *within the same send* is delivered
+    /// literally, so ending a segment right after such a backslash defuses it.
+    /// Ordinary text (the overwhelming majority) yields exactly one segment and
+    /// therefore exactly one `cmux send`.
+    /// Cases: `Tests/Fixtures/text-safety/segmentation.json`.
     nonisolated static func escapeSafeSegments(_ text: String) -> [String] {
         // Belt-and-braces: sendText flattens line breaks already, but this
         // function must be safe on its own — a raw U+000A handed to `cmux send`
@@ -468,6 +505,7 @@ final class RemoteControlService: ObservableObject {
     /// Parses `cmux list-workspaces` output. Anything that doesn't look like a
     /// workspace row (the legacy-alias notice, blank lines, future decorations)
     /// is skipped rather than guessed at.
+    /// Cases: `Tests/Fixtures/text-safety/cmux-workspaces.json`.
     nonisolated static func parseWorkspaces(_ output: String) -> [CmuxWorkspace] {
         var result: [CmuxWorkspace] = []
         /// Indexes into `result` of rows marked by the leading `*` — the only
@@ -535,7 +573,8 @@ final class RemoteControlService: ObservableObject {
     /// (⠐, ✳, …) — sometimes followed by a space, sometimes not. Only one
     /// leading glyph is ever removed, so an emoji in the user's own title
     /// survives. Cosmetic either way: `ref` is what targeting uses.
-    private nonisolated static func stripStatusGlyph(_ title: String) -> String {
+    /// Cases: `Tests/Fixtures/text-safety/status-glyph.json`.
+    nonisolated static func stripStatusGlyph(_ title: String) -> String {
         guard isStatusGlyph(title.first) else { return title }
         return String(title.dropFirst()).trimmingCharacters(in: .whitespaces)
     }
@@ -705,7 +744,9 @@ final class RemoteControlService: ObservableObject {
                              spawnFailed: false)
     }
 
-    private nonisolated static func failureMessage(action: String, result: CommandResult) -> String {
+    /// The friendly, action-naming message for a failed cmux command.
+    /// Cases: `Tests/Fixtures/text-safety/failure-message.json`.
+    nonisolated static func failureMessage(action: String, result: CommandResult) -> String {
         if result.spawnFailed {
             let detail = condense(result.standardError, maxChars: 160)
             return detail.isEmpty ? "\(action) failed to start." : "\(action) failed to start: \(detail)"
@@ -715,10 +756,17 @@ final class RemoteControlService: ObservableObject {
         }
         var detail = condense(result.standardError, maxChars: 200)
         if detail.isEmpty { detail = condense(result.standardOutput, maxChars: 200) }
+        let lowered = detail.lowercased()
+        // With the cmux app closed the CLI exits 1 with "Error: Socket not found
+        // at …/cmux.sock" (verified live, cmux 0.64.17). That is not a refusal:
+        // the socket-mode advice below would send the person off to change
+        // settings that are fine, so say what is actually wrong.
+        if lowered.contains("socket not found") {
+            return "\(action) failed — cmux isn’t running. Open the cmux app, then try again."
+        }
         // cmux rejects a foreign app under its default "cmuxOnly" socket mode with
         // a broken-pipe / socket write error. Translate that into something the
         // user can act on, instead of a cryptic errno.
-        let lowered = detail.lowercased()
         if lowered.contains("socket") || lowered.contains("broken pipe") || lowered.contains("permission") {
             return "cmux refused the connection. In cmux, open Settings → Automation, set “Socket control mode” to Password (or Automation), then quit and reopen cmux. For Password mode, put the same password in PowerUp’s Remote settings."
         }
@@ -726,7 +774,9 @@ final class RemoteControlService: ObservableObject {
         return "\(action) failed: \(detail)"
     }
 
-    private nonisolated static func condense(_ text: String, maxChars: Int) -> String {
+    /// Command output as one short display line, cut with "…" past `maxChars`
+    /// characters. Cases: `Tests/Fixtures/text-safety/condense.json`.
+    nonisolated static func condense(_ text: String, maxChars: Int) -> String {
         let flattened = text
             .replacingOccurrences(of: "\r", with: " ")
             .replacingOccurrences(of: "\n", with: " ")

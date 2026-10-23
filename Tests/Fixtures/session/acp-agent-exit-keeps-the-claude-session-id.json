@@ -1,0 +1,56 @@
+{
+  "formatVersion": 1,
+  "name": "acp-agent-exit-keeps-the-claude-session-id",
+  "description": "An ACP agent that exits before its session is ready (for example, it fails its handshake) is reported as an error and is not relaunched. The stored Claude session id is untouched, so switching back to the built-in harness resumes that conversation.",
+  "reason": "ACP sessions always start fresh, so an ACP launch is never a resume and the resume retry cannot apply to it. The retry used to fire anyway when a Claude id was stored: it wiped the person's Claude conversation id because a different agent had crashed, and relaunched the agent once.",
+  "source": "DESIGN.md v2.0 AppState 'passes resumeSessionID: nil for ACP'; DESIGN.md 'retry ONCE without resumeSessionID (covers stale session ids)'; AppState.startSession, AppState.handleTermination",
+  "verifiedBy": ["swift"],
+  "config": {
+    "harnessKind": "acp",
+    "acpAgent": "custom",
+    "acpCustomCommand": "scripted-agent --acp",
+    "controlMode": "builtin",
+    "project": true,
+    "lastSessionID": "claude-session-1"
+  },
+  "script": [
+    {
+      "call": "sendUserText",
+      "text": "Hello agent.",
+      "expect": {
+        "harnessCalls": [
+          { "adapter": "acp", "type": "start", "resumeSessionID": null },
+          { "adapter": "acp", "type": "send", "text": "Hello agent." }
+        ]
+      }
+    },
+    {
+      "harnessEvent": { "type": "ended", "exitCode": 1 },
+      "reason": "The agent exits during its handshake.",
+      "expect": { "lastSessionID": "claude-session-1" }
+    },
+    {
+      "settings": { "harnessKind": "claude" }
+    },
+    {
+      "call": "sendUserText",
+      "text": "Back to Claude.",
+      "reason": "The Claude conversation is still there to resume."
+    }
+  ],
+  "expect": {
+    "harnessCalls": [
+      { "adapter": "acp", "type": "start", "resumeSessionID": null },
+      { "adapter": "acp", "type": "send", "text": "Hello agent." },
+      { "adapter": "claude", "type": "start", "resumeSessionID": "claude-session-1" },
+      { "adapter": "claude", "type": "send", "text": "Back to Claude." }
+    ],
+    "transcript": [
+      { "kind": "user", "text": "Hello agent." },
+      { "kind": "error", "text": "Claude session ended unexpectedly (exit code 1)." },
+      { "kind": "system", "text": "Harness → built-in Claude Code. The session starts with your next message." },
+      { "kind": "user", "text": "Back to Claude." }
+    ],
+    "lastSessionID": "claude-session-1"
+  }
+}

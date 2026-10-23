@@ -12,10 +12,21 @@ final class ConfigStore: ObservableObject {
         return dir.appendingPathComponent("config.json")
     }
 
+    /// The file this store loads from and saves to.
+    let fileURL: URL
+
     private var saveWorkItem: DispatchWorkItem?
 
-    init() {
-        config = ConfigStore.loadOrDefault()
+    /// The app's store, on the real `configURL`.
+    convenience init() {
+        self.init(fileURL: ConfigStore.configURL)
+    }
+
+    /// Test seam — mirrors `HookInstaller`'s injected `settingsURL`: a store
+    /// pointed at a temp file never reads or writes the real configuration.
+    init(fileURL: URL) {
+        self.fileURL = fileURL
+        config = ConfigStore.loadOrDefault(from: fileURL)
 
         // The remote read-back listener authenticates hook posts with this token,
         // so one must exist before anything can start. Minting it here (and
@@ -27,8 +38,7 @@ final class ConfigStore: ObservableObject {
         }
     }
 
-    private static func loadOrDefault() -> AppConfig {
-        let url = configURL
+    private static func loadOrDefault(from url: URL) -> AppConfig {
         guard FileManager.default.fileExists(atPath: url.path) else {
             return AppConfig.defaultConfig()
         }
@@ -106,7 +116,7 @@ final class ConfigStore: ObservableObject {
     }
 
     func save() {
-        let url = ConfigStore.configURL
+        let url = fileURL
         let dir = url.deletingLastPathComponent()
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

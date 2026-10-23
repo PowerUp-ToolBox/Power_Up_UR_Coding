@@ -1,0 +1,43 @@
+{
+  "formatVersion": 1,
+  "name": "session-id-clears-on-termination",
+  "description": "When the harness process ends, the live session id it owned is cleared (protocol clients see no session id). The stored resumable id is kept, so the next launch resumes the same conversation.",
+  "reason": "A dead process no longer owns its session id. Leaving it set kept the hook echo guard armed for an id nobody was running, so a terminal session resumed with that id had all its read-back silently thrown away. The conversation itself is still worth resuming.",
+  "source": "DESIGN.md 'terminationHandler → .terminated(exitCode:), state .stopped'; ClaudeService / ACPAdapter termination ('A dead process no longer owns its session id'); AppState.startSessionIfNeeded",
+  "verifiedBy": ["swift"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "builtin",
+    "project": true
+  },
+  "script": [
+    {
+      "call": "startSessionIfNeeded",
+      "expect": { "liveSessionID": null }
+    },
+    {
+      "harnessEvent": { "type": "sessionReady", "sessionID": "session-1", "model": "claude-sonnet-4-5" },
+      "expect": { "liveSessionID": "session-1", "lastSessionID": "session-1" }
+    },
+    {
+      "harnessEvent": { "type": "ended", "exitCode": 1 },
+      "reason": "The process dies on its own.",
+      "expect": { "liveSessionID": null, "lastSessionID": "session-1" }
+    },
+    {
+      "call": "startSessionIfNeeded",
+      "reason": "The next launch resumes the stored conversation."
+    }
+  ],
+  "expect": {
+    "lastSessionID": "session-1",
+    "harnessCalls": [
+      { "adapter": "claude", "type": "start", "resumeSessionID": null },
+      { "adapter": "claude", "type": "start", "resumeSessionID": "session-1" }
+    ],
+    "transcript": [
+      { "kind": "system", "text": "Session started (claude-sonnet-4-5)" },
+      { "kind": "error", "text": "Claude session ended unexpectedly (exit code 1)." }
+    ]
+  }
+}

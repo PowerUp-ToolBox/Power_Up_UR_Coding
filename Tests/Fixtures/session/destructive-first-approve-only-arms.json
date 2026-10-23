@@ -1,0 +1,43 @@
+{
+  "formatVersion": 1,
+  "name": "destructive-first-approve-only-arms",
+  "description": "The agent asks to run a destructive command. The first Approve only arms the request: nothing is sent to the harness, the request stays pending and armed, and the person is told to press again.",
+  "reason": "A misheard word or a stray press must never approve something that deletes or rewrites work. One press is not enough for a destructive request.",
+  "source": "DESIGN.md v2.2 §C (destructive-action confirmation); docs/harnesses.md 'Destructive requests take two presses'; AppState.approve",
+  "verifiedBy": ["swift"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "builtin",
+    "project": true
+  },
+  "script": [
+    {
+      "call": "sendUserText",
+      "text": "Throw away my last three commits",
+      "reason": "The person asks for something; the session starts and the turn begins."
+    },
+    {
+      "harnessEvent": { "type": "permissionRequest", "id": "perm-1", "name": "Bash", "kind": "execute", "detail": "git reset --hard HEAD~3" },
+      "reason": "The classifier flags `git reset --hard` as destructive."
+    },
+    {
+      "intent": "approve",
+      "reason": "First press: arms the request, answers nothing."
+    }
+  ],
+  "expect": {
+    "harnessCalls": [
+      { "type": "start", "resumeSessionID": null },
+      { "type": "send", "text": "Throw away my last three commits" }
+    ],
+    "transcript": [
+      { "kind": "user", "text": "Throw away my last three commits" },
+      { "kind": "system", "text": "⚠️ The agent wants to: Bash — git reset --hard HEAD~3. Destructive — ✕ twice to allow, ○ to deny." },
+      { "kind": "system", "text": "⚠️ Destructive action — press ✕ again to confirm, or ○ to deny." }
+    ],
+    "errorShown": false,
+    "pendingPermission": true,
+    "pendingPermissionArmed": true,
+    "status": "thinking"
+  }
+}

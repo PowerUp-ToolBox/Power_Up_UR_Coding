@@ -16,7 +16,7 @@ final class TranscriptStoreTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
-        TranscriptStore.supportDirectoryOverride = nil
+        TestSandbox.parkOverrides()
         try? FileManager.default.removeItem(at: tempDir)
     }
 

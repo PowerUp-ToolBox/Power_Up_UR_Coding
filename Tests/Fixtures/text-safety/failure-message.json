@@ -1,0 +1,294 @@
+{
+  "description": "The friendly message shown when a cmux command fails, per command result kind, in this order: (1) spawn failure: '<action> failed to start: <stderr condensed to 160>' or '<action> failed to start.'; (2) timeout: '<action> timed out — is the cmux app running?'; otherwise the detail is stderr condensed to 200, or stdout condensed to 200 when stderr is blank; (3) a detail saying the control socket was not found means cmux is not running: '<action> failed — cmux isn’t running. Open the cmux app, then try again.'; (4) a detail mentioning socket, broken pipe or permission (case-insensitive) is cmux's cmuxOnly socket mode refusing PowerUp: the fixed Automation-settings advice; (5) '<action> failed: <detail>'; (6) no detail: '<action> failed (exit <status>).'. Condensing follows condense.json. Typographic quotes and dashes are part of the text.",
+  "function": "RemoteControlService.failureMessage(action:result:) — input {action, status, standardOutput, standardError, timedOut, spawnFailed} (the action label plus every CommandResult field) in, message string out",
+  "verifiedBy": "Characterization of the Swift implementation (spec #93, ticket #121); Tests/PowerUpTests/CmuxReportingFixtureTests.swift. The socket-not-found stderr and exit status were captured live from `cmux ping` with the cmux app closed (read-only command).",
+  "capturedAgainst": "cmux 0.64.17 (97) [9ed29d81a]; PowerUp macOS app, branch stage-1-text-views-spikes, 2026-10-23",
+  "cases": [
+    {
+      "name": "spawn failure with detail",
+      "input": {
+        "action": "Reaching cmux",
+        "status": -1,
+        "standardOutput": "",
+        "standardError": "The file “cmux” doesn’t exist.",
+        "timedOut": false,
+        "spawnFailed": true
+      },
+      "expected": "Reaching cmux failed to start: The file “cmux” doesn’t exist.",
+      "reason": "The binary could not be launched; the system's reason is passed on so the person can fix the path."
+    },
+    {
+      "name": "spawn failure without detail",
+      "input": {
+        "action": "Reaching cmux",
+        "status": -1,
+        "standardOutput": "",
+        "standardError": "",
+        "timedOut": false,
+        "spawnFailed": true
+      },
+      "expected": "Reaching cmux failed to start.",
+      "reason": "No reason available must still produce a full sentence, not a dangling colon."
+    },
+    {
+      "name": "spawn failure detail is condensed to 160",
+      "input": {
+        "action": "Sending text to cmux",
+        "status": -1,
+        "standardOutput": "",
+        "standardError": "line one\nline two\tzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+        "timedOut": false,
+        "spawnFailed": true
+      },
+      "expected": "Sending text to cmux failed to start: line one line two zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz…",
+      "reason": "A long multi-line launch error is flattened and cut so the status line stays one readable line."
+    },
+    {
+      "name": "spawn failure wins over timeout",
+      "input": {
+        "action": "Reaching cmux",
+        "status": -1,
+        "standardOutput": "",
+        "standardError": "launch path not accessible",
+        "timedOut": true,
+        "spawnFailed": true
+      },
+      "expected": "Reaching cmux failed to start: launch path not accessible",
+      "reason": "A process that never started cannot have timed out; the launch failure is the real cause."
+    },
+    {
+      "name": "spawn failure is not translated into the socket advice",
+      "input": {
+        "action": "Reaching cmux",
+        "status": -1,
+        "standardOutput": "",
+        "standardError": "You don’t have permission to open cmux.",
+        "timedOut": false,
+        "spawnFailed": true
+      },
+      "expected": "Reaching cmux failed to start: You don’t have permission to open cmux.",
+      "reason": "A launch permission problem is not a cmux socket-mode problem; the socket advice would mislead."
+    },
+    {
+      "name": "timeout",
+      "input": {
+        "action": "Listing cmux workspaces",
+        "status": 15,
+        "standardOutput": "",
+        "standardError": "",
+        "timedOut": true,
+        "spawnFailed": false
+      },
+      "expected": "Listing cmux workspaces timed out — is the cmux app running?",
+      "reason": "A hung cmux call points the person at the app, the usual cause."
+    },
+    {
+      "name": "timeout ignores partial stderr",
+      "input": {
+        "action": "Pressing Enter in cmux",
+        "status": 15,
+        "standardOutput": "",
+        "standardError": "partial output",
+        "timedOut": true,
+        "spawnFailed": false
+      },
+      "expected": "Pressing Enter in cmux timed out — is the cmux app running?",
+      "reason": "Whatever a killed process managed to print is not the reason it was killed."
+    },
+    {
+      "name": "cmux not running: socket not found",
+      "input": {
+        "action": "Reaching cmux",
+        "status": 1,
+        "standardOutput": "",
+        "standardError": "Error: Socket not found at /Users/someone/.local/state/cmux/cmux.sock\n",
+        "timedOut": false,
+        "spawnFailed": false
+      },
+      "expected": "Reaching cmux failed — cmux isn’t running. Open the cmux app, then try again.",
+      "reason": "Captured live from cmux 0.64.17 with the app closed: stderr 'Error: Socket not found at …/cmux.sock', exit 1. The person must be told to open cmux, not sent to change socket settings that are fine."
+    },
+    {
+      "name": "cmux not running names the action",
+      "input": {
+        "action": "Sending text to cmux",
+        "status": 1,
+        "standardOutput": "",
+        "standardError": "Error: Socket not found at /Users/someone/.local/state/cmux/cmux.sock\n",
+        "timedOut": false,
+        "spawnFailed": false
+      },
+      "expected": "Sending text to cmux failed — cmux isn’t running. Open the cmux app, then try again.",
+      "reason": "The message names which step failed, like every other failure message."
+    },
+    {
+      "name": "socket refusal: broken pipe",
+      "input": {
+        "action": "Sending text to cmux",
+        "status": 1,
+        "standardOutput": "",
+        "standardError": "Error: write failed: Broken pipe",
+        "timedOut": false,
+        "spawnFailed": false
+      },
+      "expected": "cmux refused the connection. In cmux, open Settings → Automation, set “Socket control mode” to Password (or Automation), then quit and reopen cmux. For Password mode, put the same password in PowerUp’s Remote settings.",
+      "reason": "cmux's default cmuxOnly socket mode drops a foreign app with a broken pipe; the person needs the one-time Automation setting."
+    },
+    {
+      "name": "socket refusal: socket write error",
+      "input": {
+        "action": "Reaching cmux",
+        "status": 1,
+        "standardOutput": "",
+        "standardError": "Error: socket write error (errno 32)",
+        "timedOut": false,
+        "spawnFailed": false
+      },
+      "expected": "cmux refused the connection. In cmux, open Settings → Automation, set “Socket control mode” to Password (or Automation), then quit and reopen cmux. For Password mode, put the same password in PowerUp’s Remote settings.",
+      "reason": "Any other socket error from a running cmux is the same refusal."
+    },
+    {
+      "name": "socket refusal: permission denied",
+      "input": {
+        "action": "Reaching cmux",
+        "status": 1,
+        "standardOutput": "",
+        "standardError": "Error: Permission denied",
+        "timedOut": false,
+        "spawnFailed": false
+      },
+      "expected": "cmux refused the connection. In cmux, open Settings → Automation, set “Socket control mode” to Password (or Automation), then quit and reopen cmux. For Password mode, put the same password in PowerUp’s Remote settings.",
+      "reason": "A wrong or missing socket password surfaces as a permission error; same fix."
+    },
+    {
+      "name": "socket refusal matched case-insensitively",
+      "input": {
+        "action": "Reaching cmux",
+        "status": 1,
+        "standardOutput": "",
+        "standardError": "SOCKET CLOSED BY PEER",
+        "timedOut": false,
+        "spawnFailed": false
+      },
+      "expected": "cmux refused the connection. In cmux, open Settings → Automation, set “Socket control mode” to Password (or Automation), then quit and reopen cmux. For Password mode, put the same password in PowerUp’s Remote settings.",
+      "reason": "The match ignores case so a reworded cmux error still gets the advice."
+    },
+    {
+      "name": "socket refusal found in stdout fallback",
+      "input": {
+        "action": "Reaching cmux",
+        "status": 1,
+        "standardOutput": "error: broken pipe",
+        "standardError": "",
+        "timedOut": false,
+        "spawnFailed": false
+      },
+      "expected": "cmux refused the connection. In cmux, open Settings → Automation, set “Socket control mode” to Password (or Automation), then quit and reopen cmux. For Password mode, put the same password in PowerUp’s Remote settings.",
+      "reason": "Some cmux builds print errors on stdout; the translation applies to whichever stream carried the detail."
+    },
+    {
+      "name": "non-zero exit with stderr",
+      "input": {
+        "action": "Sending text to cmux",
+        "status": 1,
+        "standardOutput": "",
+        "standardError": "Error: workspace not found: workspace:99\n",
+        "timedOut": false,
+        "spawnFailed": false
+      },
+      "expected": "Sending text to cmux failed: Error: workspace not found: workspace:99",
+      "reason": "cmux's own reason is shown after the action, trimmed to one line."
+    },
+    {
+      "name": "stderr wins over stdout",
+      "input": {
+        "action": "Pressing Enter in cmux",
+        "status": 2,
+        "standardOutput": "ignored stdout",
+        "standardError": "Error: no such surface",
+        "timedOut": false,
+        "spawnFailed": false
+      },
+      "expected": "Pressing Enter in cmux failed: Error: no such surface",
+      "reason": "stderr is the error channel; stdout is only a fallback."
+    },
+    {
+      "name": "stdout fallback when stderr is empty",
+      "input": {
+        "action": "Sending Escape to cmux",
+        "status": 1,
+        "standardOutput": "Error: unknown key\n",
+        "standardError": "",
+        "timedOut": false,
+        "spawnFailed": false
+      },
+      "expected": "Sending Escape to cmux failed: Error: unknown key",
+      "reason": "When cmux reports on stdout the person still gets the reason."
+    },
+    {
+      "name": "stdout fallback when stderr is only whitespace",
+      "input": {
+        "action": "Sending Escape to cmux",
+        "status": 1,
+        "standardOutput": "unknown key",
+        "standardError": " \n\t",
+        "timedOut": false,
+        "spawnFailed": false
+      },
+      "expected": "Sending Escape to cmux failed: unknown key",
+      "reason": "Whitespace-only stderr is no detail; condensing it to empty triggers the fallback."
+    },
+    {
+      "name": "multi-line stderr is condensed to one line",
+      "input": {
+        "action": "Listing cmux workspaces",
+        "status": 1,
+        "standardOutput": "",
+        "standardError": "Error: bad request\n  hint: update cmux\n",
+        "timedOut": false,
+        "spawnFailed": false
+      },
+      "expected": "Listing cmux workspaces failed: Error: bad request hint: update cmux",
+      "reason": "The status line is one line; newlines would break the layout."
+    },
+    {
+      "name": "long stderr is cut at 200 characters",
+      "input": {
+        "action": "Listing cmux workspaces",
+        "status": 1,
+        "standardOutput": "",
+        "standardError": "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE",
+        "timedOut": false,
+        "spawnFailed": false
+      },
+      "expected": "Listing cmux workspaces failed: EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE…",
+      "reason": "A runaway error dump is shortened with a visible marker."
+    },
+    {
+      "name": "no detail at all",
+      "input": {
+        "action": "Pressing Enter in cmux",
+        "status": 2,
+        "standardOutput": "",
+        "standardError": "",
+        "timedOut": false,
+        "spawnFailed": false
+      },
+      "expected": "Pressing Enter in cmux failed (exit 2).",
+      "reason": "With nothing printed, the exit status is the only clue; the sentence stays complete."
+    },
+    {
+      "name": "no detail with negative status",
+      "input": {
+        "action": "Sending text to cmux",
+        "status": -1,
+        "standardOutput": "  ",
+        "standardError": "\n",
+        "timedOut": false,
+        "spawnFailed": false
+      },
+      "expected": "Sending text to cmux failed (exit -1).",
+      "reason": "A process still running at the deadline reports -1; whitespace-only output counts as no detail."
+    }
+  ]
+}

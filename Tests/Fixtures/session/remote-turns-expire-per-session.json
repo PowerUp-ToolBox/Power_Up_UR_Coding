@@ -1,0 +1,55 @@
+{
+  "formatVersion": 1,
+  "name": "remote-turns-expire-per-session",
+  "description": "Session alpha starts a turn at minute 0 and session beta at minute 10, and neither is heard from again. At minute 15 alpha expires but beta is still within its fifteen minutes, so the status stays thinking; at minute 25 beta expires too and the status goes idle.",
+  "reason": "Each session's turn has its own expiry clock. Expiring one session's silent turn must not end another session's live one.",
+  "source": "DESIGN.md v1.10 'remoteActiveTurns maps session id → last sign of life' and 'Expiry'; AppState.refreshRemoteTurnActive",
+  "verifiedBy": ["swift"],
+  "config": {
+    "controlMode": "remote",
+    "controllerConnected": true
+  },
+  "script": [
+    {
+      "hookEvent": { "type": "userPromptSubmit", "sessionID": "session-alpha", "cwd": "/work/alpha", "text": "Fix the build." },
+      "reason": "Alpha's turn starts at minute 0."
+    },
+    {
+      "advanceClock": 600,
+      "reason": "Minute 10."
+    },
+    {
+      "hookEvent": { "type": "userPromptSubmit", "sessionID": "session-beta", "cwd": "/work/beta", "text": "Write the docs." },
+      "reason": "Beta's turn starts at minute 10."
+    },
+    {
+      "intent": "cycleFocus",
+      "reason": "Focus alpha, so the status shows alpha's turn alone.",
+      "expect": { "remoteFocus": "session-alpha", "status": "thinking" }
+    },
+    {
+      "advanceClock": 301,
+      "reason": "Just past minute 15: alpha has been silent for fifteen minutes.",
+      "expect": { "status": "idle", "remoteTurnActive": false }
+    },
+    {
+      "intent": "cycleFocus",
+      "reason": "Focus beta: its turn (started at minute 10) is still alive.",
+      "expect": { "remoteFocus": "session-beta", "status": "thinking", "remoteTurnActive": true }
+    },
+    {
+      "advanceClock": 600,
+      "reason": "Just past minute 25: beta has been silent for fifteen minutes too."
+    }
+  ],
+  "expect": {
+    "status": "idle",
+    "remoteTurnActive": false,
+    "remoteFocus": "session-beta",
+    "transcript": [
+      { "kind": "system", "text": "Focus → alpha — only this session is spoken now." },
+      { "kind": "system", "text": "Focus → beta — only this session is spoken now." }
+    ],
+    "injectorCalls": []
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "formatVersion": 1,
+  "name": "remote-turns-tracked-per-session",
+  "description": "In remote mode two Claude sessions on this machine each start a turn. The first one's Stop ends only its own turn: the status stays thinking while the second session is still working, and goes idle only when that one stops too.",
+  "reason": "Hooks fire for every Claude session on the machine, and several can be mid-turn at once. A single global working flag interleaved them, so one session's Stop turned the light idle while another was still working.",
+  "source": "DESIGN.md v1.10 'per-session remote turn tracking' (remoteActiveTurns keyed by session id); AppState.handleRemoteEvent",
+  "verifiedBy": ["swift"],
+  "config": {
+    "controlMode": "remote",
+    "controllerConnected": true
+  },
+  "script": [
+    {
+      "hookEvent": { "type": "userPromptSubmit", "sessionID": "session-alpha", "cwd": "/work/alpha", "text": "Fix the build." },
+      "reason": "Session alpha starts a turn.",
+      "expect": { "status": "thinking", "remoteTurnActive": true }
+    },
+    {
+      "hookEvent": { "type": "userPromptSubmit", "sessionID": "session-beta", "cwd": "/work/beta", "text": "Write the docs." },
+      "reason": "Session beta starts a turn of its own."
+    },
+    {
+      "hookEvent": { "type": "stop", "sessionID": "session-alpha", "cwd": "/work/alpha", "text": "Alpha is done." },
+      "reason": "Alpha finishes. Beta is still working, so the status must not go idle.",
+      "expect": { "status": "thinking", "remoteTurnActive": true }
+    },
+    {
+      "hookEvent": { "type": "stop", "sessionID": "session-beta", "cwd": "/work/beta", "text": "Beta is done." },
+      "reason": "Beta finishes: no session is working any more."
+    }
+  ],
+  "expect": {
+    "transcript": [
+      { "kind": "assistant", "text": "[alpha] Alpha is done." },
+      { "kind": "assistant", "text": "[beta] Beta is done." }
+    ],
+    "status": "idle",
+    "remoteTurnActive": false,
+    "injectorCalls": [],
+    "harnessCalls": [],
+    "errorShown": false
+  }
+}

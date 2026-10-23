@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "name": "remote-heartbeat-starts-a-turn-already-running",
+  "description": "PowerUp sees a PostToolUse heartbeat from a session whose prompt it never saw (the turn was already running when PowerUp launched or switched to remote mode). The heartbeat creates the turn, so the status shows thinking, and that session's Stop clears it.",
+  "reason": "A turn already in flight when PowerUp starts listening would otherwise look idle until it finished, and its Stop would be the first thing PowerUp heard.",
+  "source": "DESIGN.md v2.2 A 'a PostToolUse refreshes — or CREATES — the session's remoteActiveTurns entry'; AppState.handleRemoteEvent(.postToolUse)",
+  "verifiedBy": ["swift"],
+  "config": {
+    "controlMode": "remote",
+    "controllerConnected": true
+  },
+  "script": [
+    {
+      "hookEvent": { "type": "postToolUse", "sessionID": "session-alpha", "cwd": "/work/alpha", "text": "Edit" },
+      "reason": "The first thing PowerUp hears from this session is a tool call.",
+      "expect": { "status": "thinking", "remoteTurnActive": true }
+    },
+    {
+      "hookEvent": { "type": "stop", "sessionID": "session-alpha", "cwd": "/work/alpha", "text": "Edited the file." },
+      "reason": "The turn ends."
+    }
+  ],
+  "expect": {
+    "status": "idle",
+    "remoteTurnActive": false,
+    "transcript": [
+      { "kind": "assistant", "text": "[alpha] Edited the file." }
+    ],
+    "injectorCalls": []
+  }
+}
