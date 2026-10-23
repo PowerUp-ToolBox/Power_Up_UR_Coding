@@ -79,8 +79,9 @@ final class AppState: ObservableObject {
     private func acpAdapterInstance() -> ACPAdapter {
         if let acpAdapter { return acpAdapter }
         let adapter = ACPAdapter()
-        adapter.onHarnessEvent = { [weak self] event in
-            self?.handleHarnessEvent(event)
+        adapter.onHarnessEvent = { [weak self, weak adapter] event in
+            guard let self, let adapter else { return }
+            self.route(event, from: adapter)
         }
         adapter.objectWillChange
             .sink { [weak self] _ in self?.scheduleDerivedUpdate() }
@@ -421,11 +422,27 @@ final class AppState: ObservableObject {
 
     private func wireClaude() {
         claude.onHarnessEvent = { [weak self] event in
-            self?.handleHarnessEvent(event)
+            guard let self else { return }
+            self.route(event, from: self.claude)
         }
-        injectedHarness?.onHarnessEvent = { [weak self] event in
-            self?.handleHarnessEvent(event)
+        if let injected = injectedHarness {
+            injected.onHarnessEvent = { [weak self, weak injected] event in
+                guard let self, let injected else { return }
+                self.route(event, from: injected)
+            }
         }
+    }
+
+    /// Hands an adapter's event to the session logic, but only while that
+    /// adapter is the active harness. A harness switch stops the outgoing
+    /// adapter, yet a stopped claude process can still flush output and exit
+    /// up to two seconds later. Those events belong to a retired session: a
+    /// late turn completion must not clear the new session's permission
+    /// request, and a late exit must not be taken for the new session ending
+    /// (it would even run the resume retry and restart the new harness).
+    private func route(_ event: HarnessEvent, from adapter: any HarnessAdapter) {
+        guard adapter === harness else { return }
+        handleHarnessEvent(event)
     }
 
     private func wireTTS() {

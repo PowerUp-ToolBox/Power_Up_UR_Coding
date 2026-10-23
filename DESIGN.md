@@ -1552,6 +1552,11 @@ var acpCustomCommand: String  // space-split command line for "custom"
   new harness starts lazily on next send. `startSession` resolves
   `agentCommand` for ACP (friendly error when the binary is missing) and
   passes `resumeSessionID: nil` for ACP.
+  *Amended by #119:* an ACP launch is never a resume, so the resume retry
+  never fires for it and an agent's exit never clears the stored Claude
+  session id. Events from an adapter that is no longer the active harness
+  are ignored: a stopped claude process can flush output and exit up to 2 s
+  after a switch, and none of that may touch the new session.
 - Permission flow (issue #10): `.permissionRequest` stores
   `pendingPermissionID`, transcript entry "The agent wants to: … Press ✕ to
   allow or ○ to deny.", haptic + announce "Approval needed". While one is
