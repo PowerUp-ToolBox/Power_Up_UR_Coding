@@ -94,9 +94,14 @@ A few details worth knowing:
 - If nothing usable was heard, PowerUp puts the box back exactly as it was and
   buzzes the controller twice — your typed text is never eaten by a failed
   dictation.
-- Holding a second voice button while one is already recording does nothing;
-  only the button that started the recording can end it. (The mic button and
-  ⌘D are the exception: a click or press always stops whatever is recording.)
+- **Changed your mind? Press the other trigger.** Pressing a second voice
+  button (say L2 while you hold R2) **cancels** the recording: nothing is
+  sent, the prompt box goes back to how it was, and the controller buzzes
+  twice. Releasing either trigger afterwards does nothing. Otherwise only the
+  button that started the recording can end it. (The mic button and ⌘D are
+  the exception: a click or press always stops whatever is recording. A
+  controller press never cancels a recording you started from the mic button
+  or the keyboard.)
 - **In [Remote Control mode](remote-control.md)** the review happens where
   your session lives: releasing L2 **types the words into the remote input
   box** (cmux or the terminal) without pressing Enter — edit them there if

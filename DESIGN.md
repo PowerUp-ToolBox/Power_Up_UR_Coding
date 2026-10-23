@@ -2140,6 +2140,19 @@ struct ConnectedController: Identifiable, Equatable {
   only) and also fires when the active controller changes slot.
 - Pinned by new tests: cancel-both discards and pulses; toggle-started
   capture survives a hold press; slot change releases a controller hold.
+- Implemented (#131). `AppState`'s private `holdTracker: HoldTracker`
+  replaces `pttHoldButton`. Both button handlers pass every press and
+  release to the tracker, with `toggleCaptureActive = isPTTActive &&
+  owner == nil`, and apply the effect it returns. `beginCapture` and
+  `endCapture` go through `handle(.beginVoiceCapture)` and
+  `handle(.endVoiceCapture)`. `deliver` goes through `handle(intent)`.
+  `cancelCapture` goes to a private discard path: it clears the capture
+  state, restores the prompt box for a local draft hold, calls
+  `speech.stopListening { _ in }` (the transcript is never read), plays the
+  error haptic and adds no transcript entry. `forceReleaseHold()` is
+  `releaseAll()` applied. The tracker is replaced with a fresh
+  `HoldTracker()` on a toggle stop, a denied speech permission and a
+  vanished microphone (v2.5 E).
 
 ## D. Profiles (ADR 0006, amended)
 

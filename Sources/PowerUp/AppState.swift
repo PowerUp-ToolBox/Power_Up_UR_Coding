@@ -157,9 +157,14 @@ final class AppState: ObservableObject {
     /// button *or* from Settings) runs its side effects exactly once.
     private var lastControlMode: String = "builtin"
 
-    /// The button currently held down for push-to-talk (nil when not holding).
-    private var pttHoldButton: ControllerButton?
-    /// Mode of the hold `pttHoldButton` started; only meaningful while holding.
+    /// Which control on the active controller owns the running hold (its
+    /// `owner`; nil when the pad owns no capture), and the v2.7 §C rules for
+    /// what each press and release does. Wherever a capture ends other than
+    /// through the tracker (a toggle stop, a denied permission, a vanished
+    /// microphone), it is replaced with a fresh `HoldTracker()` so a trigger
+    /// still physically held can't end or cancel the next capture.
+    private var holdTracker = HoldTracker()
+    /// Mode of the capture `startPushToTalk` began; only meaningful while capturing.
     private var pttMode: VoiceCaptureMode = .send
     /// True when the active draft hold belongs to remote mode: the transcript
     /// is typed into the remote target (without Enter) instead of the local
@@ -517,7 +522,7 @@ final class AppState: ObservableObject {
         isPTTActive = false
         isDraftDictation = false
         // The trigger still physically held must not end the next capture.
-        pttHoldButton = nil
+        holdTracker = HoldTracker()
         if pttMode == .draft, !pttDraftTargetsRemote {
             endDraftCapture(restoringDraft: true)
         }
@@ -663,52 +668,91 @@ final class AppState: ObservableObject {
         let action = configStore.config.action(
             onProfile: controller.active?.profileID ?? DeviceProfile.dualSenseID,
             control: button.rawValue)
-        if action.isHoldAction {
-            // One hold at a time: a second hold press of either kind while one is
-            // already running is ignored, so the button that started the recorder
-            // stays the button that can stop it.
-            guard pttHoldButton == nil, !isPTTActive else { return }
-            pttHoldButton = button
-        }
-        guard let intent = IntentMapper.intent(for: action, phase: .began) else { return }
-        handle(intent)
+        apply(holdTracker.effect(for: action, control: button.rawValue, phase: .began,
+                                 toggleCaptureActive: isToggleCaptureActive))
     }
 
     private func handleButtonUp(_ button: ControllerButton) {
-        // Only hold actions care about the release. Use the button we recorded on
-        // the way down so a mapping edit mid-hold can't strand the recorder — and
-        // so the release of any other button is ignored outright. The end intent
-        // is emitted unconditionally for the recorded button for the same reason:
-        // whatever the mapping says *now*, this button started a capture.
-        guard pttHoldButton == button else { return }
-        pttHoldButton = nil
-        handle(.endVoiceCapture)
+        // The tracker ends the capture only for the control that started it,
+        // whatever that control is mapped to *now* — so a mapping edit mid-hold
+        // can't strand the recorder, and every other release (both releases
+        // after a cancel included) does nothing.
+        let action = configStore.config.action(
+            onProfile: controller.active?.profileID ?? DeviceProfile.dualSenseID,
+            control: button.rawValue)
+        apply(holdTracker.effect(for: action, control: button.rawValue, phase: .ended,
+                                 toggleCaptureActive: isToggleCaptureActive))
+    }
+
+    /// A capture is running that the pad does not own: started by the mic
+    /// button or the keyboard, which have no press/release pair (v2.6). A hold
+    /// press during it is ignored rather than taken as a second hold (v2.7 §C).
+    private var isToggleCaptureActive: Bool {
+        isPTTActive && holdTracker.owner == nil
+    }
+
+    /// Turns one hold-tracker effect into today's capture paths (v2.7 §C).
+    private func apply(_ effect: HoldEffect) {
+        switch effect {
+        case .beginCapture(let mode):
+            handle(.beginVoiceCapture(mode))
+        case .endCapture:
+            handle(.endVoiceCapture)
+        case .cancelCapture:
+            cancelHoldCapture()
+        case .deliver(let intent):
+            handle(intent)
+        case .ignore:
+            break
+        }
+    }
+
+    /// Two holds on the active controller cancel both (v2.7 §C): the capture
+    /// ends without sending or drafting — the recognizer is stopped without
+    /// consulting its transcript, a local draft hold puts the prompt box back
+    /// as it was — and the pad gets the error haptic. The tracker has already
+    /// cleared its owner, so neither trigger's later release does anything.
+    private func cancelHoldCapture() {
+        if isPTTActive {
+            isPTTActive = false
+            isDraftDictation = false
+            captureInputUID = nil
+            // Only a local draft hold mirrored partials into the prompt box; a
+            // remote draft hold has typed nothing yet, so there is nothing to undo.
+            if pttMode == .draft, !pttDraftTargetsRemote {
+                endDraftCapture(restoringDraft: true)
+            }
+            // Ends the recognizer (or nothing, while the permission prompt is
+            // still up); whatever it makes of the audio resolves here and is dropped.
+            speech.stopListening { _ in }
+        }
+        errorHaptic()
+        updateStatus()
     }
 
     /// Safety net for a hold that can no longer be released the normal way —
-    /// e.g. the controller disconnected between the button's down and up events.
-    /// Ends a CONTROLLER-owned hold so the mic and status can never stay
-    /// wedged. Deliberately scoped to `pttHoldButton != nil`: a capture
-    /// started from the mic button or the keyboard has nothing to do with the
-    /// pad, keeps its working stop affordances (mic click, ⌘D/⇧⌘D), and must
-    /// survive a pad powering off mid-dictation — ending a `.send` capture
-    /// here would fire the half-finished transcript at Claude uninvited.
+    /// the controller disconnected between the button's down and up events,
+    /// or the Controller slot changed to another pad (v2.7 §C). Ends a
+    /// CONTROLLER-owned hold so the mic and status can never stay wedged.
+    /// Deliberately scoped to the tracker's owner: a capture started from the
+    /// mic button or the keyboard has nothing to do with the pad, keeps its
+    /// working stop affordances (mic click, ⌘D/⇧⌘D), and must survive a pad
+    /// powering off mid-dictation — ending a `.send` capture here would fire
+    /// the half-finished transcript at Claude uninvited.
     func forceReleaseHold() {
-        guard pttHoldButton != nil else { return }
-        pttHoldButton = nil
-        stopPushToTalk()
+        apply(holdTracker.releaseAll())
     }
 
     /// Toggle-style voice capture for input sources that have no press/release
     /// pair — the on-screen mic button and the keyboard shortcuts. A click (or
     /// key press) while idle starts a capture in `mode`; the next one ends
     /// whatever capture is active, regardless of who started it or in which
-    /// mode. Clearing `pttHoldButton` on the way out means a controller
-    /// trigger still physically held after a keyboard stop can't end the
-    /// *next* capture when it is finally released.
+    /// mode. Resetting the hold tracker on the way out means a controller
+    /// trigger still physically held after a keyboard stop can't end (or
+    /// cancel) the *next* capture when it is finally released.
     func toggleVoiceCapture(_ mode: VoiceCaptureMode) {
         if isPTTActive {
-            pttHoldButton = nil
+            holdTracker = HoldTracker()
             handle(.endVoiceCapture)
         } else {
             // The UI disables its mic button and menu items on this same
@@ -1133,7 +1177,7 @@ final class AppState: ObservableObject {
             guard granted else {
                 self.isPTTActive = false
                 self.isDraftDictation = false
-                self.pttHoldButton = nil
+                self.holdTracker = HoldTracker()
                 // Only a local draft hold has a mirror to tear down — and only
                 // it may touch the prompt box (a .send hold never wrote to it,
                 // and a remote draft hold never began capturing).
