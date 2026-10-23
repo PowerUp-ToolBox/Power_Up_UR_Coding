@@ -110,7 +110,9 @@ final class MyScenarioTests: XCTestCase {
     kind picks between them as in the app.
   - `ScriptedSpeechEngine`: pass it as
     `speech: SpeechService(engine: engine)`. You script the permission
-    answer, partial transcripts and the final transcript.
+    answer, partial transcripts and the final transcript. Set
+    `holdsPermissionPrompt = true` to keep the permission prompt up until
+    `answerPermissionPrompt(_:)`, so you can act while it is showing.
   - For **controller input**, pass a plain `ControllerService()`. Its
     internal test hooks stand in for a pad: `simulateConnect()`,
     `simulateButton(_:pressed:)` and `simulateDisconnect()` go through the

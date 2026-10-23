@@ -142,7 +142,8 @@ another one.
     harness kind picks between them (harness-switch tests).
   - `ScriptedSpeechEngine` (`speech: SpeechService(engine:)`). It scripts
     authorization, partials and the final transcript, and records its own
-    `calls`.
+    `calls`. `holdsPermissionPrompt = true` keeps the permission prompt up
+    until `answerPermissionPrompt(_:)`.
   - Controller input needs no fake. Pass `ControllerService()` and drive
     its test hooks: `simulateConnect()`, `simulateButton(_:pressed:)` and
     `simulateDisconnect()` (a drop releases held buttons, then fires

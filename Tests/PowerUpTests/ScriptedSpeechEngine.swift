@@ -34,6 +34,12 @@ final class ScriptedSpeechEngine: SpeechRecognitionEngine {
     var authorization: SpeechEngineAuthorization = .authorized
     /// The person's answer when a permission request is shown.
     var permissionAnswer: Bool = true
+    /// When true, a permission request stays on screen (the request suspends)
+    /// until the test calls `answerPermissionPrompt(_:)`, so a test can act
+    /// while the prompt is up: release the trigger, or answer with the hold
+    /// already live. `permissionAnswer` is ignored while this is set.
+    /// A test that shows a held prompt must answer it before it ends.
+    var holdsPermissionPrompt: Bool = false
     /// Whether a recognizer exists and is available for the locale.
     var isRecognizerAvailable: Bool = true
     /// When set, `startCapture` fails with this instead of starting.
@@ -54,6 +60,21 @@ final class ScriptedSpeechEngine: SpeechRecognitionEngine {
     private(set) var isCapturing: Bool = false
     /// The locale the last `prepareRecognizer` readied; the next capture uses it.
     private var preparedLocaleID: String = ""
+    /// The suspended request behind a held permission prompt.
+    private var pendingPermission: CheckedContinuation<Bool, Never>?
+
+    /// True while a held permission prompt is waiting for an answer.
+    var isPermissionPromptShowing: Bool { pendingPermission != nil }
+
+    /// Answers the held permission prompt, the way the person clicks
+    /// "OK" or "Don't Allow". Remembered like a real answer. No-op when no
+    /// prompt is showing.
+    func answerPermissionPrompt(_ granted: Bool) {
+        guard let pending = pendingPermission else { return }
+        pendingPermission = nil
+        authorization = granted ? .authorized : .denied
+        pending.resume(returning: granted)
+    }
 
     func clearCalls() { calls.removeAll() }
 
@@ -94,6 +115,11 @@ final class ScriptedSpeechEngine: SpeechRecognitionEngine {
 
     func requestAuthorization() async -> Bool {
         calls.append(.requestAuthorization)
+        if holdsPermissionPrompt {
+            return await withCheckedContinuation { continuation in
+                MainActor.assumeIsolated { pendingPermission = continuation }
+            }
+        }
         authorization = permissionAnswer ? .authorized : .denied
         return permissionAnswer
     }
