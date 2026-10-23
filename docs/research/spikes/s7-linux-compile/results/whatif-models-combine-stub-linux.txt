@@ -1,0 +1,71 @@
+scenario: models+combine-stub
+diff of the edited copy against Sources/PowerUp:
+diff -r Sources/PowerUp/AppState.swift /tmp/tmp.xcXWNFGK8O/AppState.swift
+2d1
+< import Combine
+diff -r Sources/PowerUp/ClaudeService.swift /tmp/tmp.xcXWNFGK8O/ClaudeService.swift
+2d1
+< import Combine
+diff -r Sources/PowerUp/Models.swift /tmp/tmp.xcXWNFGK8O/Models.swift
+2d1
+< import AVFAudio
+370c369
+<             ttsRate: AVSpeechUtteranceDefaultSpeechRate,
+---
+>             ttsRate: 0.5,
+diff -r Sources/PowerUp/RemoteControlService.swift /tmp/tmp.xcXWNFGK8O/RemoteControlService.swift
+2d1
+< import Combine
+diff -r Sources/PowerUp/RemoteListener.swift /tmp/tmp.xcXWNFGK8O/RemoteListener.swift
+2d1
+< import Combine
+Only in /tmp/tmp.xcXWNFGK8O: ZZCombineStub.swift
+
+Linux aarch64
+Swift version 5.9.2 (swift-5.9.2-RELEASE)
+
+== ALONE
+ACPAdapter.swift                   FAIL  ACPAdapter.swift:16:40: error: cannot find type 'HarnessState' in scope
+AppState.swift                     FAIL  AppState.swift:2:8: error: no such module 'AppKit'
+AudioDeviceStore.swift             FAIL  AudioDeviceStore.swift:2:8: error: no such module 'CoreAudio'
+ClaudeService.swift                FAIL  ClaudeService.swift:15:40: error: cannot find type 'ClaudeState' in scope
+ComponentViews.swift               FAIL  ComponentViews.swift:1:8: error: no such module 'SwiftUI'
+ConfigStore.swift                  FAIL  ConfigStore.swift:5:28: error: cannot find type 'AppConfig' in scope
+ControllerService.swift            FAIL  ControllerService.swift:2:8: error: no such module 'GameController'
+ControllerSlot.swift               FAIL  ControllerSlot.swift:51:23: error: cannot find type 'VoiceCaptureMode' in scope
+DestructiveActionClassifier.swift  PASS
+Harness.swift                      FAIL  Harness.swift:7:26: error: cannot find type 'ClaudeState' in scope
+HookInstaller.swift                PASS
+Intent.swift                       FAIL  Intent.swift:56:36: error: cannot find type 'Action' in scope
+MainView.swift                     FAIL  MainView.swift:1:8: error: no such module 'SwiftUI'
+MappingView.swift                  FAIL  MappingView.swift:1:8: error: no such module 'SwiftUI'
+Models.swift                       PASS
+PowerUpApp.swift                   FAIL  PowerUpApp.swift:1:8: error: no such module 'SwiftUI'
+PowerUpProtocol.swift              FAIL  PowerUpProtocol.swift:56:21: error: cannot find type 'Intent' in scope
+RemoteControlService.swift         FAIL  RemoteControlService.swift:2:8: error: no such module 'AppKit'
+RemoteListener.swift               FAIL  RemoteListener.swift:2:8: error: no such module 'Network'
+SettingsView.swift                 FAIL  SettingsView.swift:1:8: error: no such module 'SwiftUI'
+SpeechService.swift                FAIL  SpeechService.swift:2:8: error: no such module 'Speech'
+SummaryService.swift               FAIL  SummaryService.swift:12:29: error: cannot find type 'ObservableObject' in scope
+TTSService.swift                   FAIL  TTSService.swift:2:8: error: no such module 'AVFAudio'
+TranscriptStore.swift              FAIL  TranscriptStore.swift:2:8: error: no such module 'CryptoKit'
+ViewLogic.swift                    FAIL  ViewLogic.swift:19:51: error: cannot find type 'ControllerButton' in scope
+WebSocketFraming.swift             FAIL  WebSocketFraming.swift:2:8: error: no such module 'CryptoKit'
+ZZCombineStub.swift                PASS
+
+== PURE-SET (typechecks together after 3 round(s))
+ACPAdapter.swift
+ClaudeService.swift
+ConfigStore.swift
+ControllerSlot.swift
+DestructiveActionClassifier.swift
+Harness.swift
+HookInstaller.swift
+Intent.swift
+Models.swift
+SummaryService.swift
+ZZCombineStub.swift
+
+== DROPPED from the Foundation-only candidates
+PowerUpProtocol.swift              round 1: PowerUpProtocol.swift:49:35: error: cannot find 'WebSocketFraming' in scope
+ViewLogic.swift                    round 2: ViewLogic.swift:76:49: error: cannot find type 'AppState' in scope
