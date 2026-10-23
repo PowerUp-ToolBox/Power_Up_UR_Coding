@@ -226,8 +226,9 @@ final class AppStateControllerTests: XCTestCase {
         controller.clearRecordedOutput()
         controller.simulateDisconnect()
         await settle(until: app.status == .noController)
-        // Lights only: errorHaptic's second buzz is a delayed Task that may land here.
-        XCTAssertEqual(controller.recordedOutput.filter(\.isLight), [Self.off],
+        // errorHaptic's second buzz waits on the injected clock, which this
+        // test never advances, so the light is the only output.
+        XCTAssertEqual(controller.recordedOutput, [Self.off],
                        "a dropped pad's light is pushed off")
     }
 

@@ -130,6 +130,45 @@ final class ViewLogicTests: XCTestCase {
         }
     }
 
+    // MARK: - Pinned controller away
+
+    func testPinnedControllerAwayNoteTable() {
+        let blue = ConnectedController(id: "gamepad/DualSense Wireless Controller",
+                                       profileID: "dualsense", displayName: "DualSense Wireless Controller")
+        let other = ConnectedController(id: "gamepad/DualSense Wireless Controller#2",
+                                        profileID: "dualsense", displayName: "DualSense Wireless Controller 2")
+        let away = "DualSense Wireless Controller isn't connected — choose Automatic in Settings → Devices to use another controller"
+        struct Row { let name: String; let connected: [ConnectedController]; let active: ConnectedController?; let pinnedID: String?; let expected: String?; let reason: String }
+        let rows: [Row] = [
+            Row(name: "automatic, nothing connected", connected: [], active: nil, pinnedID: nil, expected: nil,
+                reason: "Nothing connected and no pin: the pairing steps are right."),
+            Row(name: "automatic, one connected", connected: [blue], active: blue, pinnedID: nil, expected: nil,
+                reason: "The slot is filled; there is nothing to explain."),
+            Row(name: "pinned and present", connected: [blue, other], active: blue, pinnedID: blue.id, expected: nil,
+                reason: "The pinned controller fills the slot."),
+            Row(name: "pinned away, nothing else connected", connected: [], active: nil, pinnedID: blue.id, expected: nil,
+                reason: "No controller is connected at all, so pairing steps are still reasonable."),
+            Row(name: "pinned away, another connected", connected: [other], active: nil, pinnedID: blue.id, expected: away,
+                reason: "A connected controller is ignored because of the pin — say so instead of telling the person to pair."),
+        ]
+        for row in rows {
+            XCTAssertEqual(ViewLogic.pinnedControllerAwayNote(connected: row.connected, active: row.active,
+                                                              pinnedID: row.pinnedID),
+                           row.expected, "\(row.name): \(row.reason)")
+        }
+    }
+
+    func testControllerChipHelpPrefersThePinnedAwayNote() {
+        let note = "DualSense Wireless Controller isn't connected — choose Automatic in Settings → Devices to use another controller"
+        XCTAssertEqual(ViewLogic.controllerChipHelp(controllerName: nil, isConnected: false, isDualSense: false,
+                                                    pinnedAwayNote: note),
+                       note, "An empty slot caused by an away pin explains the pin, not the pairing steps.")
+        XCTAssertEqual(ViewLogic.controllerChipHelp(controllerName: nil, isConnected: false, isDualSense: false,
+                                                    pinnedAwayNote: nil),
+                       "No controller connected — see the pairing steps in the sidebar",
+                       "Without an away pin the pairing pointer stays.")
+    }
+
     // MARK: - Permission banner
 
     func testPermissionAllowButtonTitleTable() {

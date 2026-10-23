@@ -21,8 +21,8 @@ final class AppStateCaptureScenarioTests: XCTestCase {
 
     /// AppState's one-short-buzz feedback when a hold begins.
     private static let holdBuzz = ControllerOutput.rumble(intensity: 0.5, duration: 0.05)
-    /// The first of errorHaptic's two buzzes. The second follows 140ms later
-    /// in a Task, which these tests deliberately never wait for.
+    /// The first of errorHaptic's two buzzes. The second follows 140 ms later
+    /// on the injected clock, which these tests never advance.
     private static let errorBuzz = ControllerOutput.rumble(intensity: 0.9, duration: 0.06)
 
     private var env: AppStateTestEnvironment!

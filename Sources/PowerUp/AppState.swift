@@ -3,9 +3,10 @@ import Combine
 import AppKit
 
 /// The time source and one-shot timer behind remote-turn expiry and the
-/// remote session registry (DESIGN v1.10, v2.2 A/B). Internal test seam
-/// (#118): the app reads the wall clock and sleeps; a test injects a clock it
-/// advances by hand, so expiry is driven without ever waiting.
+/// remote session registry (DESIGN v1.10, v2.2 A/B), also used to time the
+/// error haptic's second buzz. Internal test seam (#118): the app reads the
+/// wall clock and sleeps; a test injects a clock it advances by hand, so
+/// expiry (and the delayed buzz) is driven without ever waiting.
 @MainActor
 protocol RemoteTurnClock: AnyObject {
     var now: Date { get }
@@ -322,7 +323,8 @@ final class AppState: ObservableObject {
     /// `acpHarness` for the ACP one, and the config's harness kind picks
     /// between them as in the app; with `harness` alone, that adapter IS the
     /// harness whatever the config's harness kind says. `clock` (nil = the
-    /// wall clock) times remote-turn expiry.
+    /// wall clock) times remote-turn expiry and the error haptic's second
+    /// buzz.
     init(configStore store: ConfigStore,
          controller: ControllerService? = nil,
          speech: SpeechService? = nil,
@@ -2407,10 +2409,11 @@ final class AppState: ObservableObject {
     }
 
     /// Two short buzzes: "that didn't work".
+    /// The second buzz is timed on the injected clock (the wall clock in
+    /// the app), so a test sees it only when it advances that clock.
     private func errorHaptic() {
         haptic(intensity: 0.9, duration: 0.06)
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 140_000_000)
+        remoteTurnClock.schedule(after: 0.14) { [weak self] in
             self?.haptic(intensity: 0.9, duration: 0.06)
         }
     }

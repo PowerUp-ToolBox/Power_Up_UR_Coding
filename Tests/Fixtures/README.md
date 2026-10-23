@@ -11,15 +11,55 @@ CI fails if this directory holds no JSON fixtures.
 
 ## Conventions
 
-- One subdirectory per area: `session/`, and later others such as
-  `text-safety/`.
+- One subdirectory per area: `session/` (scenarios), `text-safety/` and
+  `status/` (case tables).
 - Plain JSON only, with no comments and no implementation-specific shapes.
-- Every file starts with a header: `formatVersion`, `name`, `description`,
-  `reason` (why the rule exists), `source` (where the rule is written down)
-  and `verifiedBy` (the implementations that run it, for example
-  `["swift"]`). Add `capturedAgainst` when the data was recorded from a real
-  tool, for example a `claude` CLI version.
+- Every file starts with a header and gives a `reason` for each thing it
+  pins. There are two formats:
+  - Session scenarios (`session/`) use `formatVersion`, `name`,
+    `description`, `reason` (why the rule exists), `source` (where the rule
+    is written down) and `verifiedBy` (the implementations that run it, for
+    example `["swift"]`). See [`session/`](#session-session-scenarios-format-1).
+  - Case tables (`text-safety/`, `status/`) use `description`, `function`,
+    `verifiedBy`, `capturedAgainst` and a `cases` list in which every case
+    has a `reason`. See [case tables](#text-safety-and-status-case-tables).
+- Add `capturedAgainst` when the data was recorded from a real tool (for
+  example a `claude` CLI version) or characterizes a specific build.
 - Use the terms in `CONTEXT.md`.
+
+## `text-safety/` and `status/`: case tables
+
+Each file pins one pure function as a table of input → expected rows: what
+remote mode does to text before it is typed or shown (`text-safety/`, epic
+#93) and how the status pill and light bar are derived (`status/`, epic
+#94). The Swift loader is `TextSafetyFixtures` in
+`Tests/PowerUpTests/TextSafetyFixtureTests.swift`; `TextSafetyFixtureTests`,
+`CmuxReportingFixtureTests` and `StatusDerivationTests` run the files.
+
+```json
+{
+  "description": "What the rule does, precisely enough to reimplement it.",
+  "function": "RemoteControlService.condense(_:maxChars:) — input {text, maxChars} in, string out",
+  "verifiedBy": "Where the rule is written down and which tests run this file.",
+  "capturedAgainst": "The build or tool version the expected values were taken from.",
+  "cases": [
+    { "name": "tab becomes a space", "input": { "text": "a\tb", "maxChars": 80 },
+      "expected": "a b", "reason": "The failure this case guards against." }
+  ]
+}
+```
+
+| Key | Meaning |
+| --- | --- |
+| `description` | the rule in prose, including any edge it depends on (for example, Characters are extended grapheme clusters, never bytes) |
+| `function` | the function under test, with the shape of `input` and `expected` |
+| `verifiedBy` | a string: the contract text the rule comes from, and the test files that run the table |
+| `capturedAgainst` | a string: the build or tool the expected values were recorded from |
+| `cases` | a non-empty list. Each case has a unique `name`, an `input` (a string, or an object when the function takes more than one value), an `expected` value (a string, a list or an object, per file) and a non-empty `reason` |
+
+The loader rejects a file with an empty `description`, `function` or
+`verifiedBy`, no cases, a blank or duplicate case name, or an empty
+`reason`. A failure names the file and the case.
 
 ## `session/`: session scenarios (format 1)
 

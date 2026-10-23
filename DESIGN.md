@@ -1900,8 +1900,8 @@ engine down. `isSpeaking`/`onFinished` semantics are unchanged for callers.
   when the recognizer starts — nil when it records from the system
   default) and a device-list change shows that UID gone, AppState ends the
   capture at once, whoever started it: `isPTTActive`/`isDraftDictation`
-  cleared, `pttHoldButton` cleared (the still-held trigger's release is a
-  no-op), a local draft hold restores the prompt box, the recognizer is
+  cleared, the hold tracker is reset (v2.7 §C; the still-held trigger's
+  release is a no-op), a local draft hold restores the prompt box, the recognizer is
   stopped with its result discarded (nothing is sent or typed), one error
   transcript entry, the error haptic. The came/went announcement still
   follows, and the next capture falls back to the system default through
@@ -2044,14 +2044,13 @@ before. Pinned by `StatusDerivationTests`.
 
 ---
 
-# v2.7 addendum — vocabulary, device slots, and hold semantics (contract only)
+# v2.7 addendum — vocabulary, device slots, and hold semantics
 
 Supersedes anything above where it conflicts. Recorded on 2026-09-17 from a
 design session; the vocabulary is fixed in `CONTEXT.md`, the decisions in
 ADR 0012 (core library, per-OS UI) and ADR 0013 (three device slots). This
-addendum is the contract for the next code change; **no code has moved yet.**
-Implement it as step 5 of plan stage 1, with tests, before any logic
-migrates into the Rust core.
+addendum is implemented by #130–#132 (step 5 of plan stage 1), with tests,
+before any logic migrates into the Rust core.
 
 ## A. Renames (Models.swift, Intent.swift)
 
@@ -2121,7 +2120,8 @@ struct ConnectedController: Identifiable, Equatable {
   holds one "Devices" section with three pickers in the order Controller,
   Input, Output. Input and Output are v2.5's Microphone and Speech Output
   pickers, moved here from Settings → Voice unchanged apart from their
-  labels. The Controller picker binds `controllerDeviceID`. Its rows come
+  labels and caption, which now use the slot words; a new intro caption
+  explains the three slots. The Controller picker binds `controllerDeviceID`. Its rows come
   from the pure, internal `ControllerPicker.rows(connected:active:pinnedID:)`
   (ControllerPicker.swift): first Automatic (nil), then every entry of
   `connected` by `displayName`, with the active one suffixed "— in use",
@@ -2137,8 +2137,8 @@ struct ConnectedController: Identifiable, Equatable {
 ## C. Hold semantics (replaces v2.4 §D and the v2.6 "reverse direction" note)
 
 - **No cross-device arbitration.** Only the active controller can start a
-  hold, so ownership is the control that started it, as today
-  (`pttHoldButton`).
+  hold, so ownership is the control that started it, recorded as the
+  owner in `AppState`'s `HoldTracker` (#131; it replaced `pttHoldButton`).
 - **Two holds on the active controller cancel both.** If a second
   hold-mapped control is pressed while a hold capture is active, the
   capture ends **without sending or drafting** (partial transcript
@@ -2183,3 +2183,18 @@ Unchanged. Its role is the **local plugin API** for scripts and plugins on
 the same machine; remote clients (phones) are deferred with ADR 0010. The
 `intent` vocabulary, the loopback bind, the token and the Origin policy are
 not touched by this addendum.
+
+## F. Pure view rules (ViewLogic.swift)
+
+- `enum ViewLogic` (#126) holds the product rules the main window shows as
+  pure, Foundation-only functions (state in, text out): the push-to-talk
+  hint, the empty-transcript prompt, the controller chip name and help, the
+  permission banner labels and the cost chip. Internal to the module, like
+  `AppState.derivedStatus` (v2.6); colors, symbols and layout stay in the
+  views.
+- `ViewLogic.pinnedControllerAwayNote(connected:active:pinnedID:)`: when
+  the Controller slot is empty only because it is pinned to a controller
+  that is away while another controller is connected, the controller chip's
+  help and the sidebar say "<pinned name> isn't connected — choose
+  Automatic in Settings → Devices to use another controller" instead of
+  the pairing steps. With nothing connected at all, the pairing steps stay.

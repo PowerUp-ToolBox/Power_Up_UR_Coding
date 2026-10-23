@@ -697,7 +697,7 @@ enum SessionScenarioRunner {
         let projectURL = env.directory.appendingPathComponent("project", isDirectory: true)
         var config = AppConfig.defaultConfig()
         config.listenerToken = "test-token"
-        config.ttsEnabled = false           // a test run makes no sound
+        config.ttsEnabled = false           // and the TTS below only records
         if let value = scenario.config.harnessKind { config.harnessKind = value }
         if let value = scenario.config.acpAgent { config.acpAgent = value }
         if let value = scenario.config.acpCustomCommand { config.acpCustomCommand = value }
@@ -740,7 +740,13 @@ enum SessionScenarioRunner {
         let listener = RemoteListener()
         let clock = ManualRemoteTurnClock()
         let injector = env.injector
-        let app = env.makeAppState(controller: controller, harness: harnesses.claude, acpHarness: harnesses.acp,
+        // `ttsEnabled = false` alone does not keep a run silent: a replay or
+        // a toggleTTS intent speaks regardless. A recording TTS never reaches
+        // a synthesizer, whatever the script does.
+        let tts = TTSService()
+        tts.recordsOutput = true
+        let app = env.makeAppState(controller: controller, tts: tts,
+                                   harness: harnesses.claude, acpHarness: harnesses.acp,
                                    listener: listener, clock: clock)
         await settle()
 

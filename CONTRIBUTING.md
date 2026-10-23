@@ -107,7 +107,9 @@ final class MyScenarioTests: XCTestCase {
     whatever the harness kind says. To test a harness switch, pass a second
     one as `acpHarness:`; then `harness:` stands in for the built-in Claude
     adapter, `acpHarness:` for the ACP adapter, and the config's harness
-    kind picks between them as in the app.
+    kind picks between them as in the app. Without `harness:` the
+    environment supplies a fresh fake, so a test can never spawn a real
+    `claude` or ACP agent.
   - `ScriptedSpeechEngine`: pass it as
     `speech: SpeechService(engine: engine)`. You script the permission
     answer, partial transcripts and the final transcript. Set
@@ -145,8 +147,9 @@ final class MyScenarioTests: XCTestCase {
     report a scripted `failure`. Deliver Claude Code hooks by passing your
     own `RemoteListener()` as `listener:` and calling its `onEvent`.
   - **Remote-turn time:** pass a `ManualRemoteTurnClock` as `clock:` and
-    call `advance(by:)` to make a silent remote turn expire. Never wait for
-    it.
+    call `advance(by:)` to make a silent remote turn expire (or the error
+    haptic's second buzz land). Never wait for it. Without `clock:` the
+    environment uses a clock that nobody advances.
   - For **audio devices**, pass a plain `AudioDeviceStore()` as
     `audioDevices:`. Call `simulateDevices(_:)` before building AppState
     to set what the first enumeration finds (no change callback, as at

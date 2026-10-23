@@ -48,14 +48,34 @@ enum ViewLogic {
         return isConnected ? "Controller" : "No controller"
     }
 
-    /// Tooltip of the controller chip: the pairing pointer while nothing is
-    /// connected, else the chip name (tagged "(DualSense)" for a DualSense).
-    static func controllerChipHelp(controllerName: String?, isConnected: Bool, isDualSense: Bool) -> String {
+    /// Tooltip of the controller chip: while the slot is empty, the
+    /// `pinnedAwayNote` when a pin is what empties it, else the pairing
+    /// pointer; otherwise the chip name (tagged "(DualSense)" for a
+    /// DualSense).
+    static func controllerChipHelp(controllerName: String?, isConnected: Bool, isDualSense: Bool,
+                                   pinnedAwayNote: String? = nil) -> String {
         guard isConnected else {
-            return "No controller connected — see the pairing steps in the sidebar"
+            return pinnedAwayNote ?? "No controller connected — see the pairing steps in the sidebar"
         }
         let name = controllerChipName(controllerName: controllerName, isConnected: isConnected)
         return isDualSense ? "\(name) (DualSense)" : name
+    }
+
+    // MARK: - Pinned controller away
+
+    /// Why the Controller slot is empty when a controller *is* connected: the
+    /// slot is pinned to a controller that is away, so every connected one is
+    /// ignored (DESIGN v2.7 §B). The chip help and the sidebar show this
+    /// instead of the pairing steps, which would tell a person with a working
+    /// controller to pair it again. Nil whenever the pairing steps are right:
+    /// the slot is filled, nothing is pinned, or nothing is connected at all.
+    static func pinnedControllerAwayNote(connected: [ConnectedController],
+                                         active: ConnectedController?,
+                                         pinnedID: String?) -> String? {
+        guard active == nil, let pinnedID, !connected.isEmpty,
+              !connected.contains(where: { $0.id == pinnedID }) else { return nil }
+        let name = ControllerService.displayName(forID: pinnedID)
+        return "\(name) isn't connected — choose Automatic in Settings → Devices to use another controller"
     }
 
     // MARK: - Permission banner

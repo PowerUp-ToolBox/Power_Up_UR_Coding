@@ -83,6 +83,7 @@ contract change.
 | `DestructiveActionClassifier.swift` | Pure classifier for actions needing confirmation |
 | `ControllerSlot.swift` | Pure Controller slot rule (`ControllerSlotSelector`) and hold rule (`HoldTracker`) |
 | `ControllerPicker.swift` | Pure rows and caption for the Settings → Devices Controller picker |
+| `ViewLogic.swift` | Pure view rules extracted from MainView/ComponentViews (#126; DESIGN v2.7 §F) |
 | `RemoteControlService.swift` | Routes text/keys to cmux or keyboard injection |
 | `RemoteListener.swift` | Localhost HTTP listener for Claude Code hook events |
 | `HookInstaller.swift` | Installs/manages hooks in `~/.claude/settings.json` |
@@ -128,7 +129,7 @@ another one.
 - **Construct:** in a `@MainActor` XCTestCase, call
   `env = try AppStateTestEnvironment(config:)` in setUp, where `config` is
   written to a sandboxed `config.json` and nil means first launch. Then
-  `let app = env.makeAppState(controller:speech:tts:claude:harness:remote:listener:audioDevices:transcriptStore:clock:)`,
+  `let app = env.makeAppState(configStore:controller:speech:tts:claude:harness:acpHarness:remote:listener:audioDevices:transcriptStore:clock:)`,
   where every argument is optional. Call `env.tearDown()` in tearDown. The
   environment is `Tests/PowerUpTests/AppStateTestSupport.swift`. It calls the
   internal `AppState.init(configStore:…, sideEffects: [])`, so nothing
@@ -138,8 +139,8 @@ another one.
 - **Fakes:**
   - `FakeHarnessAdapter` (`harness:`). It records `calls` and emits queued
     `HarnessEvent`s synchronously via `emitNext()`, `emitAll()` and
-    `emit(_:)`. `harness: nil` keeps the config-selected real adapter.
-    Alone it is the harness for every harness kind; with a second fake as
+    `emit(_:)`. Without `harness:` the environment supplies a fresh one, so
+    no test can spawn a real `claude` or ACP agent. Alone it is the harness for every harness kind; with a second fake as
     `acpHarness:`, the two stand in for the Claude and ACP adapters and the
     harness kind picks between them (harness-switch tests).
   - `ScriptedSpeechEngine` (`speech: SpeechService(engine:)`). It scripts
@@ -169,7 +170,9 @@ another one.
     `RemoteControlService(injector:)`. Deliver hooks through your own
     `RemoteListener()` (`listener:`) by calling `onEvent`.
   - `ManualRemoteTurnClock` (`clock:`). `advance(by:)` runs remote-turn
-    expiry checks that fall due; never wait 15 minutes.
+    expiry checks and the error haptic's second buzz (140 ms) as they fall
+    due; never wait. Without `clock:` the environment supplies one that
+    nobody advances.
   - Audio devices need no fake either. Pass `AudioDeviceStore()` as
     `audioDevices:`; `simulateDevices(_:)` sets the launch enumeration
     (no callback) and `simulateHotPlug(_:)` runs the hot-plug path (lists,

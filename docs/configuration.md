@@ -37,11 +37,11 @@ me"; **Settings → Devices** writes them for you.
 | `audioOutputUID` | Output | the system-default output | the chosen speaker's Core Audio UID |
 
 A controller id is the controller's kind and name, with `#2`, `#3`, … added
-when an identical pad was already connected (macOS gives PowerUp no serial
-number, so two identical pads are told apart by the order they connected
-in). An id that matches no connected controller leaves the Controller slot
-empty until that controller connects; delete the key, or pick **Automatic**,
-to go back to the default. An empty string is read as absent.
+when an identical controller was already connected (macOS gives PowerUp no
+serial number, so two identical controllers are told apart by the order they
+connected in). An id that matches no connected controller leaves the
+Controller slot empty until that controller connects; delete the key, or
+pick **Automatic**, to go back to the default. An empty string is read as absent.
 
 ## How sessions & resume work
 

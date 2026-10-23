@@ -22,7 +22,9 @@ final class AppStateHoldTests: XCTestCase {
     /// AppState's one-short-buzz feedback when a capture begins.
     private static let holdBuzz = ControllerOutput.rumble(intensity: 0.5, duration: 0.05)
     /// The first of errorHaptic's two buzzes (0.9 / 60 ms). The second
-    /// follows 140ms later in a Task that these tests never wait for.
+    /// follows 140 ms later on AppState's injected clock, so it lands only
+    /// when a test advances that clock (the environment's default clock is a
+    /// `ManualRemoteTurnClock` nobody advances).
     private static let errorBuzz = ControllerOutput.rumble(intensity: 0.9, duration: 0.06)
 
     private var env: AppStateTestEnvironment!
@@ -64,14 +66,15 @@ final class AppStateHoldTests: XCTestCase {
 
     /// An AppState with one connected (simulated) pad recording its output,
     /// settled at `.idle` with the connect-time output flushed.
-    private func makeRig(_ script: (ScriptedSpeechEngine) -> Void = { _ in }) async -> Rig {
+    private func makeRig(clock: (any RemoteTurnClock)? = nil,
+                         _ script: (ScriptedSpeechEngine) -> Void = { _ in }) async -> Rig {
         let controller = ControllerService()
         controller.recordsOutput = true
         let engine = ScriptedSpeechEngine()
         script(engine)
         let speech = SpeechService(engine: engine)
         let harness = FakeHarnessAdapter()
-        let app = env.makeAppState(controller: controller, speech: speech, harness: harness)
+        let app = env.makeAppState(controller: controller, speech: speech, harness: harness, clock: clock)
         controller.simulateConnect()
         await settle(until: app.status == .idle)
         controller.clearRecordedOutput()
@@ -145,6 +148,25 @@ final class AppStateHoldTests: XCTestCase {
         rig.controller.simulateButton(.r2, pressed: false)
         await letPendingTasksRun()
         XCTAssertEqual(snapshot(rig), afterCancel)
+        withExtendedLifetime(rig.app) {}
+    }
+
+    func testTheErrorHapticSecondBuzzLandsOnlyWhenTheClockAdvances() async {
+        let clock = ManualRemoteTurnClock()
+        let rig = await makeRig(clock: clock)
+
+        rig.controller.simulateButton(.r2, pressed: true)
+        await settle(until: rig.speech.isListening)
+        rig.controller.simulateButton(.l2, pressed: true)
+        await letPendingTasksRun()
+        XCTAssertEqual(rumbles(rig), [Self.holdBuzz, Self.errorBuzz],
+                       "however long the main actor runs, the second buzz waits for the clock")
+
+        clock.advance(by: 0.13)
+        XCTAssertEqual(rumbles(rig), [Self.holdBuzz, Self.errorBuzz], "not before 140 ms")
+        clock.advance(by: 0.01)
+        XCTAssertEqual(rumbles(rig), [Self.holdBuzz, Self.errorBuzz, Self.errorBuzz],
+                       "the second buzz of \"that didn't work\" lands 140 ms after the first")
         withExtendedLifetime(rig.app) {}
     }
 

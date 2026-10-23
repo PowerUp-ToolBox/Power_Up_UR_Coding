@@ -22,7 +22,8 @@ import CoreAudio
 final class AppStateAudioDeviceScenarioTests: XCTestCase {
 
     private static let holdBuzz = ControllerOutput.rumble(intensity: 0.5, duration: 0.05)
-    /// The first of errorHaptic's two buzzes; the second (140ms later) is never awaited.
+    /// The first of errorHaptic's two buzzes; the second (140 ms later, on the
+    /// injected clock these tests never advance) never lands.
     private static let errorBuzz = ControllerOutput.rumble(intensity: 0.9, duration: 0.06)
 
     // The Mac's devices, as the store would enumerate them.

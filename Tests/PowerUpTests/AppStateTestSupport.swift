@@ -68,8 +68,16 @@ final class AppStateTestEnvironment {
     /// `FakeHarnessAdapter` as `harness` to script the session, and
     /// `SpeechService(engine: ScriptedSpeechEngine())` as `speech` to script
     /// what the microphone "hears", and a `ManualRemoteTurnClock` as `clock`
-    /// to drive remote-turn expiry by advancing time. Without a `remote`,
-    /// remote mode delivers into `injector`.
+    /// to drive remote-turn expiry (and the error haptic's second buzz) by
+    /// advancing time.
+    ///
+    /// The live defaults that would reach outside the test are closed off
+    /// here, never left to AppState's production fallbacks: without a
+    /// `harness`, a fresh `FakeHarnessAdapter` is the harness (so a send can
+    /// never spawn a real `claude` or ACP agent); without a `clock`, a
+    /// `ManualRemoteTurnClock` nobody advances (so nothing lands on wall-clock
+    /// time); without a `remote`, remote mode delivers into `injector`.
+    /// Without an `acpHarness`, the harness stands in for both adapters.
     func makeAppState(configStore: ConfigStore? = nil,
                       controller: ControllerService? = nil,
                       speech: SpeechService? = nil,
@@ -87,13 +95,13 @@ final class AppStateTestEnvironment {
                  speech: speech,
                  tts: tts,
                  claude: claude,
-                 harness: harness,
+                 harness: harness ?? FakeHarnessAdapter(),
                  acpHarness: acpHarness,
                  remote: remote ?? RemoteControlService(injector: injector),
                  listener: listener,
                  audioDevices: audioDevices,
                  transcriptStore: transcriptStore,
-                 clock: clock,
+                 clock: clock ?? ManualRemoteTurnClock(),
                  sideEffects: [])
     }
 

@@ -124,6 +124,7 @@ private struct RemoteAXWarningBanner: View {
 @MainActor
 private struct ControllerInfoChip: View {
     @EnvironmentObject private var controller: ControllerService
+    @EnvironmentObject private var configStore: ConfigStore
 
     var body: some View {
         HStack(spacing: 7) {
@@ -157,7 +158,11 @@ private struct ControllerInfoChip: View {
     private var helpText: String {
         ViewLogic.controllerChipHelp(controllerName: controller.controllerName,
                                      isConnected: controller.isConnected,
-                                     isDualSense: controller.isDualSense)
+                                     isDualSense: controller.isDualSense,
+                                     pinnedAwayNote: ViewLogic.pinnedControllerAwayNote(
+                                        connected: controller.connected,
+                                        active: controller.active,
+                                        pinnedID: configStore.config.controllerDeviceID))
     }
 }
 
@@ -485,6 +490,7 @@ private struct SettingsGearButton: View {
 @MainActor
 private struct SidebarPane: View {
     @EnvironmentObject private var controller: ControllerService
+    @EnvironmentObject private var configStore: ConfigStore
     @Binding var showsAllButtons: Bool
 
     var body: some View {
@@ -495,7 +501,13 @@ private struct SidebarPane: View {
                 KeyboardHintsCard()
 
                 if !controller.isConnected {
-                    PairingHintCard()
+                    if let note = ViewLogic.pinnedControllerAwayNote(connected: controller.connected,
+                                                                     active: controller.active,
+                                                                     pinnedID: configStore.config.controllerDeviceID) {
+                        PinnedControllerAwayCard(note: note)
+                    } else {
+                        PairingHintCard()
+                    }
                 }
 
                 Spacer(minLength: 0)

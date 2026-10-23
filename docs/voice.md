@@ -103,9 +103,7 @@ the **Controller** slot (see
 By default Input is the system-default microphone and Output the
 system-default output. Pin either one to a specific audio device — dictate
 through a USB mic while replies play through your headphones, or the other
-way around. A DualSense plugged in over USB shows up as an audio device like
-any other, so its microphone can be your Input; over Bluetooth macOS does
-not offer its microphone, so Input stays on the system default.
+way around.
 
 Your Input and Output picks are remembered even when unplugged: if a chosen
 audio device disappears mid-session, PowerUp announces it in the transcript,

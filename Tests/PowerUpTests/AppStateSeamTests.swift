@@ -62,6 +62,13 @@ final class AppStateSeamTests: XCTestCase {
         XCTAssertFalse(app.hasTerminateObserver, "no global willTerminate observer in a test")
     }
 
+    func testTheEnvironmentNeverFallsBackToALiveHarness() {
+        let app = env.makeAppState()
+
+        XCTAssertTrue(app.harness is FakeHarnessAdapter,
+                      "without a harness: argument a send must reach a fake, never spawn a real claude")
+    }
+
     func testRestartListenerDoesNotBindWhenListenerSyncIsSkipped() {
         let listener = RemoteListener()
         let app = env.makeAppState(listener: listener)
