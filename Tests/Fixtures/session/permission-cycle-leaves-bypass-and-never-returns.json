@@ -1,0 +1,44 @@
+{
+  "formatVersion": 1,
+  "name": "permission-cycle-leaves-bypass-and-never-returns",
+  "description": "When bypassPermissions was chosen in Settings, the first Cycle Permission Mode press moves to acceptEdits and the cycle never comes back to bypass. With no session running nothing is sent; the next launch carries the mode the cycle landed on.",
+  "reason": "The cycle can lower the risk but never raise it to auto-approve-everything. A mode outside the cycle restarts it from its first entry, the safest editing mode.",
+  "source": "DESIGN.md v1.7 'Safety invariants' 1; AppConfig.permissionModeCycle; AppState.nextValue(after:in:), AppState.cyclePermissionMode",
+  "verifiedBy": ["swift"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "builtin",
+    "permissionMode": "bypassPermissions",
+    "project": true
+  },
+  "script": [
+    {
+      "intent": "cyclePermissionMode",
+      "reason": "bypassPermissions is not in the cycle, so the cycle starts over at its first entry.",
+      "expect": { "permissionMode": "acceptEdits", "harnessCalls": [] }
+    },
+    { "intent": "cyclePermissionMode", "expect": { "permissionMode": "plan" } },
+    { "intent": "cyclePermissionMode", "expect": { "permissionMode": "default" } },
+    {
+      "intent": "cyclePermissionMode",
+      "reason": "The last entry wraps to acceptEdits, never back to bypassPermissions.",
+      "expect": { "permissionMode": "acceptEdits" }
+    },
+    {
+      "call": "startSessionIfNeeded",
+      "reason": "No session was running, so the launch carries the mode on its command line."
+    }
+  ],
+  "expect": {
+    "permissionMode": "acceptEdits",
+    "harnessCalls": [
+      { "adapter": "claude", "type": "start", "permissionMode": "acceptEdits" }
+    ],
+    "transcript": [
+      { "kind": "system", "text": "Permissions → acceptEdits" },
+      { "kind": "system", "text": "Permissions → plan" },
+      { "kind": "system", "text": "Permissions → default" },
+      { "kind": "system", "text": "Permissions → acceptEdits" }
+    ]
+  }
+}

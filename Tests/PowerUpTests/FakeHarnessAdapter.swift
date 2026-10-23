@@ -9,10 +9,16 @@ import Foundation
 ///
 /// Its lifecycle follows the real adapters (`ClaudeService`, `ACPAdapter`)
 /// closely enough for session rules to read it the same way:
-/// `start` → `.starting`; an emitted `sessionReady` → `.ready` and fills
+/// `start` → `.starting`, with `sessionID` set to the id being resumed (the
+/// Claude adapter's behavior; AppState never asks an ACP agent to resume) and
+/// `modelName` cleared; an emitted `sessionReady` → `.ready` and fills
 /// `sessionID` / `modelName`; an emitted, acknowledged `set_model`
 /// `controlResult` → `modelName`; `send` → `.working`; an emitted
-/// `turnCompleted` → `.ready`; `stop` or an emitted `ended` → `.stopped`.
+/// `turnCompleted` → `.ready`; `stop` → `.stopped`; an emitted `ended` →
+/// `.stopped` with `sessionID` cleared (a dead process owns no session id).
+/// `stop` keeps `sessionID` until `ended` arrives, as the Claude adapter does
+/// while its process exits; set `clearsSessionIDOnStop` to mirror the ACP
+/// adapter, which drops it at once.
 /// Every identity field is also settable, so a test can put the fake in any
 /// state directly.
 ///
@@ -37,6 +43,18 @@ final class FakeHarnessAdapter: HarnessAdapter {
 
     /// Forget what has been recorded so far (e.g. after scripting set-up).
     func clearCalls() { calls.removeAll() }
+
+    /// Called with each call as it is recorded, so several fakes can share
+    /// one ordered log (the session runner's harness switch scenarios).
+    var onCall: ((Call) -> Void)?
+
+    /// Mirror the ACP adapter: `stop` clears `sessionID` immediately.
+    var clearsSessionIDOnStop = false
+
+    private func record(_ call: Call) {
+        calls.append(call)
+        onCall?(call)
+    }
 
     // MARK: HarnessAdapter identity
 
@@ -86,34 +104,37 @@ final class FakeHarnessAdapter: HarnessAdapter {
     // MARK: HarnessAdapter calls
 
     func start(_ configuration: HarnessConfiguration) {
-        calls.append(.start(configuration))
+        record(.start(configuration))
+        sessionID = configuration.resumeSessionID
+        modelName = nil
         state = .starting
     }
 
     func send(_ text: String) {
-        calls.append(.send(text))
+        record(.send(text))
         state = .working
     }
 
     func interrupt() {
-        calls.append(.interrupt)
+        record(.interrupt)
     }
 
     func setModel(_ model: String) {
-        calls.append(.setModel(model))
+        record(.setModel(model))
     }
 
     func setPermissionMode(_ mode: String) {
-        calls.append(.setPermissionMode(mode))
+        record(.setPermissionMode(mode))
     }
 
     func respondToPermission(id: String, allow: Bool) {
-        calls.append(.respondToPermission(id: id, allow: allow))
+        record(.respondToPermission(id: id, allow: allow))
     }
 
     func stop() {
-        calls.append(.stop)
+        record(.stop)
         state = .stopped
+        if clearsSessionIDOnStop { sessionID = nil }
     }
 
     // MARK: Lifecycle mirroring
@@ -135,6 +156,7 @@ final class FakeHarnessAdapter: HarnessAdapter {
             if ok, action == "set_model", let value, !value.isEmpty { modelName = value }
         case .ended:
             state = .stopped
+            sessionID = nil
         default:
             break
         }

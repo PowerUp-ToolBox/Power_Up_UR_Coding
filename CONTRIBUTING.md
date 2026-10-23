@@ -103,7 +103,11 @@ final class MyScenarioTests: XCTestCase {
 - **Fakes:**
   - `FakeHarnessAdapter`: pass it as `harness:`. It records every call
     (`calls`) and emits scripted `HarnessEvent`s when you call
-    `emitNext()`, `emitAll()` or `emit(_:)`.
+    `emitNext()`, `emitAll()` or `emit(_:)`. Alone, it is the harness
+    whatever the harness kind says. To test a harness switch, pass a second
+    one as `acpHarness:`; then `harness:` stands in for the built-in Claude
+    adapter, `acpHarness:` for the ACP adapter, and the config's harness
+    kind picks between them as in the app.
   - `ScriptedSpeechEngine`: pass it as
     `speech: SpeechService(engine: engine)`. You script the permission
     answer, partial transcripts and the final transcript.

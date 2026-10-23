@@ -24,8 +24,9 @@ CI fails if this directory holds no JSON fixtures.
 ## `session/`: session scenarios (format 1)
 
 Each file is one rule of the session state machine (epic #92), played
-through AppState's test seam with a scripted harness, a recording injector
-standing in for the remote session, and a scripted clock. The file is named
+through AppState's test seam with two scripted harnesses (one standing in
+for the built-in Claude adapter, one for the ACP adapter), a recording
+injector standing in for the remote session, and a scripted clock. The file is named
 `<name>.json`. To pin a new session rule, add a scenario here rather than
 writing a bespoke test. The Swift runner is
 `Tests/PowerUpTests/SessionScenario.swift`, and the table test is
@@ -60,9 +61,10 @@ Anything not set here comes from the default config, with TTS off.
 
 | Key | Meaning |
 | --- | --- |
-| `harnessKind`, `model`, `effort`, `permissionMode` | the `AppConfig` fields of the same name. The scripted harness reports the capabilities of the adapter it stands in for: `"claude"` supports effort (restart + resume), `"acp"` does not |
+| `harnessKind`, `model`, `effort`, `permissionMode` | the `AppConfig` fields of the same name. The harness kind picks which scripted adapter is the harness. Each reports the capabilities of the adapter it stands in for: `"claude"` supports effort (restart + resume), `"acp"` does not |
+| `acpAgent`, `acpCustomCommand` | the ACP agent. Whenever the ACP harness is selected (here or by a `settings` step), the agent must be `"custom"`: the other agents' commands are looked up on the machine running the tests. A load error says so |
 | `controlMode` | `"builtin"` or `"remote"`. In remote mode nothing is typed into a real terminal: every text and key goes to a recording injector (see `injectorCalls`) |
-| `project` | `true`: a fresh project folder, written `"$project"` in expectations; default `false` (no folder chosen) |
+| `project` | `true`: a fresh project folder named `project` (written `"$project"` in expectations); default `false` (no folder chosen) |
 | `lastSessionID` | the stored resumable id (it also seeds the folder's own entry, as on a real launch) |
 | `controllerConnected` | `true`: a simulated pad is connected before AppState is built |
 
@@ -72,13 +74,23 @@ Each step has exactly one of these:
 
 - `"call"`: a public AppState call. The options are `startSessionIfNeeded`
   (what app launch does), `newSession`, `sendUserText` (needs `"text"`),
-  `interruptClaude` and `answerPendingPermission` (needs `"allow"`).
+  `interruptClaude`, `answerPendingPermission` (needs `"allow"`) and
+  `switchProject` (the Settings recents list's Switch button; needs
+  `"project"`, a folder name such as `"other"`). Project folders live in the
+  sandbox, are created when first named and are written `"$<name>"` in
+  expectations; `"project"` is the folder `config.project` makes.
 - `"intent"`: an intent by its protocol wire name (docs/protocol.md), for
   example `approve`, `reject`, `interrupt`, `cycleEffort`, or `sendPrompt`
   with `"text"`. `showWindow` and the voice-capture intents are not
   supported here.
+- `"settings"`: a Settings window edit to the harness picker, an object
+  with any of `harnessKind`, `acpAgent` and `acpCustomCommand`. AppState
+  picks it up in its derived-update pass, as it does in the app.
 - `"harnessEvent"`: one normalized `HarnessEvent`, tagged by `type`, with
-  fields named as in Swift:
+  fields named as in Swift. It comes from the adapter the config currently
+  selects, unless the step names one with `"adapter": "claude"` or
+  `"adapter": "acp"` (for example, a late event from an adapter a harness
+  switch retired). The events:
   - `sessionReady {sessionID, model}`
   - `replyDelta {text}`
   - `reply {text}`
@@ -117,20 +129,26 @@ A step may also carry:
   already on its way when the step happened. By default every step settles
   first. The last step cannot set it.
 
-The scripted harness follows the real adapters' own state: `start` makes
-it starting, `sessionReady` makes it ready and sets its session id and
-model, `send` makes it working, `turnCompleted` makes it ready again, an
-acknowledged `set_model` `controlResult` sets its model, and `ended` or
-`stop` stops it.
+The scripted harnesses follow the real adapters' own state: `start` makes
+one starting, with the id it resumes as its session id and no model yet;
+`sessionReady` makes it ready and sets its session id and model; `send`
+makes it working; `turnCompleted` makes it ready again; an acknowledged
+`set_model` `controlResult` sets its model; `stop` stops it; and `ended`
+stops it and clears its session id (a dead process owns no session id).
+After `stop` the Claude stand-in keeps its session id until `ended`
+arrives, because the real process takes a moment to exit; the ACP stand-in
+drops it at once, as the ACP adapter does.
 
 ### `expect`: facts checked after the script (each key optional, at least one)
 
 | Key | Checks |
 | --- | --- |
-| `harnessCalls` | every call AppState made on the harness, in order and with an exact count. `type` is one of `start {projectDir, model, permissionMode, effort, resumeSessionID, binaryPathOverride, agentCommand}`, `send {text}`, `interrupt`, `setModel {model}`, `setPermissionMode {mode}`, `respondToPermission {id, allow}` or `stop`. Only the keys you write are compared, so `"resumeSessionID": null` asserts a fresh start. |
-| `transcript` | the transcript entries the script appended, in order and with an exact count: `{kind, text?}`, where kind is one of `user`, `assistant`, `tool`, `system` or `error` |
+| `harnessCalls` | every call AppState made on either scripted harness, in one ordered log with an exact count. `adapter` (`claude` or `acp`) is the one that received it, and `type` is one of `start {projectDir, model, permissionMode, effort, resumeSessionID, binaryPathOverride, agentCommand}`, `send {text}`, `interrupt`, `setModel {model}`, `setPermissionMode {mode}`, `respondToPermission {id, allow}` or `stop`. Only the keys you write are compared, so `"resumeSessionID": null` asserts a fresh start. |
+| `transcript` | the transcript entries that appeared during the script, in order of first appearance and with an exact count: `{kind, text?}`, where kind is one of `user`, `assistant`, `tool`, `system` or `error`. A project switch swaps in the new folder's stored history: entries already seen are not counted again, but the "Earlier conversation restored" marker on top of it is new |
 | `errorShown` | whether any `error` entry was appended |
 | `lastSessionID` | the stored resumable id (a string, or `null` for none) |
+| `liveSessionID` | the session id the running harness owns, sent to protocol clients as `sessionID` (a string, or `null` when no process owns one) |
+| `permissionMode` | the configured permission mode |
 | `pendingPermission` | whether a permission request is waiting for an answer |
 | `pendingPermissionArmed` | whether the waiting request is a destructive one that a first `approve` has armed (the banner reads "Confirm"); `false` when nothing is waiting |
 | `status` | `noController`, `idle`, `listening`, `thinking` or `speaking` |

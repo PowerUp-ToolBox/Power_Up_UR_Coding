@@ -1,0 +1,74 @@
+{
+  "formatVersion": 1,
+  "name": "harness-switch-stops-the-old-adapter-before-the-new-one-starts",
+  "description": "Choosing another harness in Settings stops the running one at once; the new one starts with the next message. ACP ids never replace the stored Claude id, so switching back resumes the Claude conversation.",
+  "reason": "Two harnesses running side by side would both work in the same folder and both talk to PowerUp. Starting lazily means a Settings change alone never launches anything.",
+  "source": "DESIGN.md v2.0 AppState 'syncHarnessSelection() … stops the outgoing session once per change; the new harness starts lazily on next send'; DESIGN.md v2.1 B 'sessionReady records ids … (claude kind only)'",
+  "verifiedBy": ["swift"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "builtin",
+    "project": true,
+    "controllerConnected": true
+  },
+  "script": [
+    { "call": "startSessionIfNeeded" },
+    {
+      "harnessEvent": { "type": "sessionReady", "sessionID": "session-1", "model": "claude-sonnet-4-5" }
+    },
+    {
+      "settings": { "harnessKind": "acp", "acpAgent": "custom", "acpCustomCommand": "scripted-agent --acp" },
+      "reason": "The person picks an ACP agent in Settings → General.",
+      "expect": {
+        "harnessCalls": [
+          { "adapter": "claude", "type": "start" },
+          { "adapter": "claude", "type": "stop" }
+        ],
+        "status": "idle",
+        "lastSessionID": "session-1"
+      }
+    },
+    {
+      "call": "sendUserText",
+      "text": "Hello agent.",
+      "reason": "The next message starts the new harness, fresh."
+    },
+    {
+      "harnessEvent": { "type": "sessionReady", "sessionID": "acp-session-1", "model": "scripted-model" },
+      "expect": { "lastSessionID": "session-1", "liveSessionID": "acp-session-1" }
+    },
+    {
+      "settings": { "harnessKind": "claude" },
+      "reason": "Back to the built-in harness: the agent is stopped."
+    },
+    {
+      "call": "sendUserText",
+      "text": "Back to Claude.",
+      "reason": "The Claude conversation resumes where it was."
+    }
+  ],
+  "expect": {
+    "harnessCalls": [
+      { "adapter": "claude", "type": "start", "resumeSessionID": null },
+      { "adapter": "claude", "type": "stop" },
+      {
+        "adapter": "acp", "type": "start", "projectDir": "$project", "resumeSessionID": null,
+        "agentCommand": ["scripted-agent", "--acp"]
+      },
+      { "adapter": "acp", "type": "send", "text": "Hello agent." },
+      { "adapter": "acp", "type": "stop" },
+      { "adapter": "claude", "type": "start", "resumeSessionID": "session-1", "agentCommand": null },
+      { "adapter": "claude", "type": "send", "text": "Back to Claude." }
+    ],
+    "transcript": [
+      { "kind": "system", "text": "Session started (claude-sonnet-4-5)" },
+      { "kind": "system", "text": "Harness → Custom command (ACP). The session starts with your next message." },
+      { "kind": "user", "text": "Hello agent." },
+      { "kind": "system", "text": "Session started (scripted-model)" },
+      { "kind": "system", "text": "Harness → built-in Claude Code. The session starts with your next message." },
+      { "kind": "user", "text": "Back to Claude." }
+    ],
+    "errorShown": false,
+    "lastSessionID": "session-1"
+  }
+}

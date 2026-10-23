@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "name": "no-ultracode-prefix-in-remote-mode",
+  "description": "In remote mode at Ultra effort (\"max\"), a prompt is typed into the remote session exactly as the person said it. PowerUp starts no session of its own.",
+  "reason": "Remote text belongs to somebody else's session verbatim. That session runs at whatever effort it was started with, so PowerUp's own effort setting must not change what gets typed there.",
+  "source": "DESIGN.md v2.1 A 'ACP harnesses and remote mode are NEVER prefixed'; AppState.sendUserText (remote branch)",
+  "verifiedBy": ["swift"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "remote",
+    "effort": "max",
+    "project": true
+  },
+  "script": [
+    {
+      "intent": "sendPrompt",
+      "text": "Refactor the parser."
+    }
+  ],
+  "expect": {
+    "harnessCalls": [],
+    "injectorCalls": [
+      { "type": "text", "text": "Refactor the parser.", "submit": true }
+    ],
+    "transcript": [
+      { "kind": "user", "text": "Refactor the parser." }
+    ]
+  }
+}

@@ -83,6 +83,11 @@ struct SessionScenario {
     /// default config (with TTS off so a test run makes no sound).
     struct Config {
         var harnessKind: String?
+        /// The ACP agent and its command line. A scenario that selects the
+        /// ACP harness must use the "custom" agent, so the command never
+        /// depends on what is installed on the machine running the tests.
+        var acpAgent: String?
+        var acpCustomCommand: String?
         var model: String?
         var effort: String?
         var permissionMode: String?
@@ -101,12 +106,32 @@ struct SessionScenario {
         case sendUserText(String)
         case interruptClaude
         case answerPendingPermission(allow: Bool)
+        /// The Settings recents list's Switch button. The folder is named
+        /// (`<sandbox>/<name>`, written `$<name>` in expectations); the runner
+        /// creates it when needed. `"project"` is the folder `config.project`
+        /// makes.
+        case switchProject(String)
+    }
+
+    /// A Settings window edit: the harness picker. Unset fields stay as
+    /// they are.
+    struct SettingsChange {
+        var harnessKind: String?
+        var acpAgent: String?
+        var acpCustomCommand: String?
+    }
+
+    /// Which scripted adapter a harness event comes from.
+    enum Adapter: String {
+        case claude, acp
     }
 
     enum Action {
         case call(Call)
         case intent(Intent)
-        case harnessEvent(HarnessEvent)
+        case settings(SettingsChange)
+        /// nil adapter: the one the current config selects.
+        case harnessEvent(HarnessEvent, from: Adapter?)
         /// A Claude Code hook as the remote listener delivers it (remote mode).
         case hookEvent(RemoteHookEvent)
         /// Moves the scripted clock forward this many seconds, running the
@@ -156,6 +181,11 @@ struct SessionScenario {
         /// Everything remote mode typed or pressed in the remote session, in
         /// order and with an exact count.
         var injectorCalls: [[String: ScenarioJSON]]?
+        /// The configured permission mode.
+        var permissionMode: String?
+        /// The session id the running harness owns (sent to protocol clients
+        /// as `sessionID`). `.some(nil)` asserts there is none.
+        var liveSessionID: String??
     }
 
     static let formatVersion = 1
@@ -202,6 +232,7 @@ struct SessionScenario {
         script = try steps.enumerated().map { index, step in
             try Self.parseStep(step, number: index + 1, reader: &reader)
         }
+        try Self.checkACPAgents(config: config, script: script, reader: reader)
         if let last = script.last, !last.settle {
             throw reader.error("$.script[\(last.number - 1)].settle",
                                "the last step has no next step to run before deferred work")
@@ -214,11 +245,13 @@ struct SessionScenario {
     private static func parseConfig(_ json: ScenarioJSON?, reader: inout Reader) throws -> Config {
         guard let json else { return Config() }
         let fields = try reader.object(json, at: "$.config", allowed: [
-            "harnessKind", "model", "effort", "permissionMode", "controlMode",
+            "harnessKind", "acpAgent", "acpCustomCommand", "model", "effort", "permissionMode", "controlMode",
             "project", "lastSessionID", "controllerConnected",
         ])
         var config = Config()
-        config.harnessKind = try reader.optionalString(fields["harnessKind"], at: "$.config.harnessKind")
+        config.harnessKind = try reader.harnessKind(fields["harnessKind"], at: "$.config.harnessKind")
+        config.acpAgent = try reader.optionalString(fields["acpAgent"], at: "$.config.acpAgent")
+        config.acpCustomCommand = try reader.optionalString(fields["acpCustomCommand"], at: "$.config.acpCustomCommand")
         config.model = try reader.optionalString(fields["model"], at: "$.config.model")
         config.effort = try reader.optionalString(fields["effort"], at: "$.config.effort")
         config.permissionMode = try reader.optionalString(fields["permissionMode"], at: "$.config.permissionMode")
@@ -233,8 +266,8 @@ struct SessionScenario {
     private static func parseStep(_ json: ScenarioJSON, number: Int, reader: inout Reader) throws -> Step {
         let path = "$.script[\(number - 1)]"
         let fields = try reader.object(json, at: path, allowed: [
-            "call", "intent", "harnessEvent", "hookEvent", "advanceClock", "text", "allow", "reason",
-            "expectNoChange", "settle", "expect",
+            "call", "intent", "settings", "harnessEvent", "hookEvent", "advanceClock", "text", "allow",
+            "project", "adapter", "reason", "expectNoChange", "settle", "expect",
         ])
         if let reason = fields["reason"] { _ = try reader.string(reason, at: "\(path).reason") }
         let expectNoChange = try reader.optionalBool(fields["expectNoChange"], at: "\(path).expectNoChange") ?? false
@@ -242,13 +275,20 @@ struct SessionScenario {
         let checkpoint = try fields["expect"].map {
             try parseExpectations($0, at: "\(path).expect", reader: &reader)
         }
-        let kinds = ["call", "intent", "harnessEvent", "hookEvent", "advanceClock"].filter { fields[$0] != nil }
+        let kinds = ["call", "intent", "settings", "harnessEvent", "hookEvent", "advanceClock"].filter { fields[$0] != nil }
         guard kinds.count == 1 else {
-            throw reader.error(path, "a step has exactly one of \"call\", \"intent\", \"harnessEvent\", "
-                               + "\"hookEvent\" or \"advanceClock\"")
+            throw reader.error(path, "a step has exactly one of \"call\", \"intent\", \"settings\", "
+                               + "\"harnessEvent\", \"hookEvent\" or \"advanceClock\"")
         }
         let text = try reader.optionalString(fields["text"], at: "\(path).text")
         let allow = try reader.optionalBool(fields["allow"], at: "\(path).allow")
+        let project = try reader.optionalString(fields["project"], at: "\(path).project")
+        if fields["harnessEvent"] == nil, fields["adapter"] != nil {
+            throw reader.error("\(path).adapter", "only a harnessEvent step names an adapter")
+        }
+        if project != nil, fields["call"] != .string("switchProject") {
+            throw reader.error("\(path).project", "not used by this step")
+        }
 
         func unused(_ key: String, _ value: Any?) throws {
             if value != nil { throw reader.error("\(path).\(key)", "not used by this step") }
@@ -275,6 +315,13 @@ struct SessionScenario {
                 guard let allow else { throw reader.error("\(path).allow", "answerPendingPermission needs \"allow\"") }
                 try unused("text", text)
                 action = .call(.answerPendingPermission(allow: allow))
+            case "switchProject":
+                guard let project else { throw reader.error("\(path).project", "switchProject needs \"project\"") }
+                guard project.range(of: "^[a-z][A-Za-z0-9-]*$", options: .regularExpression) != nil else {
+                    throw reader.error("\(path).project", "a folder name: a lowercase letter, then letters, digits or \"-\"")
+                }
+                try unused("text", text); try unused("allow", allow)
+                action = .call(.switchProject(project))
             default:
                 throw reader.error("\(path).call", "unknown call \"\(name)\"")
             }
@@ -290,6 +337,16 @@ struct SessionScenario {
             }
             if name != "sendPrompt" { try unused("text", text) }
             action = .intent(parsed)
+        } else if let settings = fields["settings"] {
+            try unused("text", text); try unused("allow", allow)
+            let change = try reader.object(settings, at: "\(path).settings",
+                                           allowed: ["harnessKind", "acpAgent", "acpCustomCommand"])
+            guard !change.isEmpty else { throw reader.error("\(path).settings", "changes nothing") }
+            action = .settings(SettingsChange(
+                harnessKind: try reader.harnessKind(change["harnessKind"], at: "\(path).settings.harnessKind"),
+                acpAgent: try reader.optionalString(change["acpAgent"], at: "\(path).settings.acpAgent"),
+                acpCustomCommand: try reader.optionalString(change["acpCustomCommand"],
+                                                            at: "\(path).settings.acpCustomCommand")))
         } else if let hook = fields["hookEvent"] {
             try unused("text", text); try unused("allow", allow)
             action = .hookEvent(try parseHookEvent(hook, at: "\(path).hookEvent", reader: &reader))
@@ -298,7 +355,15 @@ struct SessionScenario {
             action = .advanceClock(try reader.seconds(seconds, at: "\(path).advanceClock"))
         } else {
             try unused("text", text); try unused("allow", allow)
-            action = .harnessEvent(try parseEvent(fields["harnessEvent"], at: "\(path).harnessEvent", reader: &reader))
+            var adapter: Adapter?
+            if let name = try reader.optionalString(fields["adapter"], at: "\(path).adapter") {
+                guard let parsed = Adapter(rawValue: name) else {
+                    throw reader.error("\(path).adapter", "\"claude\" or \"acp\"")
+                }
+                adapter = parsed
+            }
+            action = .harnessEvent(try parseEvent(fields["harnessEvent"], at: "\(path).harnessEvent", reader: &reader),
+                                   from: adapter)
         }
         return Step(number: number, action: action, expectNoChange: expectNoChange,
                     settle: settle, expect: checkpoint, label: label(of: json))
@@ -389,6 +454,27 @@ struct SessionScenario {
                                cwd: try reader.optionalString(fields["cwd"], at: "\(path).cwd"))
     }
 
+    /// Whenever the script selects the ACP harness, the agent must be the
+    /// "custom" one: the other agents' commands are looked up on this
+    /// machine's disk, which would make the recorded `agentCommand` vary.
+    private static func checkACPAgents(config: Config, script: [Step], reader: Reader) throws {
+        var kind = config.harnessKind ?? "claude"
+        var agent = config.acpAgent ?? AppConfig.defaultConfig().acpAgent
+        func check(_ path: String) throws {
+            if kind == "acp", agent != "custom" {
+                throw reader.error(path, "the ACP harness needs \"acpAgent\": \"custom\" (with \"acpCustomCommand\"), "
+                                   + "so the agent command never depends on this machine")
+            }
+        }
+        try check("$.config")
+        for step in script {
+            guard case .settings(let change) = step.action else { continue }
+            if let value = change.harnessKind { kind = value }
+            if let value = change.acpAgent { agent = value }
+            try check("$.script[\(step.number - 1)].settings")
+        }
+    }
+
     static let statusNames = ["noController", "idle", "listening", "thinking", "speaking"]
     static let transcriptKinds = ["user", "assistant", "tool", "system", "error"]
     static let callTypes: [String: Set<String>] = [
@@ -412,7 +498,7 @@ struct SessionScenario {
         let fields = try reader.object(json, at: root, allowed: [
             "harnessCalls", "transcript", "errorShown", "lastSessionID", "pendingPermission",
             "pendingPermissionArmed", "status", "liveModel", "modelChip",
-            "remoteTurnActive", "remoteFocus", "injectorCalls",
+            "remoteTurnActive", "remoteFocus", "injectorCalls", "permissionMode", "liveSessionID",
         ])
         guard !fields.isEmpty else { throw reader.error(root, "expects nothing") }
         var expect = Expectations()
@@ -428,7 +514,12 @@ struct SessionScenario {
                 guard let allowed = callTypes[type] else {
                     throw reader.error("\(path).type", "unknown harness call \"\(type)\"")
                 }
-                return try reader.object(item, at: path, allowed: allowed.union(["type"]))
+                let call = try reader.object(item, at: path, allowed: allowed.union(["type", "adapter"]))
+                if let adapter = call["adapter"] {
+                    let name = try reader.string(adapter, at: "\(path).adapter")
+                    guard Adapter(rawValue: name) != nil else { throw reader.error("\(path).adapter", "\"claude\" or \"acp\"") }
+                }
+                return call
             }
         }
         if let transcript = fields["transcript"] {
@@ -463,6 +554,10 @@ struct SessionScenario {
         expect.remoteTurnActive = try reader.optionalBool(fields["remoteTurnActive"], at: "\(root).remoteTurnActive")
         if let focus = fields["remoteFocus"] {
             expect.remoteFocus = .some(try reader.optionalString(focus, at: "\(root).remoteFocus"))
+        }
+        expect.permissionMode = try reader.optionalString(fields["permissionMode"], at: "\(root).permissionMode")
+        if let id = fields["liveSessionID"] {
+            expect.liveSessionID = .some(try reader.optionalString(id, at: "\(root).liveSessionID"))
         }
         if let calls = fields["injectorCalls"] {
             guard case .array(let items) = calls else { throw reader.error("\(root).injectorCalls", "must be an array") }
@@ -507,6 +602,15 @@ struct SessionScenario {
             return try string(json, at: path)
         }
 
+        /// An optional harness kind, one of `AppConfig.harnessKindOptions`.
+        func harnessKind(_ json: ScenarioJSON?, at path: String) throws -> String? {
+            guard let kind = try optionalString(json, at: path) else { return nil }
+            guard AppConfig.harnessKindOptions.contains(kind) else {
+                throw error(path, "unknown harness kind \"\(kind)\" (allowed: \(AppConfig.harnessKindOptions.joined(separator: ", ")))")
+            }
+            return kind
+        }
+
         func stringArray(_ json: ScenarioJSON?, at path: String) throws -> [String] {
             guard case .array(let items)? = json else { throw error(path, "must be an array of strings") }
             return try items.enumerated().map { try string($1, at: "\(path)[\($0)]") }
@@ -547,11 +651,12 @@ struct SessionScenario {
 
 // MARK: - Runner
 
-/// Plays a scenario through the AppState seam (#110) with a scripted
-/// `FakeHarnessAdapter` (#111), a `RecordingInjector` standing in for the
-/// remote session and a `ManualRemoteTurnClock` (#118), and returns every
-/// mismatch, each prefixed with the scenario name. An empty result means the
-/// scenario passed.
+/// Plays a scenario through the AppState seam (#110) with two scripted
+/// `FakeHarnessAdapter`s (#111), one standing in for the built-in Claude
+/// adapter and one for the ACP adapter (#119), a `RecordingInjector` standing
+/// in for the remote session and a `ManualRemoteTurnClock` (#118), and
+/// returns every mismatch, each prefixed with the scenario name. An empty
+/// result means the scenario passed.
 @MainActor
 enum SessionScenarioRunner {
 
@@ -594,6 +699,8 @@ enum SessionScenarioRunner {
         config.listenerToken = "test-token"
         config.ttsEnabled = false           // a test run makes no sound
         if let value = scenario.config.harnessKind { config.harnessKind = value }
+        if let value = scenario.config.acpAgent { config.acpAgent = value }
+        if let value = scenario.config.acpCustomCommand { config.acpCustomCommand = value }
         if let value = scenario.config.model { config.model = value }
         if let value = scenario.config.effort { config.effort = value }
         if let value = scenario.config.permissionMode { config.permissionMode = value }
@@ -617,34 +724,46 @@ enum SessionScenarioRunner {
 
         let controller = ControllerService()
         if scenario.config.controllerConnected { controller.simulateConnect() }
-        let harness = FakeHarnessAdapter()
-        // The fake reports the capabilities of the adapter it stands in for:
-        // the built-in Claude adapter switches effort by restart + resume,
-        // ACP agents have no effort setting (Harness.swift defaults).
-        harness.supportsEffort = scenario.config.harnessKind != "acp"
+        // One fake per harness kind, as the app has one adapter per kind; the
+        // config's harness kind picks between them. Each reports the
+        // capabilities of the adapter it stands in for: the built-in Claude
+        // adapter switches effort by restart + resume, ACP agents have no
+        // effort setting (Harness.swift defaults) and drop their session id
+        // as soon as they are stopped. Both record into one ordered log.
+        let harnesses = Harnesses()
+        harnesses.claude.supportsEffort = true
+        harnesses.acp.supportsEffort = false
+        harnesses.acp.clearsSessionIDOnStop = true
         // Hooks arrive through the listener's callback; it never binds a port
         // here (the environment skips `.syncListener`). Remote mode types into
         // the environment's recording injector, never a real terminal.
         let listener = RemoteListener()
         let clock = ManualRemoteTurnClock()
         let injector = env.injector
-        let app = env.makeAppState(controller: controller, harness: harness, listener: listener, clock: clock)
+        let app = env.makeAppState(controller: controller, harness: harnesses.claude, acpHarness: harnesses.acp,
+                                   listener: listener, clock: clock)
         await settle()
 
         // Facts are measured from here: anything AppState logged while being
         // built is not part of the script.
-        let transcriptBase = app.transcript.count
-        harness.clearCalls()
+        let transcript = TranscriptLog(baseline: app.transcript)
+        harnesses.clearCalls()
         injector.clearCalls()
-        let projectPath = scenario.config.project ? projectURL.path : nil
+        let projects = ProjectFolders(sandbox: env.directory)
         func observe() -> Observation {
-            observation(app, harness, injector, transcriptBase: transcriptBase, projectPath: projectPath)
+            observation(app, harnesses, injector, transcript: transcript, projects: projects)
         }
 
         var failures: [String] = []
         for step in scenario.script {
             let before = observe()
-            perform(step.action, on: app, harness: harness, listener: listener, clock: clock)
+            do {
+                try perform(step.action, on: app, harnesses: harnesses, listener: listener, clock: clock,
+                            projects: projects)
+            } catch {
+                failures.append("\(prefix) step \(step.number) \(step.label) could not run: \(error)")
+                break
+            }
             if step.settle { await settle() }
             let after = observe()
             if step.expectNoChange, let difference = firstDifference(before, after) {
@@ -660,17 +779,26 @@ enum SessionScenarioRunner {
 
         let final = observe()
         failures += compare(scenario.expect, with: final).map { "\(prefix) \($0)" }
-        withExtendedLifetime((app, listener)) {}
+        withExtendedLifetime((app, listener, harnesses)) {}
         return failures
     }
 
     // MARK: Playing a step
 
-    private static func perform(_ action: SessionScenario.Action, on app: AppState, harness: FakeHarnessAdapter,
-                                listener: RemoteListener, clock: ManualRemoteTurnClock) {
+    private static func perform(_ action: SessionScenario.Action, on app: AppState, harnesses: Harnesses,
+                                listener: RemoteListener, clock: ManualRemoteTurnClock,
+                                projects: ProjectFolders) throws {
         switch action {
-        case .harnessEvent(let event):
-            harness.emit(event)
+        case .harnessEvent(let event, let adapter):
+            // By default the event comes from the adapter the config selects.
+            let source = adapter ?? (app.configStore.config.harnessKind == "acp" ? .acp : .claude)
+            harnesses.fake(source).emit(event)
+        case .settings(let change):
+            // What the Settings window's harness picker writes; AppState
+            // picks the change up in its derived-update pass, as in the app.
+            if let value = change.harnessKind { app.configStore.config.harnessKind = value }
+            if let value = change.acpAgent { app.configStore.config.acpAgent = value }
+            if let value = change.acpCustomCommand { app.configStore.config.acpCustomCommand = value }
         case .hookEvent(let event):
             listener.onEvent?(event)
         case .advanceClock(let seconds):
@@ -684,6 +812,7 @@ enum SessionScenarioRunner {
             case .sendUserText(let text): app.sendUserText(text)
             case .interruptClaude: app.interruptClaude()
             case .answerPendingPermission(let allow): app.answerPendingPermission(allow: allow)
+            case .switchProject(let name): app.switchProject(to: try projects.folder(name).path)
             }
         }
     }
@@ -707,15 +836,84 @@ enum SessionScenarioRunner {
         var remoteTurnActive: Bool
         var remoteFocus: String?
         var injectorCalls: [[String: ScenarioJSON]]
+        var permissionMode: String
+        var liveSessionID: String?
     }
 
-    private static func observation(_ app: AppState, _ harness: FakeHarnessAdapter, _ injector: RecordingInjector,
-                                    transcriptBase: Int, projectPath: String?) -> Observation {
-        Observation(
-            harnessCalls: harness.calls.map { describe($0, projectPath: projectPath) },
-            transcript: app.transcript.dropFirst(transcriptBase).map {
-                ["kind": .string($0.kind.rawValue), "text": .string($0.text)]
+    /// The two scripted adapters and their shared, ordered call log.
+    @MainActor
+    final class Harnesses {
+        let claude = FakeHarnessAdapter()
+        let acp = FakeHarnessAdapter()
+        private(set) var log: [(adapter: SessionScenario.Adapter, call: FakeHarnessAdapter.Call)] = []
+
+        init() {
+            claude.onCall = { [unowned self] in self.log.append((.claude, $0)) }
+            acp.onCall = { [unowned self] in self.log.append((.acp, $0)) }
+        }
+
+        func fake(_ adapter: SessionScenario.Adapter) -> FakeHarnessAdapter {
+            adapter == .acp ? acp : claude
+        }
+
+        func clearCalls() {
+            log.removeAll()
+            claude.clearCalls()
+            acp.clearCalls()
+        }
+    }
+
+    /// The transcript entries that appeared during the script, in order of
+    /// first appearance. A project switch replaces the window's scrollback
+    /// with the new folder's stored history; entries already seen are not
+    /// counted twice, but the "restored" marker on top of it is new.
+    final class TranscriptLog {
+        private var seen: Set<UUID>
+        private(set) var entries: [[String: ScenarioJSON]] = []
+
+        init(baseline: [TranscriptEntry]) {
+            seen = Set(baseline.map(\.id))
+        }
+
+        func update(_ transcript: [TranscriptEntry]) {
+            for entry in transcript where !seen.contains(entry.id) {
+                seen.insert(entry.id)
+                entries.append(["kind": .string(entry.kind.rawValue), "text": .string(entry.text)])
+            }
+        }
+    }
+
+    /// Project folders in the sandbox, by name: `<sandbox>/<name>`, written
+    /// `$<name>` in expectations. `config.project` makes `project`.
+    final class ProjectFolders {
+        let sandbox: URL
+
+        init(sandbox: URL) { self.sandbox = sandbox }
+
+        func folder(_ name: String) throws -> URL {
+            let url = sandbox.appendingPathComponent(name, isDirectory: true)
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+            return url
+        }
+
+        /// `$<name>` for a sandbox folder, the path itself otherwise.
+        func label(_ path: String) -> String {
+            let parent = URL(fileURLWithPath: path).deletingLastPathComponent().path
+            let name = URL(fileURLWithPath: path).lastPathComponent
+            return parent == sandbox.path && !name.isEmpty ? "$" + name : path
+        }
+    }
+
+    private static func observation(_ app: AppState, _ harnesses: Harnesses, _ injector: RecordingInjector,
+                                    transcript: TranscriptLog, projects: ProjectFolders) -> Observation {
+        transcript.update(app.transcript)
+        return Observation(
+            harnessCalls: harnesses.log.map { entry in
+                var described = describe(entry.call, projects: projects)
+                described["adapter"] = .string(entry.adapter.rawValue)
+                return described
             },
+            transcript: transcript.entries,
             lastSessionID: app.configStore.config.lastSessionID,
             pendingPermission: app.pendingPermission != nil,
             pendingPermissionArmed: app.pendingPermission?.armed ?? false,
@@ -724,7 +922,9 @@ enum SessionScenarioRunner {
             modelChip: app.modelChipLabel,
             remoteTurnActive: app.remoteTurnActive,
             remoteFocus: app.remoteFocusSessionID,
-            injectorCalls: injector.calls.map(describe))
+            injectorCalls: injector.calls.map(describe),
+            permissionMode: app.configStore.config.permissionMode,
+            liveSessionID: app.harness.sessionID)
     }
 
     private static func describe(_ call: RecordingInjector.Call) -> [String: ScenarioJSON] {
@@ -752,14 +952,13 @@ enum SessionScenarioRunner {
         }
     }
 
-    private static func describe(_ call: FakeHarnessAdapter.Call, projectPath: String?) -> [String: ScenarioJSON] {
+    private static func describe(_ call: FakeHarnessAdapter.Call, projects: ProjectFolders) -> [String: ScenarioJSON] {
         func optional(_ value: String?) -> ScenarioJSON { value.map(ScenarioJSON.string) ?? .null }
         switch call {
         case .start(let configuration):
-            let dir = configuration.projectDir.path
             return [
                 "type": .string("start"),
-                "projectDir": .string(dir == projectPath ? "$project" : dir),
+                "projectDir": .string(projects.label(configuration.projectDir.path)),
                 "model": .string(configuration.model),
                 "permissionMode": .string(configuration.permissionMode),
                 "effort": .string(configuration.effort),
@@ -816,6 +1015,12 @@ enum SessionScenarioRunner {
         }
         if before.remoteFocus != after.remoteFocus {
             return "remoteFocus (\(before.remoteFocus ?? "null") → \(after.remoteFocus ?? "null"))"
+        }
+        if before.permissionMode != after.permissionMode {
+            return "permissionMode (\(before.permissionMode) → \(after.permissionMode))"
+        }
+        if before.liveSessionID != after.liveSessionID {
+            return "liveSessionID (\(before.liveSessionID ?? "null") → \(after.liveSessionID ?? "null"))"
         }
         if before.injectorCalls != after.injectorCalls {
             let added = after.injectorCalls.dropFirst(before.injectorCalls.count).map { ScenarioJSON.object($0).description }
@@ -888,6 +1093,13 @@ enum SessionScenarioRunner {
         if let wanted = expect.remoteFocus, wanted != actual.remoteFocus {
             failures.append("\(root).remoteFocus: expected \(wanted.map { "\"\($0)\"" } ?? "null"), "
                             + "got \(actual.remoteFocus.map { "\"\($0)\"" } ?? "null")")
+        }
+        if let mode = expect.permissionMode, mode != actual.permissionMode {
+            failures.append("\(root).permissionMode: expected \"\(mode)\", got \"\(actual.permissionMode)\"")
+        }
+        if let wanted = expect.liveSessionID, wanted != actual.liveSessionID {
+            failures.append("\(root).liveSessionID: expected \(wanted.map { "\"\($0)\"" } ?? "null"), "
+                            + "got \(actual.liveSessionID.map { "\"\($0)\"" } ?? "null")")
         }
         return failures
     }

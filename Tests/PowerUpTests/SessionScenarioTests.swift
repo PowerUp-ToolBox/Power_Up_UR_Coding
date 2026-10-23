@@ -303,6 +303,77 @@ final class SessionScenarioTests: XCTestCase {
         XCTAssertTrue(first.contains("expect.status: expected \"idle\", got \"thinking\""), first)
     }
 
+    // MARK: Harness kinds and lifecycle (#119)
+
+    func testHarnessCallsNameTheAdapterThatReceivedThem() async throws {
+        var json = try Self.fixture("harness-switch-stops-the-old-adapter-before-the-new-one-starts")
+        // Claim the built-in adapter started after the switch, not the agent.
+        json = Self.replacing(json, at: ["expect", "harnessCalls", 2, "adapter"], with: .string("claude"))
+        let scenario = try SessionScenario(json: json, file: "adapter.json")
+
+        let failures = await SessionScenarioRunner.run(scenario)
+
+        XCTAssertEqual(failures.count, 1, "\(failures)")
+        let message = try XCTUnwrap(failures.first)
+        XCTAssertTrue(message.contains("expect.harnessCalls[2].adapter: expected \"claude\", got \"acp\""), message)
+    }
+
+    func testAHarnessEventComesFromTheNamedAdapter() async throws {
+        // Without "adapter", the late reply comes from the active harness
+        // (the agent), so it is a real reply and changes the transcript.
+        var json = try Self.fixture("harness-switch-ignores-the-retired-adapters-late-events")
+        json = Self.removing(json, at: ["script", 7], key: "adapter")
+        let scenario = try SessionScenario(json: json, file: "late.json")
+
+        let failures = await SessionScenarioRunner.run(scenario)
+
+        let first = try XCTUnwrap(failures.first, "the active adapter's reply must be heard")
+        XCTAssertTrue(first.contains("step 8"), first)
+        XCTAssertTrue(first.contains("changed transcript"), first)
+    }
+
+    func testAClearedLiveSessionIDIsAnObservableChange() async throws {
+        var json = try Self.fixture("hooks-from-our-ended-session-are-heard-in-remote-mode")
+        json = Self.replacing(json, at: ["script", 4, "expectNoChange"], with: .bool(true))
+        let scenario = try SessionScenario(json: json, file: "ended.json")
+
+        let failures = await SessionScenarioRunner.run(scenario)
+
+        XCTAssertEqual(failures.count, 1, "\(failures)")
+        let message = try XCTUnwrap(failures.first)
+        XCTAssertTrue(message.contains("step 5"), message)
+        XCTAssertTrue(message.contains("liveSessionID (session-1 → null)"), message)
+    }
+
+    func testTheACPHarnessMustUseTheCustomAgent() throws {
+        // Any other agent's command is looked up on this machine's disk.
+        var configured = try Self.fixture("no-ultracode-prefix-for-an-acp-harness")
+        configured = Self.replacing(configured, at: ["config", "acpAgent"], with: .string("opencode"))
+        XCTAssertThrowsError(try SessionScenario(json: configured, file: "agent.json")) { error in
+            XCTAssertTrue(String(describing: error).contains("agent.json $.config:"), "\(error)")
+        }
+
+        var switched = try Self.fixture("harness-switch-stops-the-old-adapter-before-the-new-one-starts")
+        switched = Self.removing(switched, at: ["script", 2, "settings"], key: "acpAgent")
+        XCTAssertThrowsError(try SessionScenario(json: switched, file: "switch.json")) { error in
+            XCTAssertTrue(String(describing: error).contains("$.script[2].settings"), "\(error)")
+        }
+    }
+
+    func testStepFieldsBelongToTheirStepKinds() throws {
+        var adapter = try Self.fixture("session-id-clears-on-termination")
+        adapter = Self.replacing(adapter, at: ["script", 0, "adapter"], with: .string("claude"))
+        XCTAssertThrowsError(try SessionScenario(json: adapter, file: "adapter.json")) { error in
+            XCTAssertTrue(String(describing: error).contains("$.script[0].adapter"), "\(error)")
+        }
+
+        var project = try Self.fixture("project-switch-in-remote-mode-starts-no-session")
+        project = Self.removing(project, at: ["script", 0], key: "project")
+        XCTAssertThrowsError(try SessionScenario(json: project, file: "project.json")) { error in
+            XCTAssertTrue(String(describing: error).contains("switchProject needs \"project\""), "\(error)")
+        }
+    }
+
     // MARK: Helpers
 
     private static func fixture(_ name: String) throws -> ScenarioJSON {

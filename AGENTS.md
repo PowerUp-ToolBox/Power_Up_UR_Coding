@@ -137,6 +137,9 @@ another one.
   - `FakeHarnessAdapter` (`harness:`). It records `calls` and emits queued
     `HarnessEvent`s synchronously via `emitNext()`, `emitAll()` and
     `emit(_:)`. `harness: nil` keeps the config-selected real adapter.
+    Alone it is the harness for every harness kind; with a second fake as
+    `acpHarness:`, the two stand in for the Claude and ACP adapters and the
+    harness kind picks between them (harness-switch tests).
   - `ScriptedSpeechEngine` (`speech: SpeechService(engine:)`). It scripts
     authorization, partials and the final transcript, and records its own
     `calls`.

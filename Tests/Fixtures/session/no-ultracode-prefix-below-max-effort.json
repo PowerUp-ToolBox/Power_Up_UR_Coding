@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "name": "no-ultracode-prefix-below-max-effort",
+  "description": "On the built-in Claude harness at any effort below Ultra (here \"xhigh\"), a prompt is sent exactly as the person said it.",
+  "reason": "The \"ultracode\" keyword opts into multi-agent workflows, which cost far more than a normal turn. Only Ultra effort asks for that.",
+  "source": "DESIGN.md v2.1 A 'Wire behavior' (effort == \"max\" AND harness kind \"claude\"); AppState.outgoingText(for:)",
+  "verifiedBy": ["swift"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "builtin",
+    "effort": "xhigh",
+    "project": true
+  },
+  "script": [
+    {
+      "intent": "sendPrompt",
+      "text": "Refactor the parser."
+    }
+  ],
+  "expect": {
+    "harnessCalls": [
+      { "adapter": "claude", "type": "start", "effort": "xhigh" },
+      { "adapter": "claude", "type": "send", "text": "Refactor the parser." }
+    ],
+    "transcript": [
+      { "kind": "user", "text": "Refactor the parser." }
+    ]
+  }
+}

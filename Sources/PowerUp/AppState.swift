@@ -47,16 +47,22 @@ final class AppState: ObservableObject {
     /// which adapter that is follows Settings → General → Harness. `claude`
     /// stays exposed for the views until the UI fully generalizes.
     var harness: any HarnessAdapter {
-        if let injectedHarness { return injectedHarness }
-        return AppState.normalizedHarnessKind(configStore.config.harnessKind) == "acp"
-            ? acpAdapterInstance()
-            : claude
+        AppState.normalizedHarnessKind(configStore.config.harnessKind) == "acp"
+            ? (injectedACPHarness ?? acpAdapterInstance())
+            : claudeHarness
     }
 
-    /// Test seam: an adapter handed to the initializer that stands in for
-    /// whichever harness the config selects (never set by the app). It is
-    /// wired into the same event handler as the real adapters.
+    /// Test seams (never set by the app): adapters handed to the initializer
+    /// in place of the real ones, wired into the same event handler.
+    /// `injectedHarness` stands in for the built-in Claude adapter and
+    /// `injectedACPHarness` for the ACP adapter. A test that injects only the
+    /// first gets it in both slots, so it IS the harness whatever the config's
+    /// harness kind says.
     private let injectedHarness: (any HarnessAdapter)?
+    private let injectedACPHarness: (any HarnessAdapter)?
+
+    /// The adapter behind the built-in Claude harness kind.
+    private var claudeHarness: any HarnessAdapter { injectedHarness ?? claude }
 
     /// Lazily created ACP adapter (opencode, the Claude bridge, or a custom
     /// agent command), wired into the same event handler as the Claude adapter.
@@ -303,17 +309,21 @@ final class AppState: ObservableObject {
     /// The one construction path. Any collaborator left nil is created fresh
     /// (real, unstarted); `sideEffects` decides what gets started. Callback
     /// wiring and observation always happen, so injected services reach the
-    /// same handlers in a test as in the app. `harness` is the exception to
-    /// "nil means real": nil keeps the config-selected adapter (the app's
-    /// behavior); a test passes a scripted adapter that then IS the harness
-    /// whatever the config's harness kind says. `clock` (nil = the wall clock)
-    /// times remote-turn expiry.
+    /// same handlers in a test as in the app. `harness` and `acpHarness` are
+    /// the exception to "nil means real": nil keeps the config-selected real
+    /// adapter (the app's behavior). A test passes scripted adapters: with
+    /// both, `harness` stands in for the built-in Claude adapter and
+    /// `acpHarness` for the ACP one, and the config's harness kind picks
+    /// between them as in the app; with `harness` alone, that adapter IS the
+    /// harness whatever the config's harness kind says. `clock` (nil = the
+    /// wall clock) times remote-turn expiry.
     init(configStore store: ConfigStore,
          controller: ControllerService? = nil,
          speech: SpeechService? = nil,
          tts: TTSService? = nil,
          claude: ClaudeService? = nil,
          harness: (any HarnessAdapter)? = nil,
+         acpHarness: (any HarnessAdapter)? = nil,
          remote: RemoteControlService? = nil,
          listener: RemoteListener? = nil,
          audioDevices: AudioDeviceStore? = nil,
@@ -326,6 +336,7 @@ final class AppState: ObservableObject {
         self.tts = tts ?? TTSService()
         self.claude = claude ?? ClaudeService()
         self.injectedHarness = harness
+        self.injectedACPHarness = acpHarness ?? harness
         self.remote = remote ?? RemoteControlService()
         self.listener = listener ?? RemoteListener()
         self.audioDevices = audioDevices ?? AudioDeviceStore()
@@ -429,6 +440,12 @@ final class AppState: ObservableObject {
             injected.onHarnessEvent = { [weak self, weak injected] event in
                 guard let self, let injected else { return }
                 self.route(event, from: injected)
+            }
+        }
+        if let acp = injectedACPHarness, acp !== injectedHarness {
+            acp.onHarnessEvent = { [weak self, weak acp] event in
+                guard let self, let acp else { return }
+                self.route(event, from: acp)
             }
         }
     }
@@ -1636,10 +1653,12 @@ final class AppState: ObservableObject {
 
         pendingPermission = nil
         cancelPendingSummary()
-        acpAdapter?.stop()
-        if claude.state != .stopped {
+        if let acp = injectedACPHarness ?? acpAdapter, acp.state != .stopped {
+            acp.stop()
+        }
+        if claudeHarness.state != .stopped {
             expectedTerminations += 1
-            claude.stop()
+            claudeHarness.stop()
         }
 
         let kind = AppState.normalizedHarnessKind(configStore.config.harnessKind)
