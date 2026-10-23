@@ -752,10 +752,17 @@ final class RemoteControlService: ObservableObject {
         }
         var detail = condense(result.standardError, maxChars: 200)
         if detail.isEmpty { detail = condense(result.standardOutput, maxChars: 200) }
+        let lowered = detail.lowercased()
+        // With the cmux app closed the CLI exits 1 with "Error: Socket not found
+        // at …/cmux.sock" (verified live, cmux 0.64.17). That is not a refusal:
+        // the socket-mode advice below would send the person off to change
+        // settings that are fine, so say what is actually wrong.
+        if lowered.contains("socket not found") {
+            return "\(action) failed — cmux isn’t running. Open the cmux app, then try again."
+        }
         // cmux rejects a foreign app under its default "cmuxOnly" socket mode with
         // a broken-pipe / socket write error. Translate that into something the
         // user can act on, instead of a cryptic errno.
-        let lowered = detail.lowercased()
         if lowered.contains("socket") || lowered.contains("broken pipe") || lowered.contains("permission") {
             return "cmux refused the connection. In cmux, open Settings → Automation, set “Socket control mode” to Password (or Automation), then quit and reopen cmux. For Password mode, put the same password in PowerUp’s Remote settings."
         }

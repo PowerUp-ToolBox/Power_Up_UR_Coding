@@ -127,6 +127,10 @@ connection"). To let PowerUp drive a cmux session:
    the same password into "cmux socket password". Click **Test connection** — it
    should flip to "cmux is available" and list your workspaces.
 
+If PowerUp instead says "cmux isn’t running", the cmux app is closed (its control
+socket doesn't exist yet): open cmux and click **Test connection** again. No
+settings need changing.
+
 No Accessibility permission is needed for the cmux target. (The Terminal / Frontmost
 targets use keystroke injection instead and require Accessibility.)
 
