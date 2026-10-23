@@ -2106,6 +2106,17 @@ struct ConnectedController: Identifiable, Equatable {
 - `AppState` continues to resolve through
   `config.action(onProfile: active.profileID, control: id)`; no new
   dispatch path.
+- Implemented (#130). GameController exposes no serial number, so the id
+  is `"<productCategory>/<vendorName>"`, with `#2`, `#3`, … when an
+  identical pad is already connected. It is assigned at connect and never
+  renumbered. A pad that reconnects alone gets its old id back, so a pin
+  finds it again. Two identical pads are told apart only by connection
+  order. `AppState` copies `controllerDeviceID` into the service's
+  internal `pinnedControllerID`. When the slot changes, the outgoing pad's
+  held buttons are released, then `onDisconnect` fires, and that drives
+  `forceReleaseHold()` (§C). A connected pad outside the slot gets its
+  light switched off. The low-battery latch resets whenever the slot
+  changes (v2.3 A's "fallback swap").
 - The host keyboard and mouse are outside the slot model: the v2.6 local
   NSEvent monitor and mic button keep working regardless of the slot's
   contents.

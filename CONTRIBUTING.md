@@ -130,6 +130,15 @@ final class MyScenarioTests: XCTestCase {
     `onButtonDown`, `onButtonUp`, `onDisconnect` and `onLowBattery`
     directly. Set `recordsOutput = true` to read the light and haptic
     writes back from `recordedOutput` (they still go to a real pad).
+    For the Controller slot (DESIGN v2.7 B), call `simulateConnect` more
+    than once: it returns the `ConnectedController`, the newest is active
+    in Automatic, and `pinnedControllerID` (or the config's
+    `controllerDeviceID`, which AppState syncs) pins one.
+    `simulateButton(_:pressed:on:)`, `simulateDisconnect(_:)` and
+    `simulateBattery(level:state:on:)` take a pad id (nil means the active
+    one); a pad outside the slot is inert. `recordedWrites` says which pad
+    each write went to. See `ControllerServiceSlotTests` and
+    `AppStateControllerSlotTests`.
   - **Remote mode** never types into a real terminal in a test: the
     environment's default `remote` service delivers into `env.injector`, a
     `RecordingInjector` that records every text and key (`calls`) and can

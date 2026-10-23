@@ -154,7 +154,12 @@ another one.
     `simulateDisconnect()` (a drop releases held buttons, then fires
     `onDisconnect`), or invoke `onButtonDown`, `onButtonUp`, `onDisconnect`
     and `onLowBattery` directly. With `recordsOutput = true`, light and
-    haptic writes are recorded in `recordedOutput`.
+    haptic writes are recorded in `recordedOutput`. For two pads, connect
+    twice (`simulateConnect` returns the `ConnectedController`; the newest
+    is active unless `pinnedControllerID` / `config.controllerDeviceID`
+    pins one), then pass `on: id` to `simulateButton`, `simulateDisconnect`
+    and `simulateBattery(level:state:on:)`. `recordedWrites` names the pad
+    each write went to.
   - `RecordingInjector` (`env.injector`). The environment's default
     `remote` delivers into it, so remote mode records text and keys instead
     of typing into cmux or the frontmost app. Never construct

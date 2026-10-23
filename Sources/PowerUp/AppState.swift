@@ -360,6 +360,9 @@ final class AppState: ObservableObject {
         wireAudioDevices()
         observeServices()
 
+        // Before the controller starts, so the pads it seeds already land in
+        // the pinned slot.
+        syncControllerSlot()
         if sideEffects.contains(.startController) {
             self.controller.start()
         }
@@ -655,9 +658,11 @@ final class AppState: ObservableObject {
         // Resolve through the (profile, control) mapper — the same path every
         // future input surface (HID profiles, virtual devices) routes through.
         // The DualSense service still speaks the enum; its control ids are the
-        // enum's raw values.
-        let action = configStore.config.action(onProfile: DeviceProfile.dualSenseID,
-                                               control: button.rawValue)
+        // enum's raw values. Only the controller in the slot delivers presses,
+        // so its profile is the one to resolve against (DESIGN v2.7 B).
+        let action = configStore.config.action(
+            onProfile: controller.active?.profileID ?? DeviceProfile.dualSenseID,
+            control: button.rawValue)
         if action.isHoldAction {
             // One hold at a time: a second hold press of either kind while one is
             // already running is ignored, so the button that started the recorder
@@ -2234,6 +2239,7 @@ final class AppState: ObservableObject {
         Task { @MainActor [weak self] in
             guard let self else { return }
             self.statusUpdateScheduled = false
+            self.syncControllerSlot()
             self.syncSpeechConfiguration()
             self.syncAudioAvailabilityBaseline()
             // Both are no-ops unless the config actually changed, so Settings
@@ -2293,16 +2299,24 @@ final class AppState: ObservableObject {
             color = (0.0, 0.0, 0.0)
         }
 
-        // The key includes connection state: with activity now outranking
-        // .noController, a pad that (re)connects mid-listening/-thinking sees
-        // no status change, so the color alone would memo-match and the fresh
-        // pad's light bar would keep its firmware default. setLight on a
-        // disconnected pad is a harmless no-op, so keying on isConnected is
+        // The key includes which controller fills the slot: with activity now
+        // outranking .noController, a pad that (re)connects mid-listening/
+        // -thinking sees no status change, and a slot change between two
+        // connected pads changes neither status nor connection state, so the
+        // color alone would memo-match and the pad now in the slot would keep
+        // its firmware default (or the dark it was given). setLight with the
+        // slot empty is a harmless no-op, so keying on the active id is
         // exactly the re-push needed.
-        let key = "\(controller.isConnected)|\(color.r),\(color.g),\(color.b)"
+        let key = "\(controller.active?.id ?? "-")|\(color.r),\(color.g),\(color.b)"
         guard key != lastLightKey else { return }
         lastLightKey = key
         controller.setLight(r: color.r, g: color.g, b: color.b)
+    }
+
+    /// Hands the Controller slot pin (DESIGN v2.7 B) to the controller
+    /// service, which re-selects the slot only when the pin actually changed.
+    private func syncControllerSlot() {
+        controller.pinnedControllerID = configStore.config.controllerDeviceID
     }
 
     private func syncSpeechConfiguration() {
