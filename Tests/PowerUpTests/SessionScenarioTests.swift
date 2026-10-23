@@ -145,6 +145,76 @@ final class SessionScenarioTests: XCTestCase {
         XCTAssertTrue(message.contains("pendingPermissionArmed (true → false)"), message)
     }
 
+    func testAStepCheckpointFailureNamesTheStep() async throws {
+        var json = try Self.fixture("effort-change-mid-turn-restarts-with-resume-after-the-turn")
+        // Claim the mid-turn press restarted at once, which it must not.
+        json = Self.replacing(json, at: ["script", 3, "expect", "harnessCalls"], with: .array([
+            .object(["type": .string("start")]),
+            .object(["type": .string("send")]),
+            .object(["type": .string("start"), "resumeSessionID": .string("session-1")]),
+        ]))
+        let scenario = try SessionScenario(json: json, file: "broken.json")
+
+        let failures = await SessionScenarioRunner.run(scenario)
+
+        XCTAssertEqual(failures.count, 1, "\(failures)")
+        let message = try XCTUnwrap(failures.first)
+        XCTAssertTrue(message.hasPrefix("[effort-change-mid-turn-restarts-with-resume-after-the-turn]"), message)
+        XCTAssertTrue(message.contains("step 4 expect.harnessCalls[2]"), message)
+        XCTAssertTrue(message.contains("got nothing"), message)
+    }
+
+    func testSettleFalseRunsTheNextStepBeforeDeferredWork() async throws {
+        // Without `"settle": false` the deferred effort restart runs as soon as
+        // the first turn completes, so the second prompt lands on the new
+        // process instead of postponing the restart: the re-deferral scenario
+        // only exercises its rule because of that flag.
+        var json = try Self.fixture("effort-restart-re-deferred-by-a-new-turn")
+        json = Self.removing(json, at: ["script", 4], key: "settle")
+        let scenario = try SessionScenario(json: json, file: "settled.json")
+
+        let failures = await SessionScenarioRunner.run(scenario)
+
+        let first = try XCTUnwrap(failures.first, "the restart should have run before the second prompt")
+        XCTAssertTrue(first.contains("step 6 expect.harnessCalls[2]"), first)
+        XCTAssertTrue(first.contains("\"resumeSessionID\": \"session-1\""), first)
+    }
+
+    func testTheLastStepCannotSkipSettling() throws {
+        var json = try Self.fixture("effort-change-between-turns-restarts-now-with-resume")
+        json = Self.replacing(json, at: ["script", 2, "settle"], with: .bool(false))
+
+        XCTAssertThrowsError(try SessionScenario(json: json, file: "last.json")) { error in
+            XCTAssertTrue(String(describing: error).contains("$.script[2].settle"), "\(error)")
+        }
+    }
+
+    func testAChangedLiveModelIsAnObservableChange() async throws {
+        let scenario = try SessionScenario(json: Self.json("""
+            {
+              "formatVersion": 1, "name": "probe-live-model", "description": "d", "reason": "r",
+              "verifiedBy": ["swift"],
+              "config": { "project": true, "model": "sonnet" },
+              "script": [
+                { "call": "startSessionIfNeeded" },
+                { "harnessEvent": { "type": "sessionReady", "sessionID": "s", "model": "claude-sonnet-4-5" } },
+                { "harnessEvent": { "type": "sessionReady", "sessionID": "s", "model": "claude-opus-4-1" },
+                  "expectNoChange": true }
+              ],
+              "expect": { "modelChip": "sonnet" }
+            }
+            """), file: "probe.json")
+
+        let failures = await SessionScenarioRunner.run(scenario)
+
+        // A repeated init logs nothing and the explicit alias keeps the chip,
+        // but the live model moved.
+        XCTAssertEqual(failures.count, 1, "\(failures)")
+        let message = try XCTUnwrap(failures.first)
+        XCTAssertTrue(message.contains("step 3"), message)
+        XCTAssertTrue(message.contains("liveModel (claude-sonnet-4-5 → claude-opus-4-1)"), message)
+    }
+
     // MARK: The format is strict
 
     func testAFixtureTypoIsALoadErrorNotASkippedCheck() throws {
@@ -176,6 +246,26 @@ final class SessionScenarioTests: XCTestCase {
 
     private static func json(_ text: String) throws -> ScenarioJSON {
         try ScenarioJSON(parsing: Data(text.utf8))
+    }
+
+    /// `json` with `key` removed from the object at `path`.
+    private static func removing(_ json: ScenarioJSON, at path: [AnyHashable], key: String) -> ScenarioJSON {
+        guard let head = path.first else {
+            guard case .object(var fields) = json else { return json }
+            fields[key] = nil
+            return .object(fields)
+        }
+        let rest = Array(path.dropFirst())
+        switch (json, head) {
+        case (.object(var fields), let name as String):
+            if let inner = fields[name] { fields[name] = removing(inner, at: rest, key: key) }
+            return .object(fields)
+        case (.array(var items), let index as Int) where items.indices.contains(index):
+            items[index] = removing(items[index], at: rest, key: key)
+            return .array(items)
+        default:
+            return json
+        }
     }
 
     /// `json` with the value at `path` (object keys and array indexes) set to

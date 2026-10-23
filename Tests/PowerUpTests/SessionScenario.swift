@@ -114,6 +114,14 @@ struct SessionScenario {
         let action: Action
         /// The step must leave every observable fact unchanged.
         let expectNoChange: Bool
+        /// False: the next step runs straight after this one, before AppState
+        /// gets the main-actor turns that run work it deferred (a Task it
+        /// spawned to hop off an event delivery). Models input that was
+        /// already on its way when the step happened.
+        let settle: Bool
+        /// Facts checked right after this step (a checkpoint), in the same
+        /// terms as the scenario's final `expect`.
+        let expect: Expectations?
         let label: String          // the step's JSON, for failure messages
     }
 
@@ -129,6 +137,11 @@ struct SessionScenario {
         /// armed (the banner reads "Confirm"). False when nothing is pending.
         var pendingPermissionArmed: Bool?
         var status: String?
+        /// What the harness last reported as its model (the session's
+        /// `liveModel`). `.some(nil)` asserts nothing has been reported.
+        var liveModel: String??
+        /// The model chip's label.
+        var modelChip: String?
     }
 
     static let formatVersion = 1
@@ -175,7 +188,11 @@ struct SessionScenario {
         script = try steps.enumerated().map { index, step in
             try Self.parseStep(step, number: index + 1, reader: &reader)
         }
-        expect = try Self.parseExpectations(root["expect"], reader: &reader)
+        if let last = script.last, !last.settle {
+            throw reader.error("$.script[\(last.number - 1)].settle",
+                               "the last step has no next step to run before deferred work")
+        }
+        expect = try Self.parseExpectations(root["expect"], at: "$.expect", reader: &reader)
     }
 
     // MARK: Parsing
@@ -210,9 +227,14 @@ struct SessionScenario {
         let path = "$.script[\(number - 1)]"
         let fields = try reader.object(json, at: path, allowed: [
             "call", "intent", "harnessEvent", "text", "allow", "reason", "expectNoChange",
+            "settle", "expect",
         ])
         if let reason = fields["reason"] { _ = try reader.string(reason, at: "\(path).reason") }
         let expectNoChange = try reader.optionalBool(fields["expectNoChange"], at: "\(path).expectNoChange") ?? false
+        let settle = try reader.optionalBool(fields["settle"], at: "\(path).settle") ?? true
+        let checkpoint = try fields["expect"].map {
+            try parseExpectations($0, at: "\(path).expect", reader: &reader)
+        }
         let kinds = ["call", "intent", "harnessEvent"].filter { fields[$0] != nil }
         guard kinds.count == 1 else {
             throw reader.error(path, "a step has exactly one of \"call\", \"intent\" or \"harnessEvent\"")
@@ -264,7 +286,16 @@ struct SessionScenario {
             try unused("text", text); try unused("allow", allow)
             action = .harnessEvent(try parseEvent(fields["harnessEvent"], at: "\(path).harnessEvent", reader: &reader))
         }
-        return Step(number: number, action: action, expectNoChange: expectNoChange, label: json.description)
+        return Step(number: number, action: action, expectNoChange: expectNoChange,
+                    settle: settle, expect: checkpoint, label: label(of: json))
+    }
+
+    /// The step as printed in failures: its JSON without the checkpoint
+    /// block, which would only repeat what the failure already names.
+    private static func label(of json: ScenarioJSON) -> String {
+        guard case .object(var fields) = json else { return json.description }
+        fields["expect"] = nil
+        return ScenarioJSON.object(fields).description
     }
 
     /// The normalized harness vocabulary (`HarnessEvent`), one object per
@@ -337,19 +368,20 @@ struct SessionScenario {
         "stop": [],
     ]
 
-    private static func parseExpectations(_ json: ScenarioJSON?, reader: inout Reader) throws -> Expectations {
-        guard let json else { throw reader.error("$.expect", "missing") }
-        let fields = try reader.object(json, at: "$.expect", allowed: [
+    private static func parseExpectations(_ json: ScenarioJSON?, at root: String,
+                                          reader: inout Reader) throws -> Expectations {
+        guard let json else { throw reader.error(root, "missing") }
+        let fields = try reader.object(json, at: root, allowed: [
             "harnessCalls", "transcript", "errorShown", "lastSessionID", "pendingPermission",
-            "pendingPermissionArmed", "status",
+            "pendingPermissionArmed", "status", "liveModel", "modelChip",
         ])
-        guard !fields.isEmpty else { throw reader.error("$.expect", "expects nothing") }
+        guard !fields.isEmpty else { throw reader.error(root, "expects nothing") }
         var expect = Expectations()
 
         if let calls = fields["harnessCalls"] {
-            guard case .array(let items) = calls else { throw reader.error("$.expect.harnessCalls", "must be an array") }
+            guard case .array(let items) = calls else { throw reader.error("\(root).harnessCalls", "must be an array") }
             expect.harnessCalls = try items.enumerated().map { index, item in
-                let path = "$.expect.harnessCalls[\(index)]"
+                let path = "\(root).harnessCalls[\(index)]"
                 guard case .object(let object) = item, let typeJSON = object["type"] else {
                     throw reader.error(path, "must be an object with a \"type\"")
                 }
@@ -361,9 +393,9 @@ struct SessionScenario {
             }
         }
         if let transcript = fields["transcript"] {
-            guard case .array(let items) = transcript else { throw reader.error("$.expect.transcript", "must be an array") }
+            guard case .array(let items) = transcript else { throw reader.error("\(root).transcript", "must be an array") }
             expect.transcript = try items.enumerated().map { index, item in
-                let path = "$.expect.transcript[\(index)]"
+                let path = "\(root).transcript[\(index)]"
                 let object = try reader.object(item, at: path, allowed: ["kind", "text"])
                 let kind = try reader.string(object["kind"], at: "\(path).kind")
                 guard transcriptKinds.contains(kind) else {
@@ -373,18 +405,22 @@ struct SessionScenario {
                 return object
             }
         }
-        expect.errorShown = try reader.optionalBool(fields["errorShown"], at: "$.expect.errorShown")
+        expect.errorShown = try reader.optionalBool(fields["errorShown"], at: "\(root).errorShown")
         if let id = fields["lastSessionID"] {
-            expect.lastSessionID = .some(try reader.optionalString(id, at: "$.expect.lastSessionID"))
+            expect.lastSessionID = .some(try reader.optionalString(id, at: "\(root).lastSessionID"))
         }
-        expect.pendingPermission = try reader.optionalBool(fields["pendingPermission"], at: "$.expect.pendingPermission")
+        expect.pendingPermission = try reader.optionalBool(fields["pendingPermission"], at: "\(root).pendingPermission")
         expect.pendingPermissionArmed = try reader.optionalBool(fields["pendingPermissionArmed"],
-                                                                at: "$.expect.pendingPermissionArmed")
+                                                                at: "\(root).pendingPermissionArmed")
         if let status = fields["status"] {
-            let name = try reader.string(status, at: "$.expect.status")
-            guard statusNames.contains(name) else { throw reader.error("$.expect.status", "unknown status \"\(name)\"") }
+            let name = try reader.string(status, at: "\(root).status")
+            guard statusNames.contains(name) else { throw reader.error("\(root).status", "unknown status \"\(name)\"") }
             expect.status = name
         }
+        if let model = fields["liveModel"] {
+            expect.liveModel = .some(try reader.optionalString(model, at: "\(root).liveModel"))
+        }
+        expect.modelChip = try reader.optionalString(fields["modelChip"], at: "\(root).modelChip")
         return expect
     }
 
@@ -515,6 +551,10 @@ enum SessionScenarioRunner {
         let controller = ControllerService()
         if scenario.config.controllerConnected { controller.simulateConnect() }
         let harness = FakeHarnessAdapter()
+        // The fake reports the capabilities of the adapter it stands in for:
+        // the built-in Claude adapter switches effort by restart + resume,
+        // ACP agents have no effort setting (Harness.swift defaults).
+        harness.supportsEffort = scenario.config.harnessKind != "acp"
         let app = env.makeAppState(controller: controller, harness: harness)
         await settle()
 
@@ -533,12 +573,15 @@ enum SessionScenarioRunner {
             }
             let before = observation(app, harness, transcriptBase: transcriptBase, projectPath: projectPath)
             perform(step.action, on: app, harness: harness)
-            await settle()
-            if step.expectNoChange {
-                let after = observation(app, harness, transcriptBase: transcriptBase, projectPath: projectPath)
-                if let difference = firstDifference(before, after) {
-                    failures.append("\(prefix) step \(step.number) \(step.label) is tagged expectNoChange "
-                                    + "but changed \(difference)")
+            if step.settle { await settle() }
+            let after = observation(app, harness, transcriptBase: transcriptBase, projectPath: projectPath)
+            if step.expectNoChange, let difference = firstDifference(before, after) {
+                failures.append("\(prefix) step \(step.number) \(step.label) is tagged expectNoChange "
+                                + "but changed \(difference)")
+            }
+            if let checkpoint = step.expect {
+                failures += compare(checkpoint, with: after, at: "step \(step.number) expect").map {
+                    "\(prefix) \($0)"
                 }
             }
         }
@@ -582,6 +625,8 @@ enum SessionScenarioRunner {
         var pendingPermission: Bool
         var pendingPermissionArmed: Bool
         var status: String
+        var liveModel: String?
+        var modelChip: String
     }
 
     private static func observation(_ app: AppState, _ harness: FakeHarnessAdapter,
@@ -594,7 +639,9 @@ enum SessionScenarioRunner {
             lastSessionID: app.configStore.config.lastSessionID,
             pendingPermission: app.pendingPermission != nil,
             pendingPermissionArmed: app.pendingPermission?.armed ?? false,
-            status: statusName(app.status))
+            status: statusName(app.status),
+            liveModel: app.harnessReportedModel,
+            modelChip: app.modelChipLabel)
     }
 
     private static func statusName(_ status: AppStatus) -> String {
@@ -660,32 +707,40 @@ enum SessionScenarioRunner {
         if before.status != after.status {
             return "status (\(before.status) → \(after.status))"
         }
+        if before.liveModel != after.liveModel {
+            return "liveModel (\(before.liveModel ?? "null") → \(after.liveModel ?? "null"))"
+        }
+        if before.modelChip != after.modelChip {
+            return "modelChip (\(before.modelChip) → \(after.modelChip))"
+        }
         return nil
     }
 
-    /// Each mismatch as "expect.<path>: expected …, got …". Lists compare
+    /// Each mismatch as "<root>.<path>: expected …, got …", where root is
+    /// `expect` or a step's checkpoint (`step 4 expect`). Lists compare
     /// element by element; an expected element's keys are checked and keys it
     /// leaves out are not, so a fixture states only the facts its rule is about.
-    private static func compare(_ expect: SessionScenario.Expectations, with actual: Observation) -> [String] {
+    private static func compare(_ expect: SessionScenario.Expectations, with actual: Observation,
+                                at root: String = "expect") -> [String] {
         var failures: [String] = []
 
         func compareList(_ name: String, _ expected: [[String: ScenarioJSON]], _ actual: [[String: ScenarioJSON]]) {
             for (index, wanted) in expected.enumerated() {
                 guard index < actual.count else {
-                    failures.append("expect.\(name)[\(index)]: expected \(ScenarioJSON.object(wanted)), got nothing "
+                    failures.append("\(root).\(name)[\(index)]: expected \(ScenarioJSON.object(wanted)), got nothing "
                                     + "(only \(actual.count) recorded)")
                     return
                 }
                 let got = actual[index]
                 for key in wanted.keys.sorted() where wanted[key] != got[key] {
-                    failures.append("expect.\(name)[\(index)].\(key): expected \(wanted[key] ?? .null), "
+                    failures.append("\(root).\(name)[\(index)].\(key): expected \(wanted[key] ?? .null), "
                                     + "got \(got[key] ?? .null) — full entry \(ScenarioJSON.object(got))")
                     return
                 }
             }
             if actual.count > expected.count {
                 let extra = actual.dropFirst(expected.count).map { ScenarioJSON.object($0).description }
-                failures.append("expect.\(name): expected \(expected.count) entries, got \(actual.count); "
+                failures.append("\(root).\(name): expected \(expected.count) entries, got \(actual.count); "
                                 + "unexpected \(extra.joined(separator: ", "))")
             }
         }
@@ -695,21 +750,28 @@ enum SessionScenarioRunner {
         if let errorShown = expect.errorShown {
             let shown = actual.transcript.contains { $0["kind"] == .string("error") }
             if shown != errorShown {
-                failures.append("expect.errorShown: expected \(errorShown), got \(shown)")
+                failures.append("\(root).errorShown: expected \(errorShown), got \(shown)")
             }
         }
         if let wanted = expect.lastSessionID, wanted != actual.lastSessionID {
-            failures.append("expect.lastSessionID: expected \(wanted.map { "\"\($0)\"" } ?? "null"), "
+            failures.append("\(root).lastSessionID: expected \(wanted.map { "\"\($0)\"" } ?? "null"), "
                             + "got \(actual.lastSessionID.map { "\"\($0)\"" } ?? "null")")
         }
         if let pending = expect.pendingPermission, pending != actual.pendingPermission {
-            failures.append("expect.pendingPermission: expected \(pending), got \(actual.pendingPermission)")
+            failures.append("\(root).pendingPermission: expected \(pending), got \(actual.pendingPermission)")
         }
         if let armed = expect.pendingPermissionArmed, armed != actual.pendingPermissionArmed {
-            failures.append("expect.pendingPermissionArmed: expected \(armed), got \(actual.pendingPermissionArmed)")
+            failures.append("\(root).pendingPermissionArmed: expected \(armed), got \(actual.pendingPermissionArmed)")
         }
         if let status = expect.status, status != actual.status {
-            failures.append("expect.status: expected \"\(status)\", got \"\(actual.status)\"")
+            failures.append("\(root).status: expected \"\(status)\", got \"\(actual.status)\"")
+        }
+        if let wanted = expect.liveModel, wanted != actual.liveModel {
+            failures.append("\(root).liveModel: expected \(wanted.map { "\"\($0)\"" } ?? "null"), "
+                            + "got \(actual.liveModel.map { "\"\($0)\"" } ?? "null")")
+        }
+        if let chip = expect.modelChip, chip != actual.modelChip {
+            failures.append("\(root).modelChip: expected \"\(chip)\", got \"\(actual.modelChip)\"")
         }
         return failures
     }

@@ -41,6 +41,17 @@ final class AppState: ObservableObject {
     /// What the active harness reports as its model, for the model chip.
     var harnessReportedModel: String? { harness.modelName }
 
+    /// The model chip's label (DESIGN.md v1.3 C). `config.model` wins whenever
+    /// it is an explicit alias, so a Cycle Model press shows up instantly
+    /// (optimistic); only when the config says "default" does the chip fall
+    /// back to whatever the ACTIVE harness reported (Claude adapter or ACP agent).
+    var modelChipLabel: String {
+        let configured = configStore.config.model
+        if configured != "default", !configured.isEmpty { return configured }
+        if let reported = harnessReportedModel, !reported.isEmpty { return reported }
+        return "default"
+    }
+
     private func acpAdapterInstance() -> ACPAdapter {
         if let acpAdapter { return acpAdapter }
         let adapter = ACPAdapter()

@@ -10,7 +10,8 @@ import Foundation
 /// Its lifecycle follows the real adapters (`ClaudeService`, `ACPAdapter`)
 /// closely enough for session rules to read it the same way:
 /// `start` → `.starting`; an emitted `sessionReady` → `.ready` and fills
-/// `sessionID` / `modelName`; `send` → `.working`; an emitted
+/// `sessionID` / `modelName`; an emitted, acknowledged `set_model`
+/// `controlResult` → `modelName`; `send` → `.working`; an emitted
 /// `turnCompleted` → `.ready`; `stop` or an emitted `ended` → `.stopped`.
 /// Every identity field is also settable, so a test can put the fake in any
 /// state directly.
@@ -128,6 +129,10 @@ final class FakeHarnessAdapter: HarnessAdapter {
         case .turnCompleted(_, let cost, _, _):
             if let cost { totalCostUSD = cost }
             if state != .stopped { state = .ready }
+        case .controlResult(let action, let ok, _, let value):
+            // Both real adapters report an acknowledged model switch at once,
+            // without waiting for the next init (DESIGN.md v1.3 C).
+            if ok, action == "set_model", let value, !value.isEmpty { modelName = value }
         case .ended:
             state = .stopped
         default:

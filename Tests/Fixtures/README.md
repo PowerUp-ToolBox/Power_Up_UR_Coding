@@ -59,7 +59,7 @@ Anything not set here comes from the default config, with TTS off.
 
 | Key | Meaning |
 | --- | --- |
-| `harnessKind`, `model`, `effort`, `permissionMode` | the `AppConfig` fields of the same name |
+| `harnessKind`, `model`, `effort`, `permissionMode` | the `AppConfig` fields of the same name. The scripted harness reports the capabilities of the adapter it stands in for: `"claude"` supports effort (restart + resume), `"acp"` does not |
 | `controlMode` | `"builtin"` only for now; `"remote"` is refused until the runner has a fake remote target |
 | `project` | `true`: a fresh project folder, written `"$project"` in expectations; default `false` (no folder chosen) |
 | `lastSessionID` | the stored resumable id (it also seeds the folder's own entry, as on a real launch) |
@@ -89,9 +89,26 @@ Each step has exactly one of these:
   - `runtimeError {message}`
   - `ended {exitCode}`
 
-A step may also carry a `"reason"`. A step may also be tagged
-`"expectNoChange": true`. That tag asserts the step leaves every observable
-fact below unchanged, which is how a fixture shows that an input is ignored.
+A step may also carry:
+
+- `"reason"`: why the step is there.
+- `"expectNoChange": true`: asserts the step leaves every observable fact
+  below unchanged, which is how a fixture shows that an input is ignored.
+- `"expect": {…}`: a checkpoint. The same keys as the final `expect`
+  block, checked right after this step, so a fixture can show *when*
+  something happened (for example, that no restart was recorded until the
+  turn completed). A failure names the step: `step 4 expect.harnessCalls…`.
+- `"settle": false`: the next step runs straight after this one, before
+  AppState gets to run work it deferred (a hop off the event delivery, such
+  as the effort restart after `turnCompleted`). This models input that was
+  already on its way when the step happened. By default every step settles
+  first. The last step cannot set it.
+
+The scripted harness follows the real adapters' own state: `start` makes
+it starting, `sessionReady` makes it ready and sets its session id and
+model, `send` makes it working, `turnCompleted` makes it ready again, an
+acknowledged `set_model` `controlResult` sets its model, and `ended` or
+`stop` stops it.
 
 ### `expect`: facts checked after the script (each key optional, at least one)
 
@@ -104,6 +121,8 @@ fact below unchanged, which is how a fixture shows that an input is ignored.
 | `pendingPermission` | whether a permission request is waiting for an answer |
 | `pendingPermissionArmed` | whether the waiting request is a destructive one that a first `approve` has armed (the banner reads "Confirm"); `false` when nothing is waiting |
 | `status` | `noController`, `idle`, `listening`, `thinking` or `speaking` |
+| `liveModel` | the model the harness last reported (its init echo, or an acknowledged switch), sent to protocol clients as `liveModel`; `null` when nothing has been reported |
+| `modelChip` | the model chip's label: the configured model when it is an explicit alias, otherwise `liveModel`, otherwise `"default"` |
 
 A failure names the scenario and its first mismatched expectation. For
 example: `[resume-failure-retried-once-without-resume] (….json)

@@ -1,0 +1,71 @@
+{
+  "formatVersion": 1,
+  "name": "effort-restart-re-deferred-by-a-new-turn",
+  "description": "An effort change is queued mid-turn. The turn completes, but the next prompt starts a new turn before the deferred restart gets to run, so the restart is postponed again and happens only after that second turn completes, still resuming the same session.",
+  "reason": "The deferred restart hops off the event delivery before it runs. A prompt that was already on its way (a second voice prompt, a protocol client's sendPrompt) can start a turn in that gap; restarting then would cut that answer off.",
+  "source": "DESIGN.md v1.2 E '.cycleEffort'; AppState.handleHarnessEvent(.turnCompleted) 'A queued turn started already — wait for that one too.'",
+  "verifiedBy": ["swift"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "builtin",
+    "project": true,
+    "effort": "high"
+  },
+  "script": [
+    {
+      "call": "startSessionIfNeeded",
+      "reason": "App launch: a fresh session with effort high."
+    },
+    {
+      "harnessEvent": { "type": "sessionReady", "sessionID": "session-1", "model": "claude-sonnet-4-5" },
+      "reason": "The CLI's system/init."
+    },
+    {
+      "call": "sendUserText",
+      "text": "First question.",
+      "reason": "The first turn is in flight."
+    },
+    {
+      "intent": "cycleEffort",
+      "reason": "High → Extra High mid-turn: queued."
+    },
+    {
+      "harnessEvent": { "type": "turnCompleted", "resultText": "First answer.", "costUSD": 0.01, "isError": false, "detail": "success" },
+      "settle": false,
+      "reason": "The first turn ends. The restart is scheduled to run once this delivery is over, but the next step arrives first."
+    },
+    {
+      "call": "sendUserText",
+      "text": "Second question.",
+      "reason": "A prompt already on its way starts a second turn before the deferred restart runs. The restart sees a turn in flight and postpones itself again.",
+      "expect": {
+        "harnessCalls": [
+          { "type": "start", "effort": "high", "resumeSessionID": null },
+          { "type": "send", "text": "First question." },
+          { "type": "send", "text": "Second question." }
+        ]
+      }
+    },
+    {
+      "harnessEvent": { "type": "turnCompleted", "resultText": "Second answer.", "costUSD": 0.01, "isError": false, "detail": "success" },
+      "reason": "The second turn is over: now the harness restarts with the new effort, resuming the same session."
+    }
+  ],
+  "expect": {
+    "harnessCalls": [
+      { "type": "start", "projectDir": "$project", "effort": "high", "resumeSessionID": null },
+      { "type": "send", "text": "First question." },
+      { "type": "send", "text": "Second question." },
+      { "type": "start", "projectDir": "$project", "effort": "xhigh", "resumeSessionID": "session-1" }
+    ],
+    "transcript": [
+      { "kind": "system", "text": "Session started (claude-sonnet-4-5)" },
+      { "kind": "user", "text": "First question." },
+      { "kind": "system", "text": "Effort → Extra High (applies when this turn finishes)" },
+      { "kind": "user", "text": "Second question." },
+      { "kind": "system", "text": "Resuming the session with effort xhigh…" }
+    ],
+    "errorShown": false,
+    "lastSessionID": "session-1"
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "formatVersion": 1,
+  "name": "model-chip-follows-the-echoed-name",
+  "description": "With the model left on \"default\", the model chip shows whatever name the harness echoes in its init, and follows it when a later init reports a different model. The \"Session started\" line is still logged once.",
+  "reason": "\"default\" says nothing about which model is actually answering. The chip used to read a value that only refreshed on the next turn, so it showed stale information (v1.3 C).",
+  "source": "DESIGN.md v1.3 C 'Chip display rules' and v2.0 'harnessReportedModel exposes the active adapter's model for the chip'; AppState.modelChipLabel / harnessReportedModel",
+  "verifiedBy": ["swift"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "builtin",
+    "project": true,
+    "model": "default"
+  },
+  "script": [
+    {
+      "call": "startSessionIfNeeded",
+      "reason": "Launching: nothing has been echoed yet.",
+      "expect": { "liveModel": null, "modelChip": "default" }
+    },
+    {
+      "harnessEvent": { "type": "sessionReady", "sessionID": "session-1", "model": "claude-sonnet-4-5" },
+      "reason": "The CLI's system/init names the model it picked.",
+      "expect": { "liveModel": "claude-sonnet-4-5", "modelChip": "claude-sonnet-4-5" }
+    },
+    {
+      "harnessEvent": { "type": "sessionReady", "sessionID": "session-1", "model": "claude-opus-4-1" },
+      "reason": "A later system/init in the same session reports another model (the CLI emits one after a model switch)."
+    }
+  ],
+  "expect": {
+    "harnessCalls": [
+      { "type": "start", "projectDir": "$project", "model": "default" }
+    ],
+    "transcript": [
+      { "kind": "system", "text": "Session started (claude-sonnet-4-5)" }
+    ],
+    "liveModel": "claude-opus-4-1",
+    "modelChip": "claude-opus-4-1",
+    "errorShown": false
+  }
+}

@@ -228,24 +228,18 @@ private struct BarStatusPill: View {
     }
 }
 
-/// Model chip. `config.model` wins whenever it is an explicit alias, so a
-/// controller-driven Cycle Model press shows up instantly (optimistic); only
-/// when the config says "default" do we fall back to whatever the CLI reported.
+/// Model chip. The label rule (explicit alias first, else what the active
+/// harness reported) lives in `AppState.modelChipLabel`, where the session
+/// scenarios pin it. `configStore` is still observed so a Cycle Model press
+/// redraws the chip instantly.
 @MainActor
 private struct ModelChip: View {
     @EnvironmentObject private var configStore: ConfigStore
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
+        let label = appState.modelChipLabel
         SessionChip(symbol: "cpu", label: label, help: "Model: \(label)")
-    }
-
-    private var label: String {
-        let configured = configStore.config.model
-        if configured != "default", !configured.isEmpty { return configured }
-        // Whatever the ACTIVE harness reports (Claude adapter or ACP agent).
-        if let reported = appState.harnessReportedModel, !reported.isEmpty { return reported }
-        return "default"
     }
 }
 
