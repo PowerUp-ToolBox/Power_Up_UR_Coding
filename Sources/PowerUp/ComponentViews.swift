@@ -169,10 +169,6 @@ enum Theme {
         f.dateFormat = "HH:mm"
         return f.string(from: date)
     }
-
-    static func costString(_ usd: Double) -> String {
-        String(format: usd >= 1 ? "$%.2f" : "$%.4f", usd)
-    }
 }
 
 // MARK: - Background
@@ -523,7 +519,7 @@ struct EmptyTranscriptCard: View {
             Text("Ready when you are")
                 .font(.system(size: 15, weight: .semibold, design: .rounded))
                 .foregroundStyle(Theme.textPrimary)
-            Text(hintText)
+            Text(ViewLogic.emptyTranscriptPrompt(pushToTalkHint: pushToTalkHint))
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.textSecondary)
                 .multilineTextAlignment(.center)
@@ -532,13 +528,6 @@ struct EmptyTranscriptCard: View {
         }
         .padding(24)
         .powerUpCard(padding: 8, cornerRadius: 18)
-    }
-
-    private var hintText: String {
-        if let pushToTalkHint {
-            return "Hold \(pushToTalkHint) on the controller and speak, click the mic (or press ⌘D) to dictate, or type a message below."
-        }
-        return "Click the mic (or press ⌘D) to dictate, or type a message below — no controller needed."
     }
 }
 
