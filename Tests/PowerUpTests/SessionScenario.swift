@@ -125,6 +125,9 @@ struct SessionScenario {
         /// `.some(nil)` asserts no session id is stored.
         var lastSessionID: String??
         var pendingPermission: Bool?
+        /// The pending request is a destructive one that a first Approve has
+        /// armed (the banner reads "Confirm"). False when nothing is pending.
+        var pendingPermissionArmed: Bool?
         var status: String?
     }
 
@@ -337,7 +340,8 @@ struct SessionScenario {
     private static func parseExpectations(_ json: ScenarioJSON?, reader: inout Reader) throws -> Expectations {
         guard let json else { throw reader.error("$.expect", "missing") }
         let fields = try reader.object(json, at: "$.expect", allowed: [
-            "harnessCalls", "transcript", "errorShown", "lastSessionID", "pendingPermission", "status",
+            "harnessCalls", "transcript", "errorShown", "lastSessionID", "pendingPermission",
+            "pendingPermissionArmed", "status",
         ])
         guard !fields.isEmpty else { throw reader.error("$.expect", "expects nothing") }
         var expect = Expectations()
@@ -374,6 +378,8 @@ struct SessionScenario {
             expect.lastSessionID = .some(try reader.optionalString(id, at: "$.expect.lastSessionID"))
         }
         expect.pendingPermission = try reader.optionalBool(fields["pendingPermission"], at: "$.expect.pendingPermission")
+        expect.pendingPermissionArmed = try reader.optionalBool(fields["pendingPermissionArmed"],
+                                                                at: "$.expect.pendingPermissionArmed")
         if let status = fields["status"] {
             let name = try reader.string(status, at: "$.expect.status")
             guard statusNames.contains(name) else { throw reader.error("$.expect.status", "unknown status \"\(name)\"") }
@@ -574,6 +580,7 @@ enum SessionScenarioRunner {
         var transcript: [[String: ScenarioJSON]]
         var lastSessionID: String?
         var pendingPermission: Bool
+        var pendingPermissionArmed: Bool
         var status: String
     }
 
@@ -586,6 +593,7 @@ enum SessionScenarioRunner {
             },
             lastSessionID: app.configStore.config.lastSessionID,
             pendingPermission: app.pendingPermission != nil,
+            pendingPermissionArmed: app.pendingPermission?.armed ?? false,
             status: statusName(app.status))
     }
 
@@ -646,6 +654,9 @@ enum SessionScenarioRunner {
         if before.pendingPermission != after.pendingPermission {
             return "pendingPermission (\(before.pendingPermission) → \(after.pendingPermission))"
         }
+        if before.pendingPermissionArmed != after.pendingPermissionArmed {
+            return "pendingPermissionArmed (\(before.pendingPermissionArmed) → \(after.pendingPermissionArmed))"
+        }
         if before.status != after.status {
             return "status (\(before.status) → \(after.status))"
         }
@@ -693,6 +704,9 @@ enum SessionScenarioRunner {
         }
         if let pending = expect.pendingPermission, pending != actual.pendingPermission {
             failures.append("expect.pendingPermission: expected \(pending), got \(actual.pendingPermission)")
+        }
+        if let armed = expect.pendingPermissionArmed, armed != actual.pendingPermissionArmed {
+            failures.append("expect.pendingPermissionArmed: expected \(armed), got \(actual.pendingPermissionArmed)")
         }
         if let status = expect.status, status != actual.status {
             failures.append("expect.status: expected \"\(status)\", got \"\(actual.status)\"")

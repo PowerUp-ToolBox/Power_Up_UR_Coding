@@ -117,6 +117,34 @@ final class SessionScenarioTests: XCTestCase {
         XCTAssertEqual(failures, [])
     }
 
+    func testDisarmingAnArmedRequestIsAnObservableChange() async throws {
+        // Arming is published state (the banner retitles to "Confirm"), so a
+        // step that disarms is not "no change" even though it sends nothing
+        // and logs nothing.
+        let scenario = try SessionScenario(json: Self.json("""
+            {
+              "formatVersion": 1, "name": "probe-disarm", "description": "d", "reason": "r",
+              "verifiedBy": ["swift"],
+              "config": { "project": true },
+              "script": [
+                { "call": "sendUserText", "text": "go" },
+                { "harnessEvent": { "type": "permissionRequest", "id": "p", "name": "Bash",
+                                    "kind": "execute", "detail": "rm -rf build" } },
+                { "intent": "approve" },
+                { "intent": "stopSpeaking", "expectNoChange": true }
+              ],
+              "expect": { "pendingPermission": true, "pendingPermissionArmed": false }
+            }
+            """), file: "probe.json")
+
+        let failures = await SessionScenarioRunner.run(scenario)
+
+        XCTAssertEqual(failures.count, 1, "\(failures)")
+        let message = try XCTUnwrap(failures.first)
+        XCTAssertTrue(message.contains("step 4"), message)
+        XCTAssertTrue(message.contains("pendingPermissionArmed (true → false)"), message)
+    }
+
     // MARK: The format is strict
 
     func testAFixtureTypoIsALoadErrorNotASkippedCheck() throws {

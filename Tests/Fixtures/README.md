@@ -102,6 +102,7 @@ fact below unchanged, which is how a fixture shows that an input is ignored.
 | `errorShown` | whether any `error` entry was appended |
 | `lastSessionID` | the stored resumable id (a string, or `null` for none) |
 | `pendingPermission` | whether a permission request is waiting for an answer |
+| `pendingPermissionArmed` | whether the waiting request is a destructive one that a first `approve` has armed (the banner reads "Confirm"); `false` when nothing is waiting |
 | `status` | `noController`, `idle`, `listening`, `thinking` or `speaking` |
 
 A failure names the scenario and its first mismatched expectation. For
