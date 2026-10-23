@@ -49,12 +49,16 @@ enum TextSafetyFixtures {
 
     /// `Tests/Fixtures/text-safety/`, found relative to this source file so it
     /// works from `swift test` in any checkout without bundling resources.
-    static var directory: URL {
+    static var directory: URL { directory(area: "text-safety") }
+
+    /// `Tests/Fixtures/<area>/`. Other areas (`status`, …) use the same
+    /// envelope, so their tests reuse this loader instead of writing one.
+    static func directory(area: String) -> URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()      // PowerUpTests/
             .deletingLastPathComponent()      // Tests/
             .appendingPathComponent("Fixtures", isDirectory: true)
-            .appendingPathComponent("text-safety", isDirectory: true)
+            .appendingPathComponent(area, isDirectory: true)
     }
 
     static func load<Expected: Decodable>(_ fileName: String,
@@ -66,10 +70,11 @@ enum TextSafetyFixtures {
 
     static func load<Input: Decodable, Expected: Decodable>(
         _ fileName: String,
+        area: String = "text-safety",
         input _: Input.Type,
         expected _: Expected.Type
     ) throws -> StructuredFile<Input, Expected> {
-        let url = directory.appendingPathComponent(fileName)
+        let url = directory(area: area).appendingPathComponent(fileName)
         let data = try Data(contentsOf: url)
         return try JSONDecoder().decode(StructuredFile<Input, Expected>.self, from: data)
     }

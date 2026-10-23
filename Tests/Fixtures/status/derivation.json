@@ -1,0 +1,104 @@
+{
+  "description": "The status precedence table of DESIGN v2.6 §B, written out in full: every combination of the four status inputs (16 rows) and the status the pill and the light bar show for it. Precedence: listening > speaking > thinking > (noController | idle). Live activity always outranks the missing controller, because the controller is optional (voice capture can start from the mic button or the keyboard); noController is only the resting state when nothing is happening and no pad is connected. Status names: noController, idle, listening, thinking, speaking.",
+  "function": "AppState.derivedStatus(controllerConnected:isPTTActive:isSpeaking:isWorking:) — input {controllerConnected, isPTTActive, isSpeaking, isWorking} in, status name out",
+  "verifiedBy": "DESIGN.md v2.6 addendum §B (precedence) and characterization of the Swift implementation (spec #94, ticket #125); Tests/PowerUpTests/StatusDerivationTests.swift. Pure function, no device or harness involved.",
+  "capturedAgainst": "PowerUp macOS app, branch stage-1-text-views-spikes, 2026-10-23",
+  "cases": [
+    {
+      "name": "resting with a pad connected",
+      "input": { "controllerConnected": true, "isPTTActive": false, "isSpeaking": false, "isWorking": false },
+      "expected": "idle",
+      "reason": "Nothing is happening and a pad is there: the blue Ready state."
+    },
+    {
+      "name": "resting with no pad",
+      "input": { "controllerConnected": false, "isPTTActive": false, "isSpeaking": false, "isWorking": false },
+      "expected": "noController",
+      "reason": "The only row where No Controller shows: nothing is happening and no pad is connected."
+    },
+    {
+      "name": "thinking with a pad",
+      "input": { "controllerConnected": true, "isPTTActive": false, "isSpeaking": false, "isWorking": true },
+      "expected": "thinking",
+      "reason": "A running turn turns the light amber."
+    },
+    {
+      "name": "thinking with no pad",
+      "input": { "controllerConnected": false, "isPTTActive": false, "isSpeaking": false, "isWorking": true },
+      "expected": "thinking",
+      "reason": "A prompt sent from the keyboard still shows that the agent is working; the v1 order would have hidden it behind No Controller."
+    },
+    {
+      "name": "speaking with a pad",
+      "input": { "controllerConnected": true, "isPTTActive": false, "isSpeaking": true, "isWorking": false },
+      "expected": "speaking",
+      "reason": "A reply being read aloud turns the light purple."
+    },
+    {
+      "name": "speaking with no pad",
+      "input": { "controllerConnected": false, "isPTTActive": false, "isSpeaking": true, "isWorking": false },
+      "expected": "speaking",
+      "reason": "Replies still speak without a pad, so the pill must say so rather than No Controller."
+    },
+    {
+      "name": "speaking while working, with a pad",
+      "input": { "controllerConnected": true, "isPTTActive": false, "isSpeaking": true, "isWorking": true },
+      "expected": "speaking",
+      "reason": "Speaking outranks thinking: a summary or reply read aloud while the next turn already runs shows purple, not amber."
+    },
+    {
+      "name": "speaking while working, no pad",
+      "input": { "controllerConnected": false, "isPTTActive": false, "isSpeaking": true, "isWorking": true },
+      "expected": "speaking",
+      "reason": "Speaking outranks thinking and the missing pad at the same time."
+    },
+    {
+      "name": "listening with a pad",
+      "input": { "controllerConnected": true, "isPTTActive": true, "isSpeaking": false, "isWorking": false },
+      "expected": "listening",
+      "reason": "A held trigger records: the light goes red."
+    },
+    {
+      "name": "listening with no pad",
+      "input": { "controllerConnected": false, "isPTTActive": true, "isSpeaking": false, "isWorking": false },
+      "expected": "listening",
+      "reason": "The keyboard or mic-button capture path: the v1 order froze the pill on No Controller while recording, the bug v2.6 fixed."
+    },
+    {
+      "name": "listening while working, with a pad",
+      "input": { "controllerConnected": true, "isPTTActive": true, "isSpeaking": false, "isWorking": true },
+      "expected": "listening",
+      "reason": "Listening outranks thinking: dictating the next prompt during a turn shows red, so the person knows they are being recorded."
+    },
+    {
+      "name": "listening while working, no pad",
+      "input": { "controllerConnected": false, "isPTTActive": true, "isSpeaking": false, "isWorking": true },
+      "expected": "listening",
+      "reason": "Listening outranks thinking and the missing pad at the same time."
+    },
+    {
+      "name": "listening while speaking, with a pad",
+      "input": { "controllerConnected": true, "isPTTActive": true, "isSpeaking": true, "isWorking": false },
+      "expected": "listening",
+      "reason": "Listening outranks speaking: the microphone being live matters more than playback (a capture normally stops speech first, but the flags can overlap for a moment)."
+    },
+    {
+      "name": "listening while speaking, no pad",
+      "input": { "controllerConnected": false, "isPTTActive": true, "isSpeaking": true, "isWorking": false },
+      "expected": "listening",
+      "reason": "Listening outranks speaking and the missing pad at the same time."
+    },
+    {
+      "name": "everything at once, with a pad",
+      "input": { "controllerConnected": true, "isPTTActive": true, "isSpeaking": true, "isWorking": true },
+      "expected": "listening",
+      "reason": "Listening is the top of the order; nothing outranks a live microphone."
+    },
+    {
+      "name": "everything at once, no pad",
+      "input": { "controllerConnected": false, "isPTTActive": true, "isSpeaking": true, "isWorking": true },
+      "expected": "listening",
+      "reason": "Listening is the top of the order even with no pad connected."
+    }
+  ]
+}

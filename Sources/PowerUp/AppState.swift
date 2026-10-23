@@ -220,8 +220,9 @@ final class AppState: ObservableObject {
     /// (missed Stop: killed terminal, crashed CLI, Escape pressed directly in
     /// the session). Long legitimate turns can exceed it — the tradeoff is a
     /// too-early idle that self-corrects on the next hook, versus an amber
-    /// light no event will ever clear.
-    private static let remoteTurnExpiry: TimeInterval = 15 * 60
+    /// light no event will ever clear. Internal so the status tests can pin
+    /// the 15 minutes their fixture rows assume.
+    static let remoteTurnExpiry: TimeInterval = 15 * 60
 
     /// Remote sessions seen via hooks recently (id → cwd + last activity),
     /// so Cycle Session Focus has something to step through. In-memory only.
@@ -1974,18 +1975,32 @@ final class AppState: ObservableObject {
     /// Recomputes `remoteTurnActive` from the per-session table, dropping
     /// entries whose sessions have gone silent past the expiry.
     private func refreshRemoteTurnActive() {
-        let cutoff = remoteTurnClock.now.addingTimeInterval(-AppState.remoteTurnExpiry)
-        remoteActiveTurns = remoteActiveTurns.filter { $0.value > cutoff }
-        // With a focus set, only the focused session's turn lights the bar.
-        let active: Bool
-        if let focus = remoteFocusSessionID {
-            active = remoteActiveTurns[focus] != nil
-        } else {
-            active = !remoteActiveTurns.isEmpty
-        }
+        remoteActiveTurns = AppState.liveRemoteTurns(remoteActiveTurns, now: remoteTurnClock.now,
+                                                     expiry: AppState.remoteTurnExpiry)
+        let active = AppState.remoteTurnIsActive(remoteActiveTurns, focus: remoteFocusSessionID)
         if remoteTurnActive != active {
             remoteTurnActive = active
         }
+    }
+
+    /// The turn table with expired entries dropped: an entry survives only
+    /// while its last sign of life is strictly newer than `now - expiry`.
+    /// Pure; pinned by Tests/Fixtures/status/remote-turns.json.
+    nonisolated static func liveRemoteTurns(_ turns: [String: Date],
+                                            now: Date,
+                                            expiry: TimeInterval) -> [String: Date] {
+        let cutoff = now.addingTimeInterval(-expiry)
+        return turns.filter { $0.value > cutoff }
+    }
+
+    /// Whether a remote turn lights the bar: any live entry, or — with a
+    /// focus set — only the focused session's (DESIGN v2.2 §B). Pure; pinned
+    /// by Tests/Fixtures/status/remote-turns.json.
+    nonisolated static func remoteTurnIsActive(_ turns: [String: Date], focus: String?) -> Bool {
+        if let focus {
+            return turns[focus] != nil
+        }
+        return !turns.isEmpty
     }
 
     /// Hard reset of remote turn state — the user's escape hatch (Interrupt /
@@ -2305,7 +2320,9 @@ final class AppState: ObservableObject {
             controllerConnected: controller.isConnected,
             isPTTActive: isPTTActive,
             isSpeaking: tts.isSpeaking,
-            isWorking: harness.state == .working || (isRemoteMode && remoteTurnActive))
+            isWorking: AppState.derivedIsWorking(harnessState: harness.state,
+                                                 isRemoteMode: isRemoteMode,
+                                                 remoteTurnActive: remoteTurnActive))
 
         if newStatus != status {
             status = newStatus
@@ -2314,7 +2331,8 @@ final class AppState: ObservableObject {
         applyLight(for: newStatus)
     }
 
-    /// Pure status derivation (DESIGN v2.6). Live activity outranks the
+    /// Pure status derivation (DESIGN v2.6; the full precedence table is
+    /// Tests/Fixtures/status/derivation.json). Live activity outranks the
     /// missing controller: the pad is optional — voice capture can be started
     /// from the mic button or the keyboard, replies still speak, and turns
     /// still run — so "No Controller" is only the *resting* state, never a
@@ -2327,6 +2345,16 @@ final class AppState: ObservableObject {
         if isSpeaking { return .speaking }
         if isWorking { return .thinking }
         return controllerConnected ? .idle : .noController
+    }
+
+    /// The `isWorking` input to `derivedStatus` (DESIGN v2.6 §B): the harness
+    /// is working, or — in remote mode only — a hooked session's turn is
+    /// active. A remote-turn flag left over in built-in mode never counts.
+    /// Pure; pinned by Tests/Fixtures/status/working.json.
+    nonisolated static func derivedIsWorking(harnessState: HarnessState,
+                                             isRemoteMode: Bool,
+                                             remoteTurnActive: Bool) -> Bool {
+        harnessState == .working || (isRemoteMode && remoteTurnActive)
     }
 
     private func applyLight(for status: AppStatus) {
