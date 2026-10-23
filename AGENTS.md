@@ -156,6 +156,13 @@ another one.
     from `AppStateTestSupport.swift`.
   - Assert on published state and on what the fakes recorded. Never assert
     on private fields or on the order of internal calls.
+- **Session rules are fixtures.** These are the rules for resume, restarts,
+  permissions, effort and turns. Pin one by adding a JSON scenario to
+  `Tests/Fixtures/session/`, named `<name>.json`, rather than writing a
+  bespoke test. The format is documented in `Tests/Fixtures/README.md`.
+  `SessionScenarioTests` runs every scenario through the seam. The parser is
+  strict, so an unknown key is a load error. The Rust core will read the
+  same files, so keep them plain JSON with the header and a `reason`.
 - **Rule: orchestration changes ship with a seam test.** Any change to an
   AppState rule, including a bug fix, comes with a test through
   `AppStateTestEnvironment` that fails without the change.

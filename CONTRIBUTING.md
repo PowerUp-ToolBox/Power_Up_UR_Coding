@@ -126,6 +126,16 @@ final class MyScenarioTests: XCTestCase {
   AppState weakly. Set `config.projectDir` (a temp folder) when a scenario
   sends a prompt. Without it, no session starts.
 
+**Session rules are data.** A session rule is anything that happens between
+the person and the harness: resume, restarts, permissions, effort or turns.
+Pin it by adding a JSON scenario to `Tests/Fixtures/session/` instead of
+writing a bespoke test. `SessionScenarioTests` finds every file there and
+plays it through the same seam with a `FakeHarnessAdapter`. A broken rule
+fails with the scenario's name and its first mismatched expectation. The
+format, the step vocabulary and the expectation keys are documented in
+`Tests/Fixtures/README.md`. The Rust core will later run the same files, so
+keep them plain JSON. CI fails if `Tests/Fixtures` is empty.
+
 **The rule: orchestration changes ship with a seam test.** A change to a rule
 in AppState must come with a test through `AppStateTestEnvironment`, and so
 must a bug fix there. The test should fail without the change.

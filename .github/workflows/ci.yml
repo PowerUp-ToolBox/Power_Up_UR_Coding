@@ -20,6 +20,18 @@ jobs:
       - name: Build
         run: swift build
 
+      # The shared fixtures (Swift now, the Rust core later) are discovered
+      # at run time, so an empty or missing directory would let the scenario
+      # suites pass vacuously. Fail loudly instead.
+      - name: Shared fixtures are present
+        run: |
+          test -d Tests/Fixtures || { echo "::error::Tests/Fixtures is missing"; exit 1; }
+          count=$(find Tests/Fixtures -type f -name '*.json' | wc -l | tr -d ' ')
+          echo "Tests/Fixtures holds $count JSON fixture(s)"
+          test "$count" -gt 0 || { echo "::error::Tests/Fixtures holds no JSON fixtures"; exit 1; }
+          sessions=$(find Tests/Fixtures/session -type f -name '*.json' 2>/dev/null | wc -l | tr -d ' ')
+          test "$sessions" -gt 0 || { echo "::error::Tests/Fixtures/session holds no scenarios"; exit 1; }
+
       - name: Test
         run: swift test
 

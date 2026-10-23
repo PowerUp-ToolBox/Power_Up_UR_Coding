@@ -1,0 +1,48 @@
+{
+  "formatVersion": 1,
+  "name": "failed-resume-forgets-the-stale-id",
+  "description": "After a failed resume and a failed fresh retry, the next prompt starts a fresh session instead of resuming the stale id again.",
+  "reason": "The retry clears the stale id so it is never resumed again. Each folder also keeps its own saved id (v1.6 multi-project); if that copy survived, every later start would resume the stale id, fail, and (the one retry being spent) report an error until the person pressed New Session.",
+  "source": "DESIGN.md core rule 'retry ONCE without resumeSessionID (covers stale session ids)' and v1.6 addendum B (per-folder session ids); AppState.handleTermination",
+  "verifiedBy": ["swift"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "builtin",
+    "project": true,
+    "lastSessionID": "stale-session-id"
+  },
+  "script": [
+    {
+      "call": "startSessionIfNeeded",
+      "reason": "App launch resumes the saved conversation."
+    },
+    {
+      "harnessEvent": { "type": "ended", "exitCode": 1 },
+      "reason": "The resume fails before init; PowerUp retries fresh."
+    },
+    {
+      "harnessEvent": { "type": "ended", "exitCode": 1 },
+      "reason": "The fresh retry fails as well (for example, a network blip)."
+    },
+    {
+      "call": "sendUserText",
+      "text": "hello",
+      "reason": "The person tries again; the session is started on demand."
+    }
+  ],
+  "expect": {
+    "harnessCalls": [
+      { "type": "start", "resumeSessionID": "stale-session-id" },
+      { "type": "start", "resumeSessionID": null },
+      { "type": "start", "resumeSessionID": null },
+      { "type": "send", "text": "hello" }
+    ],
+    "transcript": [
+      { "kind": "system", "text": "Couldn't resume the previous session — starting a fresh one." },
+      { "kind": "error", "text": "Claude session ended unexpectedly (exit code 1)." },
+      { "kind": "user", "text": "hello" }
+    ],
+    "lastSessionID": null,
+    "status": "thinking"
+  }
+}
