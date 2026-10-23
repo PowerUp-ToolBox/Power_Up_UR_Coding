@@ -129,6 +129,13 @@ final class MyScenarioTests: XCTestCase {
   - **Remote-turn time:** pass a `ManualRemoteTurnClock` as `clock:` and
     call `advance(by:)` to make a silent remote turn expire. Never wait for
     it.
+  - For **audio devices**, pass a plain `AudioDeviceStore()` as
+    `audioDevices:`. Call `simulateDevices(_:)` before building AppState
+    to set what the first enumeration finds (no change callback, as at
+    launch), then `simulateHotPlug(_:)` to unplug or replug: it runs the
+    CoreAudio listener's path (lists first, then `onDevicesChanged`). The
+    engine's `startCapture` call records which input device id each
+    capture used (nil is the system default).
 - A good test plays one scenario through public entry points (a fake's
   callback, a public method, an intent). It asserts on published state and
   on what the fakes recorded. It never reads private fields and never

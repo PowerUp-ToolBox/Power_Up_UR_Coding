@@ -158,6 +158,10 @@ another one.
     `RemoteListener()` (`listener:`) by calling `onEvent`.
   - `ManualRemoteTurnClock` (`clock:`). `advance(by:)` runs remote-turn
     expiry checks that fall due; never wait 15 minutes.
+  - Audio devices need no fake either. Pass `AudioDeviceStore()` as
+    `audioDevices:`; `simulateDevices(_:)` sets the launch enumeration
+    (no callback) and `simulateHotPlug(_:)` runs the hot-plug path (lists,
+    then `onDevicesChanged`). See `AppStateAudioDeviceScenarioTests`.
 - **Conventions:**
   - Set `config.ttsEnabled = false`, because TTS is real and would speak.
   - Pin the mapping a test presses.

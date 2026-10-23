@@ -43,9 +43,7 @@ final class AudioDeviceStore: ObservableObject {
         var address = Self.address(kAudioHardwarePropertyDevices)
         let block: AudioObjectPropertyListenerBlock = { _, _ in
             Task { @MainActor [weak self] in
-                guard let self else { return }
-                self.refresh()
-                self.onDevicesChanged?()
+                self?.devicesChanged(to: Self.allDevices())
             }
         }
         listenerBlock = block
@@ -75,10 +73,34 @@ final class AudioDeviceStore: ObservableObject {
         return outputDevices.first { $0.uid == uid }
     }
 
+    // MARK: - Test hooks (#123)
+
+    /// Test hook: what `start()`'s first enumeration would find. Replaces the
+    /// lists without firing `onDevicesChanged` (start fires none) and without
+    /// starting the CoreAudio listener, so `didStart` stays false.
+    func simulateDevices(_ devices: [AudioDevice]) {
+        apply(devices)
+    }
+
+    /// Test hook: a hot-plug. Runs the exact path the CoreAudio listener
+    /// runs — the lists are replaced, then `onDevicesChanged` fires.
+    func simulateHotPlug(_ devices: [AudioDevice]) {
+        devicesChanged(to: devices)
+    }
+
     // MARK: - Enumeration
 
     private func refresh() {
-        let devices = Self.allDevices()
+        apply(Self.allDevices())
+    }
+
+    /// The hot-plug path: lists first, then the change callback.
+    private func devicesChanged(to devices: [AudioDevice]) {
+        apply(devices)
+        onDevicesChanged?()
+    }
+
+    private func apply(_ devices: [AudioDevice]) {
         inputDevices = devices.filter(\.hasInput)
         outputDevices = devices.filter(\.hasOutput)
     }
