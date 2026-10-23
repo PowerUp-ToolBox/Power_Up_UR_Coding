@@ -38,7 +38,7 @@ together if the CLI genuinely changes.
 
 ```sh
 swift build            # debug build
-swift test             # 195 unit tests, no hardware needed
+swift test             # unit tests, no hardware needed
 ./scripts/build.sh     # release build → build/PowerUp.app (assembled + signed)
 open build/PowerUp.app # ALWAYS launch as a bundle — TCC permissions track
                        # bundle identity; running the raw binary breaks them
