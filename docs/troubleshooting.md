@@ -30,6 +30,14 @@ this should work out of the box. If it doesn't, try re-pairing the
 controller: forget it in System Settings → Bluetooth, then hold PS + Create
 to re-enter pairing mode and pair again.
 
+**A controller is on but nothing responds (PowerUp shows "No Controller"),
+or only one of two controllers works.** Only the controller in the
+Controller slot does anything. Open **Settings → Devices**: if the
+**Controller** menu shows a pad as "— not connected", the slot is pinned to
+that pad and waits for it. Pick the pad you are holding, or **Automatic**
+(the most recently connected controller). See
+[Buttons & controls](controls.md#one-controller-one-microphone-one-speaker).
+
 **PowerUp says it can't find the `claude` binary.** Open **Settings →
 General** and set the "Claude binary path" override to the output of
 `which claude` (or `command -v claude`) run in the same shell you normally

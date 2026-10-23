@@ -109,6 +109,49 @@ A few details worth knowing:
   presses Enter in the target), the Approve button (✕), or Enter in that app.
   The L2 → L1 flow works the same in both modes.
 
+## One controller, one microphone, one speaker
+
+PowerUp has three **slots**, and each one holds at most one device:
+
+- **Controller** — the pad your presses come from.
+- **Input** — the microphone PowerUp listens to.
+- **Output** — the speaker PowerUp talks through.
+
+A device that is not in a slot is ignored, never merged. All three choices
+sit together in **Settings → Devices**; Input and Output are covered in
+[Voice & speech](voice.md#input-and-output-your-microphone-and-speaker).
+
+**The Controller slot.** It is **Automatic** by default: the most recently
+connected controller is the one in use, and if it disconnects the next most
+recent takes over. With one controller nothing changes — it just works.
+With two paired (say one on the desk and one on the couch), pick one in the
+**Controller** menu to pin the slot to it:
+
+- Only the controller in the slot does anything. A press on the other one is
+  ignored, its light bar stays dark, and its low-battery warning never
+  interrupts you. The menu marks the one in use with "— in use".
+- If the pinned controller is switched off, the menu shows it as "— not
+  connected" and **no** controller responds until it comes back; PowerUp
+  shows "No Controller". It takes the slot back by itself when it reconnects,
+  so pinning is a one-time choice. Pick **Automatic** to use whichever pad
+  is on instead.
+- Changing the Controller slot (in Settings, or because the pad in use
+  disconnected) while you are holding a voice button stops that recording,
+  just as switching the pad off mid-hold does.
+
+Your keyboard, the mouse and the on-screen mic button are not devices in a
+slot: they keep working whatever the Controller slot holds, even when it is
+empty.
+
+**Two voice holds cancel both.** On the controller in use, pressing a
+second voice button while you hold the first (L2 while holding R2, or the
+other way round) **cancels** the recording: nothing is sent, nothing is
+left in the prompt box, and the pad buzzes twice. Releasing either trigger
+afterwards does nothing. A light brush of a trigger does not count as a
+press, so it never cancels a dictation. A controller press never cancels a
+recording you started from the mic button or the keyboard; it is ignored
+instead.
+
 ## No controller? Keyboard and mouse cover everything
 
 The controller is an accessory, not a requirement — the whole record →

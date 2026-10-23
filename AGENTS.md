@@ -81,6 +81,8 @@ contract change.
 | `TTSService.swift` | Text-to-speech with language-aware voice selection |
 | `SummaryService.swift` | Lightweight claude process that summarizes replies for TTS |
 | `DestructiveActionClassifier.swift` | Pure classifier for actions needing confirmation |
+| `ControllerSlot.swift` | Pure Controller slot rule (`ControllerSlotSelector`) and hold rule (`HoldTracker`) |
+| `ControllerPicker.swift` | Pure rows and caption for the Settings → Devices Controller picker |
 | `RemoteControlService.swift` | Routes text/keys to cmux or keyboard injection |
 | `RemoteListener.swift` | Localhost HTTP listener for Claude Code hook events |
 | `HookInstaller.swift` | Installs/manages hooks in `~/.claude/settings.json` |

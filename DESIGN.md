@@ -2117,6 +2117,19 @@ struct ConnectedController: Identifiable, Equatable {
   `forceReleaseHold()` (§C). A connected pad outside the slot gets its
   light switched off. The low-battery latch resets whenever the slot
   changes (v2.3 A's "fallback swap").
+- Settings, implemented (#132). A new **Devices** tab, placed after General,
+  holds one "Devices" section with three pickers in the order Controller,
+  Input, Output. Input and Output are v2.5's Microphone and Speech Output
+  pickers, moved here from Settings → Voice unchanged apart from their
+  labels. The Controller picker binds `controllerDeviceID`. Its rows come
+  from the pure, internal `ControllerPicker.rows(connected:active:pinnedID:)`
+  (ControllerPicker.swift): first Automatic (nil), then every entry of
+  `connected` by `displayName`, with the active one suffixed "— in use",
+  then, when the pin is not connected, a "<name> — not connected" row so
+  the selection stays visible. The name comes from the internal
+  `ControllerService.displayName(forID:)`, which inverts
+  `connectionIdentity`. `ControllerPicker.note(...)` is the caption under
+  the picker. Neither the picker nor the tab adds a menu key equivalent.
 - The host keyboard and mouse are outside the slot model: the v2.6 local
   NSEvent monitor and mic button keep working regardless of the slot's
   contents.

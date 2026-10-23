@@ -5,9 +5,10 @@
 ## Where settings live
 
 Most day-to-day settings live in the app itself: **Settings** has tabs for
-General (project folder, model, permission mode, claude binary path), Voice
-(text-to-speech and speech-to-text options), Buttons (the mapping editor),
-Remote (Remote Control mode), and Feedback (haptics and light bar toggles).
+General (project folder, model, permission mode, claude binary path), Devices
+(the Controller, Input and Output slots), Voice (text-to-speech and
+speech-to-text options), Buttons (the mapping editor), Feedback (haptics and
+light bar toggles), and Remote (Remote Control mode).
 
 Under the hood, configuration is stored as JSON at:
 
@@ -22,6 +23,25 @@ crashing. Separately, the first time an app update needs to rewrite the file
 in a newer shape (for example the button-mapping format change), PowerUp
 keeps a one-time copy of the old file as `config.pre-profiles.json`, so your
 bindings are always recoverable.
+
+### Device slots in `config.json`
+
+The three [device slots](controls.md#one-controller-one-microphone-one-speaker)
+are three keys. Each is absent (or `null`) by default, which means "pick for
+me"; **Settings → Devices** writes them for you.
+
+| Key | Slot | Absent / `null` means | Otherwise |
+|---|---|---|---|
+| `controllerDeviceID` | Controller | **Automatic**: the most recently connected controller | the pinned controller's id, e.g. `"DualSense/DualSense Wireless Controller"` |
+| `audioInputUID` | Input | the system-default microphone | the chosen microphone's Core Audio UID |
+| `audioOutputUID` | Output | the system-default output | the chosen speaker's Core Audio UID |
+
+A controller id is the controller's kind and name, with `#2`, `#3`, … added
+when an identical pad was already connected (macOS gives PowerUp no serial
+number, so two identical pads are told apart by the order they connected
+in). An id that matches no connected controller leaves the Controller slot
+empty until that controller connects; delete the key, or pick **Automatic**,
+to go back to the default. An empty string is read as absent.
 
 ## How sessions & resume work
 

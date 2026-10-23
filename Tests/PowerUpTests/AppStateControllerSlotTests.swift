@@ -170,6 +170,47 @@ final class AppStateControllerSlotTests: XCTestCase {
         XCTAssertEqual(controller.active, desk)
     }
 
+    // MARK: Settings → Devices picker (#132)
+
+    private func pickerRows(_ rig: Rig) -> [ControllerPickerRow] {
+        ControllerPicker.rows(connected: rig.controller.connected,
+                              active: rig.controller.active,
+                              pinnedID: rig.app.configStore.config.controllerDeviceID)
+    }
+
+    /// The picker's rows come from the live service: Automatic, then both
+    /// pads most recent first, the couch marked as the one in use. Choosing
+    /// the desk row stores its pin, which moves the slot and survives a
+    /// reload; switching the desk pad off keeps it as a "not connected" row.
+    func testPickingAPadPinsTheSlotPersistsTheChoiceAndShowsItAwayWhenOff() async throws {
+        let rig = await makeRig()
+
+        var rows = pickerRows(rig)
+        XCTAssertEqual(rows.map(\.pin), [nil, rig.couch.id, rig.desk.id])
+        XCTAssertEqual(rows.first(where: \.isInSlot)?.pin, rig.couch.id)
+
+        let deskRow = try XCTUnwrap(rows.first { $0.pin == rig.desk.id })
+        rig.app.configStore.config.controllerDeviceID = deskRow.pin
+        await settle(until: rig.controller.active == rig.desk)
+        XCTAssertEqual(pickerRows(rig).first(where: \.isInSlot)?.pin, rig.desk.id)
+
+        rig.app.configStore.save()
+        XCTAssertEqual(env.makeConfigStore().config.controllerDeviceID, rig.desk.id,
+                       "the pin is written to config.json")
+
+        rig.controller.simulateDisconnect(rig.desk.id)
+        await settle(until: rig.app.status == .noController)
+        rows = pickerRows(rig)
+        XCTAssertEqual(rows, [
+            ControllerPickerRow(pin: nil, title: "Automatic", isConnected: true, isInSlot: false),
+            ControllerPickerRow(pin: rig.couch.id, title: "Couch Pad", isConnected: true, isInSlot: false),
+            ControllerPickerRow(pin: rig.desk.id, title: "Desk Pad — not connected",
+                                isConnected: false, isInSlot: false),
+        ])
+        XCTAssertNil(rig.controller.active, "the couch pad does not take a pinned slot")
+        withExtendedLifetime(rig.app) {}
+    }
+
     private func lastLight(_ rig: Rig, on id: String) -> ControllerOutput? {
         rig.controller.recordedWrites.last {
             guard $0.controllerID == id, case .light = $0.output else { return false }

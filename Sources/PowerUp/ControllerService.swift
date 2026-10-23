@@ -239,6 +239,22 @@ final class ControllerService: ObservableObject {
         return ("\(base)#\(ordinal)", "\(name) \(ordinal)")
     }
 
+    /// The picker name `connectionIdentity` gave an id, recovered from the id
+    /// alone — for a pinned controller that is not connected, whose only
+    /// record is the id in `AppConfig.controllerDeviceID`. An id that is not
+    /// in the `"<kind>/<name>[#N]"` shape (a hand edit) is returned as is.
+    nonisolated static func displayName(forID id: String) -> String {
+        guard let slash = id.firstIndex(of: "/") else { return id }
+        let name = id[id.index(after: slash)...]
+        guard !name.isEmpty else { return id }
+        if let hash = name.lastIndex(of: "#"), hash > name.startIndex,
+           !name[name.index(before: hash)].isWhitespace,
+           let ordinal = Int(name[name.index(after: hash)...]), ordinal >= 2 {
+            return "\(name[..<hash]) \(ordinal)"
+        }
+        return String(name)
+    }
+
     // MARK: - Button wiring
 
     private func wireButtons(on controller: GCController) {
