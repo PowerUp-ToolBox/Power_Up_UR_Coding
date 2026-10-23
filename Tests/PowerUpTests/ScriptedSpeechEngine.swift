@@ -1,0 +1,127 @@
+import Foundation
+import CoreAudio
+@testable import PowerUp
+
+/// Test-only `SpeechRecognitionEngine` (#112): stands in for the system
+/// recognizer so a test can "hear" a transcript without a microphone or a
+/// permission prompt.
+///
+/// Script it before the capture starts — the authorization status, the answer
+/// a permission request gets, whether a recognizer is available, whether the
+/// capture start fails, and the final transcript the recognizer returns once
+/// the audio ends. During a capture, `emitPartial(_:)`, `emitFinal(_:)` and
+/// `endRecognition()` deliver recognizer callbacks synchronously, on demand.
+/// Every call the service makes is recorded in `calls`.
+///
+/// Unlike the system recognizer, which always calls back later, the fake
+/// delivers `finalTranscript` synchronously from inside `endAudio()`, so a
+/// release resolves within the same call — no waits in tests.
+@MainActor
+final class ScriptedSpeechEngine: SpeechRecognitionEngine {
+
+    enum Call: Equatable {
+        case requestAuthorization
+        case prepareRecognizer(localeID: String)
+        case startCapture(localeID: String, onDevice: Bool, inputDeviceID: AudioDeviceID?)
+        case endAudio
+        case stopCapture
+    }
+
+    // MARK: Script
+
+    /// What `authorizationStatus()` reports. A granted/denied request updates
+    /// it, the way the system remembers the person's answer.
+    var authorization: SpeechEngineAuthorization = .authorized
+    /// The person's answer when a permission request is shown.
+    var permissionAnswer: Bool = true
+    /// Whether a recognizer exists and is available for the locale.
+    var isRecognizerAvailable: Bool = true
+    /// When set, `startCapture` fails with this instead of starting.
+    var startFailure: SpeechEngineStartFailure?
+    /// Delivered as the recognizer's final result when the audio ends (the
+    /// release). Nil: nothing more is delivered, as if the recognizer went
+    /// quiet — the service then falls back to its last partial after its own
+    /// timeout, so a test leaving this nil should call `endRecognition()`.
+    var finalTranscript: String?
+
+    // MARK: Recording
+
+    private(set) var calls: [Call] = []
+    /// One update handler per capture started, oldest first, so a test can
+    /// deliver a late callback to an earlier (torn-down) capture.
+    private(set) var captureHandlers: [@MainActor (SpeechEngineUpdate) -> Void] = []
+    /// True between a successful `startCapture` and the next `stopCapture`.
+    private(set) var isCapturing: Bool = false
+    /// The locale the last `prepareRecognizer` readied; the next capture uses it.
+    private var preparedLocaleID: String = ""
+
+    func clearCalls() { calls.removeAll() }
+
+    // MARK: Driving a capture
+
+    /// A partial result for the current capture.
+    func emitPartial(_ text: String) {
+        emit(.transcript(text, isFinal: false))
+    }
+
+    /// A final result for the current capture (the recognizer finalizing on
+    /// its own, e.g. after a long pause).
+    func emitFinal(_ text: String) {
+        emit(.transcript(text, isFinal: true))
+    }
+
+    /// The recognition task ended (error or cancellation) without a final result.
+    func endRecognition() {
+        emit(.ended)
+    }
+
+    /// Delivers `update` to the newest capture, or to the capture at `index`.
+    func emit(_ update: SpeechEngineUpdate, toCapture index: Int? = nil) {
+        let handler: (@MainActor (SpeechEngineUpdate) -> Void)?
+        if let index {
+            handler = captureHandlers.indices.contains(index) ? captureHandlers[index] : nil
+        } else {
+            handler = captureHandlers.last
+        }
+        handler?(update)
+    }
+
+    // MARK: SpeechRecognitionEngine
+
+    func authorizationStatus() -> SpeechEngineAuthorization {
+        authorization
+    }
+
+    func requestAuthorization() async -> Bool {
+        calls.append(.requestAuthorization)
+        authorization = permissionAnswer ? .authorized : .denied
+        return permissionAnswer
+    }
+
+    func prepareRecognizer(localeID: String) -> Bool {
+        calls.append(.prepareRecognizer(localeID: localeID))
+        preparedLocaleID = localeID
+        return isRecognizerAvailable
+    }
+
+    func startCapture(onDevice: Bool,
+                      inputDeviceID: AudioDeviceID?,
+                      onUpdate: @escaping @MainActor (SpeechEngineUpdate) -> Void) throws {
+        calls.append(.startCapture(localeID: preparedLocaleID, onDevice: onDevice, inputDeviceID: inputDeviceID))
+        if let startFailure { throw startFailure }
+        captureHandlers.append(onUpdate)
+        isCapturing = true
+    }
+
+    func endAudio() {
+        calls.append(.endAudio)
+        if let finalTranscript {
+            emitFinal(finalTranscript)
+        }
+    }
+
+    func stopCapture() {
+        calls.append(.stopCapture)
+        isCapturing = false
+    }
+}

@@ -49,7 +49,9 @@ final class AppStateTestEnvironment {
 
     /// AppState wired to real but unstarted services (pass your own to keep a
     /// handle on one), with every start-up side effect skipped. Pass a
-    /// `FakeHarnessAdapter` as `harness` to script the session.
+    /// `FakeHarnessAdapter` as `harness` to script the session, and
+    /// `SpeechService(engine: ScriptedSpeechEngine())` as `speech` to script
+    /// what the microphone "hears".
     func makeAppState(configStore: ConfigStore? = nil,
                       controller: ControllerService? = nil,
                       speech: SpeechService? = nil,
