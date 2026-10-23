@@ -2041,7 +2041,13 @@ final class AppState: ObservableObject {
         if startedWithResume && !hasRetriedWithoutResume {
             startedWithResume = false
             hasRetriedWithoutResume = true
+            // Forget the stale id everywhere it is kept — the folder's own
+            // entry too, or the next start would resume it again with the
+            // one retry already spent.
             configStore.config.lastSessionID = nil
+            if let dir = configStore.config.projectDir, !dir.isEmpty {
+                configStore.config.sessionIDsByProject.removeValue(forKey: dir)
+            }
             appendEntry(.system, "Couldn't resume the previous session — starting a fresh one.")
             startSession(resumeSessionID: nil)
             return
