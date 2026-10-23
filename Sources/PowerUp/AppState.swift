@@ -1898,7 +1898,11 @@ final class AppState: ObservableObject {
         // resume-retry-once rule still fires when `--resume` fails).
         expectedTerminations = 0
 
-        startedWithResume = (resumeSessionID != nil)
+        // ACP sessions always start fresh (no resume id is passed), so an ACP
+        // launch is never a resume: the resume retry must not fire for it, or
+        // an agent's crash would wipe the stored Claude session id.
+        startedWithResume = resumeSessionID != nil
+            && AppState.normalizedHarnessKind(configStore.config.harnessKind) == "claude"
         liveAssistantText = ""
         // A queued effort change is satisfied by this launch.
         pendingEffortRestart = false
