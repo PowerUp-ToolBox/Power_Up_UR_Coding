@@ -24,6 +24,77 @@ final class DeviceProfileTests: XCTestCase {
         }
     }
 
+    // MARK: v2.7 A - the control kind set is button | axis | key
+
+    /// A profile written before v2.7 could carry `"kind": "hold"`. Whether an
+    /// action holds is a property of the *action* (`Action.isHoldAction`), so
+    /// the obsolete value reads as a button instead of failing the profile.
+    func testLegacyHoldControlKindDecodesAsButton() throws {
+        let json = Data(#"{"id":"pedal-1","kind":"hold","displayName":"Pedal","symbolName":"pedal"}"#.utf8)
+        let control = try JSONDecoder().decode(ControlDescriptor.self, from: json)
+        XCTAssertEqual(control.kind, .button)
+    }
+
+    func testLegacyHoldControlKindEncodesAsButton() throws {
+        let json = Data(#"{"id":"pedal-1","kind":"hold","displayName":"Pedal","symbolName":"pedal"}"#.utf8)
+        let control = try JSONDecoder().decode(ControlDescriptor.self, from: json)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let text = String(decoding: try encoder.encode(control), as: UTF8.self)
+        XCTAssertTrue(text.contains(#""kind":"button""#), text)
+        XCTAssertFalse(text.contains("hold"), "encoding never writes the obsolete kind: \(text)")
+    }
+
+    func testControlKindSetIsButtonAxisKeyOnly() {
+        XCTAssertNil(ControlDescriptor.Kind(rawValue: "hold"),
+                     "`hold` is not a control kind in v2.7")
+        for raw in ["button", "axis", "key"] {
+            XCTAssertNotNil(ControlDescriptor.Kind(rawValue: raw), raw)
+        }
+    }
+
+    // MARK: v2.7 D - the reserved profile objects `match` and `report`
+
+    /// A profile file that hand-edited in the obsolete `hold` kind and carries
+    /// the two objects v2.7 reserves for a later release. This build neither
+    /// writes nor interprets them, so the test pins what it *does* own: the
+    /// known fields survive a round trip, decoding never fails, and neither
+    /// reserved name is claimed by something else here.
+    private let profileReservingMatchAndReport = Data("""
+    {
+        "id": "dualsense",
+        "displayName": "DualSense",
+        "controls": [
+            {"id": "cross", "kind": "button", "displayName": "Cross", "symbolName": "xmark.circle"},
+            {"id": "pedal-1", "kind": "hold", "displayName": "Pedal", "symbolName": "pedal"}
+        ],
+        "match": {"vendorID": 1356, "productID": 3302, "productCategory": "gamepad", "namePattern": "^DualSense"},
+        "report": {"layout": "usb", "fields": [{"offset": 8, "length": 1}]}
+    }
+    """.utf8)
+
+    func testProfileReservingMatchAndReportKeepsEveryKnownField() throws {
+        let profile = try JSONDecoder().decode(DeviceProfile.self,
+                                               from: profileReservingMatchAndReport)
+        XCTAssertEqual(profile.id, DeviceProfile.dualSenseID)
+        XCTAssertEqual(profile.displayName, "DualSense")
+        XCTAssertEqual(profile.controls.map(\.id), ["cross", "pedal-1"])
+        XCTAssertEqual(profile.controls.first?.kind, .button)
+        XCTAssertEqual(profile.controls.last?.kind, .button,
+                       "the hand-edited `hold` reads as a button")
+
+        // Re-encoding and decoding again keeps every known field.
+        let again = try JSONDecoder().decode(DeviceProfile.self,
+                                             from: JSONEncoder().encode(profile))
+        XCTAssertEqual(again, profile)
+
+        // The reserved names stay unclaimed by this build.
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(
+            with: JSONEncoder().encode(profile)) as? [String: Any])
+        XCTAssertNil(object["match"], "`match` stays reserved for a later release")
+        XCTAssertNil(object["report"], "`report` stays reserved for a later release")
+    }
+
     // MARK: Storage shape
 
     func testDefaultDeviceMappingsMatchDefaultMapping() {
@@ -74,7 +145,7 @@ final class DeviceProfileTests: XCTestCase {
         XCTAssertEqual(migrated["r2"], .pushToTalk)
         XCTAssertEqual(migrated["cross"], .approve)
         XCTAssertEqual(migrated["square"], .sendPrompt("Run the tests"))
-        XCTAssertEqual(migrated["ps"], ControllerAction.none)
+        XCTAssertEqual(migrated["ps"], Action.none)
         XCTAssertEqual(migrated.count, 4, "migration must not invent entries")
         // The bridge sees the same bindings.
         XCTAssertEqual(config.mapping[.square], .sendPrompt("Run the tests"))
@@ -112,9 +183,9 @@ final class DeviceProfileTests: XCTestCase {
         XCTAssertEqual(config.action(onProfile: DeviceProfile.dualSenseID, control: "r2"),
                        .pushToTalk)
         XCTAssertEqual(config.action(onProfile: DeviceProfile.dualSenseID, control: "no-such"),
-                       ControllerAction.none)
+                       Action.none)
         XCTAssertEqual(config.action(onProfile: "no-such-profile", control: "r2"),
-                       ControllerAction.none)
+                       Action.none)
     }
 
     func testMappingBridgeWritesThrough() {

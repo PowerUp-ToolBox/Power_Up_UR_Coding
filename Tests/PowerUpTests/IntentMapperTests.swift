@@ -13,7 +13,7 @@ final class IntentMapperTests: XCTestCase {
     }
 
     func testNonHoldActionsFireOnPressOnly() {
-        let expectations: [(ControllerAction, Intent)] = [
+        let expectations: [(Action, Intent)] = [
             (.sendPrompt("Continue"), .sendPrompt("Continue")),
             (.sendDraft, .sendDraft),
             (.approve, .approve),

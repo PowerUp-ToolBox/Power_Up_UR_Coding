@@ -96,14 +96,21 @@ final class ConfigStore: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: item)
     }
 
+    /// The exact bytes `save()` writes — pretty-printed, key-sorted, escaped
+    /// slashes and all. Kept in one place so the byte-identity fixture test
+    /// pins the real on-disk writer rather than a copy of its settings.
+    nonisolated static func encode(_ config: AppConfig) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try encoder.encode(config)
+    }
+
     func save() {
         let url = ConfigStore.configURL
         let dir = url.deletingLastPathComponent()
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(config)
+            let data = try ConfigStore.encode(config)
             try data.write(to: url, options: .atomic)
         } catch {
             // Persisting is best-effort; never crash the app over a save failure.
