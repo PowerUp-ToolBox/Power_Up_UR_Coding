@@ -7,3 +7,7 @@ xcuserdata/
 DerivedData/
 .swiftpm/
 *.xcodeproj
+
+# Local agent-workflow scratch (doublecheck, agent teams)
+doublecheck-*.md
+.agent-teams/

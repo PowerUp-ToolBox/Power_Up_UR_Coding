@@ -77,7 +77,7 @@ enum Theme {
 
     // MARK: Actions
 
-    static func symbol(for action: ControllerAction) -> String {
+    static func symbol(for action: Action) -> String {
         switch action {
         case .none: return "minus"
         case .pushToTalk: return "mic.fill"
@@ -102,7 +102,7 @@ enum Theme {
     }
 
     /// Short, human label for a mapped action — quotes the text of a fixed prompt.
-    static func label(for action: ControllerAction) -> String {
+    static func label(for action: Action) -> String {
         if case .sendPrompt(let prompt) = action {
             let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? "Send Prompt…" : "“\(trimmed)”"
@@ -550,7 +550,7 @@ struct MappingLegendRow: View {
     enum Emphasis { case action, button }
 
     let button: ControllerButton
-    let action: ControllerAction
+    let action: Action
     var emphasis: Emphasis = .action
 
     var body: some View {

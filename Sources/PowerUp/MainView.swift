@@ -549,7 +549,7 @@ private struct ControlsCard: View {
 
     /// Order is fixed and meaningful: dictate → send → talk, then the three
     /// session cycles.
-    private static let order: [(action: ControllerAction, label: String)] = [
+    private static let order: [(action: Action, label: String)] = [
         (.pushToTalkDraft, "Dictate to prompt box (hold)"),
         (.sendDraft, "Send prompt box"),
         (.pushToTalk, "Talk to Claude (hold)"),
@@ -899,7 +899,7 @@ private struct ComposerBar: View {
 /// Friendly name of whichever button is currently mapped to push-to-talk —
 /// falling back to a dictate-to-draft mapping so a user who only mapped
 /// `.pushToTalkDraft` still gets a hint instead of none at all.
-private func pushToTalkButtonName(in mapping: [ControllerButton: ControllerAction]) -> String? {
+private func pushToTalkButtonName(in mapping: [ControllerButton: Action]) -> String? {
     for button in ControllerButton.allCases where mapping[button] == .pushToTalk {
         return button.displayName
     }

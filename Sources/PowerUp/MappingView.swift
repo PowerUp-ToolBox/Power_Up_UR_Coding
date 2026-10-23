@@ -43,7 +43,7 @@ private struct MappingRow: View {
     let button: ControllerButton
     @ObservedObject var configStore: ConfigStore
 
-    private var actionBinding: Binding<ControllerAction> {
+    private var actionBinding: Binding<Action> {
         Binding(
             get: { configStore.config.mapping[button] ?? .none },
             set: { configStore.config.mapping[button] = $0 }
@@ -132,7 +132,7 @@ private struct MappingRow: View {
 
 // MARK: - ActionKind
 
-/// A `Picker`-friendly projection of `ControllerAction` that strips associated
+/// A `Picker`-friendly projection of `Action` that strips associated
 /// values so it can drive a simple selection control; `sendPrompt`'s text is
 /// preserved separately via `promptTextBinding` and reattached in `makeAction`.
 private enum ActionKind: String, CaseIterable, Identifiable, Hashable {
@@ -182,7 +182,7 @@ private enum ActionKind: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
-    init(action: ControllerAction) {
+    init(action: Action) {
         switch action {
         case .none: self = .none
         case .pushToTalk: self = .pushToTalk
@@ -206,10 +206,10 @@ private enum ActionKind: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
-    /// Builds the `ControllerAction` for this kind, reusing `current`'s prompt
+    /// Builds the `Action` for this kind, reusing `current`'s prompt
     /// text if it was already a `.sendPrompt` (so switching away and back
     /// doesn't lose what was typed).
-    func makeAction(preserving current: ControllerAction) -> ControllerAction {
+    func makeAction(preserving current: Action) -> Action {
         switch self {
         case .none: return .none
         case .pushToTalk: return .pushToTalk
