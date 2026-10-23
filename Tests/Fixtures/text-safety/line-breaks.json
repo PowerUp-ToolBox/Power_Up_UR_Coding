@@ -1,0 +1,140 @@
+{
+  "description": "Remote-mode line-break flattening. Every real line or paragraph break (LF U+000A, CR U+000D, LINE SEPARATOR U+2028, PARAGRAPH SEPARATOR U+2029) is replaced by a single space, and a run of consecutive breaks (CRLF, blank lines, mixed) collapses to one space. Nothing else changes: existing spaces are not collapsed, nothing is trimmed, and the two-character text backslash-n is not a break. A literal newline delivered into a terminal surface is Enter, so any break that survived would submit a dictated prompt half-typed; only the separate, explicit Enter may submit.",
+  "function": "RemoteControlService.flattenLineBreaks(in:) — input string in, flattened string out",
+  "verifiedBy": "Characterization of the Swift implementation (spec #93, ticket #120); Tests/PowerUpTests/TextSafetyFixtureTests.swift. Pure function, independent of any cmux or terminal version.",
+  "capturedAgainst": "PowerUp macOS app, branch stage-1-text-views-spikes, 2026-10-23",
+  "cases": [
+    {
+      "name": "empty input",
+      "input": "",
+      "expected": "",
+      "reason": "Empty dictation must stay empty, not turn into a stray space typed into the session."
+    },
+    {
+      "name": "no breaks is untouched",
+      "input": "run the tests, then commit",
+      "expected": "run the tests, then commit",
+      "reason": "Ordinary text must arrive byte-for-byte unchanged."
+    },
+    {
+      "name": "LF becomes a space",
+      "input": "run the tests\nthen commit",
+      "expected": "run the tests then commit",
+      "reason": "A dictated LF would act as Enter and submit 'run the tests' alone before the rest arrives."
+    },
+    {
+      "name": "CR alone becomes a space",
+      "input": "run the tests\rthen commit",
+      "expected": "run the tests then commit",
+      "reason": "CR is what a terminal's Enter key actually sends; a bare CR inside the text submits early."
+    },
+    {
+      "name": "CRLF becomes one space, not two",
+      "input": "run the tests\r\nthen commit",
+      "expected": "run the tests then commit",
+      "reason": "Windows-style pasted text must not submit early nor leave a double space where one break was."
+    },
+    {
+      "name": "U+2028 line separator becomes a space",
+      "input": "run the tests then commit",
+      "expected": "run the tests then commit",
+      "reason": "Rich-text sources and some recognisers emit LINE SEPARATOR; terminals may treat it as a line break."
+    },
+    {
+      "name": "U+2029 paragraph separator becomes a space",
+      "input": "run the tests then commit",
+      "expected": "run the tests then commit",
+      "reason": "PARAGRAPH SEPARATOR from rich-text paste must not split the prompt."
+    },
+    {
+      "name": "blank line between paragraphs collapses",
+      "input": "first paragraph\n\nsecond paragraph",
+      "expected": "first paragraph second paragraph",
+      "reason": "A blank line (two LFs) is still one break; it must become one space, not two Enters."
+    },
+    {
+      "name": "mixed run of every break kind collapses to one space",
+      "input": "a\r\n \n \rb",
+      "expected": "a b",
+      "reason": "Mixed-source paste can stack different break kinds; the whole run is one gap in the prompt."
+    },
+    {
+      "name": "separate breaks each become their own space",
+      "input": "one\ntwo\r\nthree four five",
+      "expected": "one two three four five",
+      "reason": "Breaks separated by text are flattened independently; no word is glued to the next."
+    },
+    {
+      "name": "trailing LF becomes a trailing space",
+      "input": "commit it\n",
+      "expected": "commit it ",
+      "reason": "A trailing newline from dictation or paste would submit on its own; it is flattened (not trimmed), and submission is left to the explicit Enter."
+    },
+    {
+      "name": "trailing CRLF becomes a trailing space",
+      "input": "commit it\r\n",
+      "expected": "commit it ",
+      "reason": "Copied lines usually end in CRLF; the pair must not survive as a premature submit."
+    },
+    {
+      "name": "trailing U+2029 becomes a trailing space",
+      "input": "commit it ",
+      "expected": "commit it ",
+      "reason": "A rich-text paragraph end at the end of the prompt must not submit early."
+    },
+    {
+      "name": "leading LF becomes a leading space",
+      "input": "\nstart here",
+      "expected": " start here",
+      "reason": "A leading newline would submit an empty prompt before the real text arrives."
+    },
+    {
+      "name": "only breaks become a single space",
+      "input": "\n\r\n ",
+      "expected": " ",
+      "reason": "Input made of nothing but breaks must not press Enter several times in the target session."
+    },
+    {
+      "name": "existing spaces around a break are kept",
+      "input": "a \n b",
+      "expected": "a   b",
+      "reason": "Flattening only replaces breaks; it does not collapse or trim the user's own spacing."
+    },
+    {
+      "name": "tab is not a line break",
+      "input": "a\tb",
+      "expected": "a\tb",
+      "reason": "Tab is outside the flattened set; only line and paragraph breaks are rewritten."
+    },
+    {
+      "name": "vertical tab, form feed and NEL are not flattened",
+      "input": "a\u000Bb\u000Cc\u0085d",
+      "expected": "a\u000Bb\u000Cc\u0085d",
+      "reason": "The flattened set is exactly LF, CR, U+2028 and U+2029; widening it silently would change what other characters are typed."
+    },
+    {
+      "name": "literal backslash-n text is not a break",
+      "input": "match \\n in the regex",
+      "expected": "match \\n in the regex",
+      "reason": "The two characters backslash and n are text, not a break; defusing them for cmux is segmentation's job, not flattening's."
+    },
+    {
+      "name": "CJK text with a line break",
+      "input": "运行测试\n然后提交",
+      "expected": "运行测试 然后提交",
+      "reason": "Chinese dictation broken across lines must arrive as one prompt with its characters intact."
+    },
+    {
+      "name": "emoji surrogate pairs either side of a break",
+      "input": "🚀\n🎉",
+      "expected": "🚀 🎉",
+      "reason": "Astral-plane characters (UTF-16 surrogate pairs) next to a break must not be split or mangled."
+    },
+    {
+      "name": "ZWJ emoji sequence with CRLF",
+      "input": "👩‍💻\r\nship it",
+      "expected": "👩‍💻 ship it",
+      "reason": "A multi-scalar emoji sequence must stay whole when the break after it is flattened."
+    }
+  ]
+}

@@ -398,17 +398,10 @@ final class RemoteControlService: ObservableObject {
         return nil
     }
 
-    /// Splits text so that `cmux send` can't reinterpret it.
-    ///
-    /// `cmux send` turns the two-character sequences `\n`, `\r` and `\t` into
-    /// Enter and Tab — so a prompt containing literal backslash-n (a regex, a
-    /// code snippet) would submit itself half-typed. Verified live: a backslash
-    /// that isn't followed by n/r/t *within the same send* is delivered
-    /// literally, so ending a segment right after such a backslash defuses it.
-    /// Ordinary text (the overwhelming majority) yields exactly one segment and
-    /// therefore exactly one `cmux send`.
     /// Replaces every real line/paragraph break with a single space, so nothing
     /// the target terminal would interpret as Enter survives inside the text.
+    /// A run of breaks (CRLF, blank lines) becomes one space.
+    /// Cases: `Tests/Fixtures/text-safety/line-breaks.json`.
     nonisolated static func flattenLineBreaks(in text: String) -> String {
         guard text.unicodeScalars.contains(where: { lineBreakScalars.contains($0.value) }) else {
             return text
@@ -431,6 +424,16 @@ final class RemoteControlService: ObservableObject {
     /// LF, CR, and the Unicode line/paragraph separators.
     private nonisolated static let lineBreakScalars: Set<UInt32> = [0x0A, 0x0D, 0x2028, 0x2029]
 
+    /// Splits text so that `cmux send` can't reinterpret it.
+    ///
+    /// `cmux send` turns the two-character sequences `\n`, `\r` and `\t` into
+    /// Enter and Tab — so a prompt containing literal backslash-n (a regex, a
+    /// code snippet) would submit itself half-typed. Verified live: a backslash
+    /// that isn't followed by n/r/t *within the same send* is delivered
+    /// literally, so ending a segment right after such a backslash defuses it.
+    /// Ordinary text (the overwhelming majority) yields exactly one segment and
+    /// therefore exactly one `cmux send`.
+    /// Cases: `Tests/Fixtures/text-safety/segmentation.json`.
     nonisolated static func escapeSafeSegments(_ text: String) -> [String] {
         // Belt-and-braces: sendText flattens line breaks already, but this
         // function must be safe on its own — a raw U+000A handed to `cmux send`
@@ -569,7 +572,7 @@ final class RemoteControlService: ObservableObject {
     /// (⠐, ✳, …) — sometimes followed by a space, sometimes not. Only one
     /// leading glyph is ever removed, so an emoji in the user's own title
     /// survives. Cosmetic either way: `ref` is what targeting uses.
-    private nonisolated static func stripStatusGlyph(_ title: String) -> String {
+    nonisolated static func stripStatusGlyph(_ title: String) -> String {
         guard isStatusGlyph(title.first) else { return title }
         return String(title.dropFirst()).trimmingCharacters(in: .whitespaces)
     }
@@ -739,7 +742,7 @@ final class RemoteControlService: ObservableObject {
                              spawnFailed: false)
     }
 
-    private nonisolated static func failureMessage(action: String, result: CommandResult) -> String {
+    nonisolated static func failureMessage(action: String, result: CommandResult) -> String {
         if result.spawnFailed {
             let detail = condense(result.standardError, maxChars: 160)
             return detail.isEmpty ? "\(action) failed to start." : "\(action) failed to start: \(detail)"
@@ -760,7 +763,7 @@ final class RemoteControlService: ObservableObject {
         return "\(action) failed: \(detail)"
     }
 
-    private nonisolated static func condense(_ text: String, maxChars: Int) -> String {
+    nonisolated static func condense(_ text: String, maxChars: Int) -> String {
         let flattened = text
             .replacingOccurrences(of: "\r", with: " ")
             .replacingOccurrences(of: "\n", with: " ")
