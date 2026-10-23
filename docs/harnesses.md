@@ -32,8 +32,9 @@ main.swift. Press ✕ to allow or ○ to deny."*
   deletes or rewrites things (`rm -rf`, `git reset --hard`, force-push, drop
   table, a `delete`-kind tool…), the first ✕ only *arms* it — PowerUp says
   "Destructive — press again to confirm" and the banner turns red. The second
-  ✕ approves; ○ cancels at any point. One misheard word can never approve a
-  deleted branch.
+  ✕ approves; ○ cancels at any point. The two presses must come one after the
+  other: if you do anything else in between, the request is disarmed and the
+  next ✕ arms it again. One misheard word can never approve a deleted branch.
 - A request left hanging when the turn ends or you interrupt is cancelled
   automatically — the agent never waits on a button you'll never press.
 

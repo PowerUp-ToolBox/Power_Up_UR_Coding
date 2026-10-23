@@ -213,7 +213,8 @@ final class AppState: ObservableObject {
         let detail: String
         /// The classifier flagged this as destructive → two ✕ presses needed.
         let isDestructive: Bool
-        /// First ✕ received; the next one within the window confirms.
+        /// First ✕ received; the next ✕ confirms if no other intent came in
+        /// between (any other intent disarms — see `handle(_:)`).
         var armed: Bool = false
     }
     @Published private(set) var pendingPermission: PendingPermission?
@@ -716,6 +717,13 @@ final class AppState: ObservableObject {
     /// The single dispatcher every input source funnels into: controller
     /// buttons (via the mapping), and protocol clients (via the listener).
     func handle(_ intent: Intent) {
+        // A destructive confirmation is two Approves IN A ROW. Anything else in
+        // between disarms it (the request itself stays pending), so a stray
+        // Approve later can never complete a confirmation the person moved on
+        // from — it arms again instead.
+        if intent != .approve, pendingPermission?.armed == true {
+            pendingPermission?.armed = false
+        }
         switch intent {
         case .beginVoiceCapture(let mode):
             startPushToTalk(mode: mode)

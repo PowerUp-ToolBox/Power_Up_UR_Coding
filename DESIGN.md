@@ -1612,6 +1612,9 @@ toolCall kind). `AppState.pendingPermission` becomes a published struct
 `PendingPermission {id, name, detail, isDestructive, armed}`. Approve on a
 destructive request first ARMS it (transcript ⚠️ + "Destructive. Press again
 to confirm" + error haptic); the second ✕ approves; ○ denies at any point.
+*Amended by #116:* the two presses must be consecutive. Any other intent
+between them disarms the request (it stays pending, unanswered), so the next
+✕ arms again instead of approving.
 `PermissionRequestBanner` (MainView) shows every pending request under the
 top bar — amber normally, red for destructive, with the ✕/○ legend.
 
