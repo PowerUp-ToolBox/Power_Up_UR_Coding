@@ -19,7 +19,7 @@ final class HookInstallerTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
-        HookInstaller.supportDirectoryOverride = nil
+        TestSandbox.parkHookInstallerOverrides()
         try? FileManager.default.removeItem(at: tempDir)
     }
 

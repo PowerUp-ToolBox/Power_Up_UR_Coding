@@ -7,7 +7,8 @@ import Foundation
 /// Everything AppState would read or write on disk is pointed at one temp
 /// directory: the config file (injected `ConfigStore(fileURL:)`), the
 /// per-project transcripts and the hook script (the support-directory
-/// overrides). No controller, audio device listener, loopback port, keyboard
+/// overrides) and `~/.claude/settings.json` (`HookInstaller.settingsURLOverride`),
+/// so AppState's hook install/uninstall edits a throwaway copy. No controller, audio device listener, loopback port, keyboard
 /// monitor, terminate observer or cmux probe is started, so a test needs no
 /// hardware, prompts nobody and binds nothing.
 ///
@@ -24,6 +25,12 @@ final class AppStateTestEnvironment {
     let directory: URL
     /// Where the injected config store reads and writes `config.json`.
     let configURL: URL
+    /// Stands in for `~/Library/Application Support/PowerUp/`: transcripts
+    /// and the hook script are written under it.
+    let supportDirectory: URL
+    /// Stands in for `~/.claude/settings.json` (where the remote-control
+    /// hooks are registered).
+    let settingsURL: URL
 
     /// - Parameter config: written to the sandboxed `config.json` before any
     ///   store reads it; nil starts from no file at all (first launch).
@@ -33,9 +40,12 @@ final class AppStateTestEnvironment {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         configURL = directory.appendingPathComponent("config.json")
 
-        let support = directory.appendingPathComponent("support", isDirectory: true)
-        TranscriptStore.supportDirectoryOverride = support
-        HookInstaller.supportDirectoryOverride = support
+        supportDirectory = directory.appendingPathComponent("support", isDirectory: true)
+        settingsURL = directory.appendingPathComponent("claude", isDirectory: true)
+            .appendingPathComponent("settings.json")
+        TranscriptStore.supportDirectoryOverride = supportDirectory
+        HookInstaller.supportDirectoryOverride = supportDirectory
+        HookInstaller.settingsURLOverride = settingsURL
 
         if let config {
             try ConfigStore.encode(config).write(to: configURL, options: .atomic)
@@ -75,9 +85,10 @@ final class AppStateTestEnvironment {
                  sideEffects: [])
     }
 
+    /// Parks the storage overrides in `TestSandbox.quarantine` (never back on
+    /// the real folders) and deletes the sandbox.
     func tearDown() {
-        TranscriptStore.supportDirectoryOverride = nil
-        HookInstaller.supportDirectoryOverride = nil
+        TestSandbox.parkOverrides()
         try? FileManager.default.removeItem(at: directory)
     }
 }

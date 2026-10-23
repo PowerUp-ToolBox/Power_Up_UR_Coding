@@ -45,15 +45,85 @@ green CI is a merge requirement.
 
 ### Testing rules (please read — these protect real user machines)
 
-- **Never** touch the real `~/.claude/settings.json` in tests. `HookInstaller`
-  takes an injectable `settingsURL` and has a `supportDirectoryOverride` test
-  seam — see `Tests/PowerUpTests/HookInstallerTests.swift` for the pattern.
+- **Never** touch the real `~/.claude/settings.json`, PowerUp's real
+  `config.json` or its Application Support folder in tests. Every storage
+  path has a seam: `ConfigStore(fileURL:)`, `HookInstaller`'s injectable
+  `settingsURL` plus `settingsURLOverride` / `supportDirectoryOverride`, and
+  `TranscriptStore.supportDirectoryOverride`. In tearDown, park the
+  overrides with `TestSandbox.parkOverrides()` rather than setting them back
+  to nil. `HermeticStorageTests` checks every path resolves into a temp
+  directory and scans the test sources for `ConfigStore()`, `AppState()`,
+  `= nil` resets and `HookInstaller` calls without `settingsURL:`.
 - **Never** run `cmux send`/`send-key` against real workspaces. Read-only cmux
   commands are fine; live round-trips go through a disposable workspace only.
 - Don't spawn real `claude` processes in tests. The stream parser is testable
   directly via `ClaudeService.events(fromLine:)` — and the existing parser
   tests pin CLI quirks that were verified live; if the CLI changes behavior,
   update the tests *and* DESIGN.md together.
+
+### Testing AppState (orchestration)
+
+`AppState` holds the app's orchestration rules: what a button press does,
+what happens when the controller drops mid-hold, when a permission request
+arrives, when a turn ends. Test those rules through the AppState seam, the
+only one there is:
+
+```swift
+@MainActor
+final class MyScenarioTests: XCTestCase {
+    private var env: AppStateTestEnvironment!
+
+    override func setUpWithError() throws {
+        var config = AppConfig.defaultConfig()
+        config.listenerToken = "test-token"
+        config.ttsEnabled = false            // TTS is real; keep the run silent
+        config.mapping[.cross] = .approve    // pin what the test presses
+        env = try AppStateTestEnvironment(config: config)
+    }
+
+    override func tearDownWithError() throws { env.tearDown() }
+
+    func testCrossApprovesThePendingPermission() {
+        let controller = ControllerService()
+        let harness = FakeHarnessAdapter()
+        let app = env.makeAppState(controller: controller, harness: harness)
+        // ... drive the scenario, then assert on app's published state and on
+        // harness.calls
+    }
+}
+```
+
+- `AppStateTestEnvironment` (`Tests/PowerUpTests/AppStateTestSupport.swift`)
+  builds AppState with `sideEffects: []`, so nothing is started: no
+  controller, audio device list, listener port, keyboard monitor, terminate
+  observer or cmux probe. It points the config file, the support folder and
+  the Claude settings file at a temp directory. Every collaborator of
+  `makeAppState(...)` is optional. Pass your own instance when you need a
+  handle on it.
+- **Fakes:**
+  - `FakeHarnessAdapter`: pass it as `harness:`. It records every call
+    (`calls`) and emits scripted `HarnessEvent`s when you call
+    `emitNext()`, `emitAll()` or `emit(_:)`.
+  - `ScriptedSpeechEngine`: pass it as
+    `speech: SpeechService(engine: engine)`. You script the permission
+    answer, partial transcripts and the final transcript.
+  - For **controller input**, pass a plain `ControllerService()` and call
+    its `onButtonDown`, `onButtonUp`, `onDisconnect` and `onLowBattery`
+    callbacks directly.
+- A good test plays one scenario through public entry points (a fake's
+  callback, a public method, an intent). It asserts on published state and
+  on what the fakes recorded. It never reads private fields and never
+  asserts on the order of internal calls. Tests are synchronous; when
+  AppState hops through a main-actor Task, wait with the bounded
+  `settle(until:)` helper (see `AppStateVoiceCaptureTests`), never with a
+  sleep.
+- Keep `let app` alive while you drive callbacks, because the services hold
+  AppState weakly. Set `config.projectDir` (a temp folder) when a scenario
+  sends a prompt. Without it, no session starts.
+
+**The rule: orchestration changes ship with a seam test.** A change to a rule
+in AppState must come with a test through `AppStateTestEnvironment`, and so
+must a bug fix there. The test should fail without the change.
 
 ## Code conventions
 

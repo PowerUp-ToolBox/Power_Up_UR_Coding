@@ -97,10 +97,17 @@ contract change.
   fine. If a live round-trip must be verified, use a disposable workspace
   (`cmux new-workspace --name powerup-test --command cat --focus false`) and
   always close it afterwards.
-- **Never** modify the real `~/.claude/settings.json` in tests. HookInstaller
-  takes an injectable `settingsURL` and has a `supportDirectoryOverride` test
-  seam — use both (see `HookInstallerTests`), so a live PowerUp installation
-  is never touched.
+- **Never** modify the real `~/.claude/settings.json`, PowerUp's real
+  `config.json` or `~/Library/Application Support/PowerUp/` in tests. Use the
+  seams: `ConfigStore(fileURL:)`; HookInstaller's injectable `settingsURL`
+  plus `settingsURLOverride` and `supportDirectoryOverride` (see
+  `HookInstallerTests`); `TranscriptStore.supportDirectoryOverride`. In
+  tearDown call `TestSandbox.parkOverrides()` (or
+  `parkHookInstallerOverrides()` off the main actor), never `= nil`, so a
+  late write cannot fall through to the real folders. `HermeticStorageTests`
+  enforces this: it fails on `ConfigStore()`, `AppState()`, `= nil` resets
+  or a `HookInstaller` call without `settingsURL:` anywhere in
+  `Tests/PowerUpTests/`.
 - Don't spawn real `claude` sessions from tests; the stream parser is
   testable via `ClaudeService.events(fromLine:)`.
 - Don't spawn real ACP agents or npx bridges (opencode, `claude-agent-acp`,
@@ -111,12 +118,52 @@ contract change.
 - The tests pin many wire-protocol details; update tests and DESIGN.md
   together only if the CLI genuinely changes.
 
+## Testing AppState
+
+AppState's orchestration rules are tested through one seam. Don't invent
+another one.
+
+- **Construct:** in a `@MainActor` XCTestCase, call
+  `env = try AppStateTestEnvironment(config:)` in setUp, where `config` is
+  written to a sandboxed `config.json` and nil means first launch. Then
+  `let app = env.makeAppState(controller:speech:tts:claude:harness:remote:listener:audioDevices:transcriptStore:)`,
+  where every argument is optional. Call `env.tearDown()` in tearDown. The
+  environment is `Tests/PowerUpTests/AppStateTestSupport.swift`. It calls the
+  internal `AppState.init(configStore:…, sideEffects: [])`, so nothing
+  starts: no controller, audio devices, listener port, keyboard monitor,
+  terminate observer or cmux probe. The config file, the support folder and
+  the Claude settings file all resolve into its temp directory.
+- **Fakes:**
+  - `FakeHarnessAdapter` (`harness:`). It records `calls` and emits queued
+    `HarnessEvent`s synchronously via `emitNext()`, `emitAll()` and
+    `emit(_:)`. `harness: nil` keeps the config-selected real adapter.
+  - `ScriptedSpeechEngine` (`speech: SpeechService(engine:)`). It scripts
+    authorization, partials and the final transcript, and records its own
+    `calls`.
+  - Controller input needs no fake. Pass `ControllerService()` and invoke
+    its `onButtonDown`, `onButtonUp`, `onDisconnect` and `onLowBattery`
+    callbacks.
+- **Conventions:**
+  - Set `config.ttsEnabled = false`, because TTS is real and would speak.
+  - Pin the mapping a test presses.
+  - Set `config.projectDir` to a temp folder for any send path.
+  - Keep `app` alive while driving callbacks, because they capture it
+    weakly.
+  - Never sleep. Wait on main-actor Tasks with the bounded `settle(until:)`
+    from `AppStateVoiceCaptureTests`.
+  - Assert on published state and on what the fakes recorded. Never assert
+    on private fields or on the order of internal calls.
+- **Rule: orchestration changes ship with a seam test.** Any change to an
+  AppState rule, including a bug fix, comes with a test through
+  `AppStateTestEnvironment` that fails without the change.
+
 ## Commits and PRs
 
 - Sign off every commit (`git commit -s`) — DCO is CI-enforced.
 - Keep PRs focused on one logical change; describe *why*, not just what.
 - Add or update tests for anything in the pure-logic modules (parser, config,
-  speech text, hook installer, protocol framing).
+  speech text, hook installer, protocol framing), and a seam test (see
+  "Testing AppState") for any change to AppState's orchestration.
 - Deviating from DESIGN.md must be stated explicitly in the PR along with the
   proposed contract change. Architecture-level decisions (new dependency, new
   module, protocol changes) need a short ADR in `docs/adr/` — copy the format

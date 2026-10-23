@@ -73,9 +73,16 @@ enum HookInstaller {
         "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
-    /// The real `~/.claude/settings.json`.
+    /// Test seam, beside `supportDirectoryOverride`: when set, every call that
+    /// does not pass its own `settingsURL` (AppState's install, uninstall and
+    /// hook-script refresh) uses this file instead of the real one, so a test
+    /// driving AppState never edits `~/.claude/settings.json`.
+    static var settingsURLOverride: URL?
+
+    /// The real `~/.claude/settings.json` (or `settingsURLOverride` in tests).
     static var defaultSettingsURL: URL {
-        URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+        if let settingsURLOverride { return settingsURLOverride }
+        return URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
             .appendingPathComponent(".claude", isDirectory: true)
             .appendingPathComponent("settings.json")
     }
