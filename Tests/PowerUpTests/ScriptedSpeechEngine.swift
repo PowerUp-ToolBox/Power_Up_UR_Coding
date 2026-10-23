@@ -53,6 +53,10 @@ final class ScriptedSpeechEngine: SpeechRecognitionEngine {
     // MARK: Recording
 
     private(set) var calls: [Call] = []
+    /// Called with each call as it is recorded, so a test can line the
+    /// engine's calls up against another fake's record (#124: the TTS stop
+    /// must already be recorded when the capture begins).
+    var onCall: ((Call) -> Void)?
     /// One update handler per capture started, oldest first, so a test can
     /// deliver a late callback to an earlier (torn-down) capture.
     private(set) var captureHandlers: [@MainActor (SpeechEngineUpdate) -> Void] = []
@@ -77,6 +81,11 @@ final class ScriptedSpeechEngine: SpeechRecognitionEngine {
     }
 
     func clearCalls() { calls.removeAll() }
+
+    private func record(_ call: Call) {
+        calls.append(call)
+        onCall?(call)
+    }
 
     // MARK: Driving a capture
 
@@ -114,7 +123,7 @@ final class ScriptedSpeechEngine: SpeechRecognitionEngine {
     }
 
     func requestAuthorization() async -> Bool {
-        calls.append(.requestAuthorization)
+        record(.requestAuthorization)
         if holdsPermissionPrompt {
             return await withCheckedContinuation { continuation in
                 MainActor.assumeIsolated { pendingPermission = continuation }
@@ -125,7 +134,7 @@ final class ScriptedSpeechEngine: SpeechRecognitionEngine {
     }
 
     func prepareRecognizer(localeID: String) -> Bool {
-        calls.append(.prepareRecognizer(localeID: localeID))
+        record(.prepareRecognizer(localeID: localeID))
         preparedLocaleID = localeID
         return isRecognizerAvailable
     }
@@ -133,21 +142,21 @@ final class ScriptedSpeechEngine: SpeechRecognitionEngine {
     func startCapture(onDevice: Bool,
                       inputDeviceID: AudioDeviceID?,
                       onUpdate: @escaping @MainActor (SpeechEngineUpdate) -> Void) throws {
-        calls.append(.startCapture(localeID: preparedLocaleID, onDevice: onDevice, inputDeviceID: inputDeviceID))
+        record(.startCapture(localeID: preparedLocaleID, onDevice: onDevice, inputDeviceID: inputDeviceID))
         if let startFailure { throw startFailure }
         captureHandlers.append(onUpdate)
         isCapturing = true
     }
 
     func endAudio() {
-        calls.append(.endAudio)
+        record(.endAudio)
         if let finalTranscript {
             emitFinal(finalTranscript)
         }
     }
 
     func stopCapture() {
-        calls.append(.stopCapture)
+        record(.stopCapture)
         isCapturing = false
     }
 }

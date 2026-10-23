@@ -143,7 +143,12 @@ another one.
   - `ScriptedSpeechEngine` (`speech: SpeechService(engine:)`). It scripts
     authorization, partials and the final transcript, and records its own
     `calls`. `holdsPermissionPrompt = true` keeps the permission prompt up
-    until `answerPermissionPrompt(_:)`.
+    until `answerPermissionPrompt(_:)`. `onCall` sees each call as it is
+    recorded.
+  - Spoken replies: pass `TTSService()` as `tts:` with
+    `recordsOutput = true` set first. `speak`/`stop` go to
+    `recordedOutput` and nothing is heard; a recorded `speak` sets
+    `isSpeaking` until `stop()` or `finishRecordedSpeech()`.
   - Controller input needs no fake. Pass `ControllerService()` and drive
     its test hooks: `simulateConnect()`, `simulateButton(_:pressed:)` and
     `simulateDisconnect()` (a drop releases held buttons, then fires
@@ -163,7 +168,10 @@ another one.
     (no callback) and `simulateHotPlug(_:)` runs the hot-plug path (lists,
     then `onDevicesChanged`). See `AppStateAudioDeviceScenarioTests`.
 - **Conventions:**
-  - Set `config.ttsEnabled = false`, because TTS is real and would speak.
+  - Set `config.ttsEnabled = false`, because TTS is real and would speak,
+    unless the suite passes a TTS service with `recordsOutput = true`
+    (then also keep `speakSummaries = false`: a summary runs a real
+    `claude`).
   - Pin the mapping a test presses.
   - Set `config.projectDir` to a temp folder for any send path.
   - Keep `app` alive while driving callbacks, because they capture it

@@ -113,6 +113,15 @@ final class MyScenarioTests: XCTestCase {
     answer, partial transcripts and the final transcript. Set
     `holdsPermissionPrompt = true` to keep the permission prompt up until
     `answerPermissionPrompt(_:)`, so you can act while it is showing.
+    Its `onCall` closure sees each call as it is recorded, so you can
+    check what another fake had recorded at that moment.
+  - For **spoken replies**, pass a `TTSService()` as `tts:` with
+    `recordsOutput = true` set before building AppState. Then `speak` and
+    `stop` are recorded in `recordedOutput` and nothing is heard: a
+    recorded `speak` only marks `isSpeaking` true, until `stop()` or
+    `finishRecordedSpeech()`. With it you can turn `config.ttsEnabled` on
+    (keep `speakSummaries` off: a summary runs a real `claude`). See
+    `AppStateVoiceModeScenarioTests`.
   - For **controller input**, pass a plain `ControllerService()`. Its
     internal test hooks stand in for a pad: `simulateConnect()`,
     `simulateButton(_:pressed:)` and `simulateDisconnect()` go through the
