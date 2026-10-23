@@ -59,7 +59,8 @@ final class RemoteListener: ObservableObject {
     private let registry = ConnectionRegistry()
 
     private var listener: NWListener?
-    private var activePort: UInt16?
+    /// Port of the current (or last attempted) bind; nil when stopped.
+    private(set) var activePort: UInt16?
     private var activeToken: String?
 
     /// Bumped on every start/stop so events from a torn-down listener can never

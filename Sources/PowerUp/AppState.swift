@@ -57,7 +57,7 @@ final class AppState: ObservableObject {
     let remote: RemoteControlService
     /// Audio device catalogue: which mics/outputs exist, tracked by stable UID,
     /// with hot-plug updates (Settings pickers + STT/TTS routing).
-    let audioDevices = AudioDeviceStore()
+    let audioDevices: AudioDeviceStore
     /// Writes 1-2 sentence spoken conclusions of long replies (Settings → Voice).
     private let summary = SummaryService()
     /// Local HTTP endpoint the Claude Code hooks post replies back to.
@@ -94,7 +94,7 @@ final class AppState: ObservableObject {
 
     /// Per-project transcript history on disk, so the conversation a resumed
     /// session (`--resume`) continues is actually visible after a relaunch.
-    private let transcriptStore = TranscriptStore()
+    private let transcriptStore: TranscriptStore
 
     private var cancellables: Set<AnyCancellable> = []
     private var statusUpdateScheduled = false
@@ -216,22 +216,75 @@ final class AppState: ObservableObject {
 
     // MARK: - Init
 
-    init() {
-        let store = ConfigStore()
+    /// The side effects of bringing the app up that reach outside the
+    /// process — hardware, ports, global event monitors, subprocesses. The
+    /// app runs with `.all`; a test constructs AppState with `[]` so it needs
+    /// no pad, binds nothing, prompts nobody and registers no global observer.
+    struct SideEffects: OptionSet {
+        let rawValue: Int
+
+        /// `ControllerService.start()` — GameController connect/disconnect observers.
+        static let startController = SideEffects(rawValue: 1 << 0)
+        /// `AudioDeviceStore.start()` — CoreAudio hardware property listener.
+        static let startAudioDevices = SideEffects(rawValue: 1 << 1)
+        /// Binding the loopback listener (at start-up, on every port/token
+        /// change, and on `restartListener()`) and refreshing the hook script.
+        static let syncListener = SideEffects(rawValue: 1 << 2)
+        /// The app-wide `NSEvent` keyDown monitor (keyboard commands).
+        static let keyboardMonitor = SideEffects(rawValue: 1 << 3)
+        /// The `NSApplication.willTerminateNotification` shutdown observer.
+        static let terminateObserver = SideEffects(rawValue: 1 << 4)
+        /// cmux status probes (subprocess + Accessibility check) in remote mode.
+        static let cmuxProbe = SideEffects(rawValue: 1 << 5)
+
+        static let all: SideEffects = [.startController, .startAudioDevices, .syncListener,
+                                       .keyboardMonitor, .terminateObserver, .cmuxProbe]
+    }
+
+    /// Which side effects this instance performs; fixed at construction.
+    private let sideEffects: SideEffects
+
+    /// True once the keyboard command monitor is installed (never in a test).
+    var hasKeyboardMonitor: Bool { keyMonitor != nil }
+    /// True once the shutdown observer is registered (never in a test).
+    var hasTerminateObserver: Bool { willTerminateObserver != nil }
+
+    /// The app's AppState: real services, every side effect on.
+    convenience init() {
+        self.init(configStore: ConfigStore(), sideEffects: .all)
+    }
+
+    /// The one construction path. Any collaborator left nil is created fresh
+    /// (real, unstarted); `sideEffects` decides what gets started. Callback
+    /// wiring and observation always happen, so injected services reach the
+    /// same handlers in a test as in the app.
+    init(configStore store: ConfigStore,
+         controller: ControllerService? = nil,
+         speech: SpeechService? = nil,
+         tts: TTSService? = nil,
+         claude: ClaudeService? = nil,
+         remote: RemoteControlService? = nil,
+         listener: RemoteListener? = nil,
+         audioDevices: AudioDeviceStore? = nil,
+         transcriptStore: TranscriptStore? = nil,
+         sideEffects: SideEffects) {
         configStore = store
-        controller = ControllerService()
-        speech = SpeechService()
-        tts = TTSService()
-        claude = ClaudeService()
-        remote = RemoteControlService()
-        listener = RemoteListener()
+        self.controller = controller ?? ControllerService()
+        self.speech = speech ?? SpeechService()
+        self.tts = tts ?? TTSService()
+        self.claude = claude ?? ClaudeService()
+        self.remote = remote ?? RemoteControlService()
+        self.listener = listener ?? RemoteListener()
+        self.audioDevices = audioDevices ?? AudioDeviceStore()
+        self.transcriptStore = transcriptStore ?? TranscriptStore()
+        self.sideEffects = sideEffects
 
         // ConfigStore mints a token on first launch; adopt whatever mode the
         // config already holds without running the mode-switch side effects.
         lastControlMode = AppState.normalizedControlMode(store.config.controlMode)
         lastHarnessKey = AppState.harnessKey(for: store.config)
 
-        transcriptStore.setProject(store.config.projectDir)
+        self.transcriptStore.setProject(store.config.projectDir)
         restorePersistedTranscript()
         seedProjectBookkeeping()
 
@@ -242,8 +295,12 @@ final class AppState: ObservableObject {
         wireAudioDevices()
         observeServices()
 
-        controller.start()
-        audioDevices.start()
+        if sideEffects.contains(.startController) {
+            self.controller.start()
+        }
+        if sideEffects.contains(.startAudioDevices) {
+            self.audioDevices.start()
+        }
         syncAudioAvailabilityBaseline()
         syncSpeechConfiguration()
         syncListener()
@@ -251,25 +308,35 @@ final class AppState: ObservableObject {
         if lastControlMode == "remote" {
             // Populate the cmux availability / workspace list for the UI. All of
             // these probes are read-only.
-            remote.refreshStatus()
+            refreshRemoteStatus()
         }
         updateStatus()
 
-        installKeyMonitor()
+        if sideEffects.contains(.keyboardMonitor) {
+            installKeyMonitor()
+        }
 
-        willTerminateObserver = NotificationCenter.default.addObserver(
-            forName: NSApplication.willTerminateNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            // willTerminate is posted synchronously from -[NSApplication
-            // terminate:]; the run loop never turns again, so an enqueued Task
-            // would never execute. The block already runs on the main thread —
-            // call straight through.
-            MainActor.assumeIsolated {
-                self?.shutdown()
+        if sideEffects.contains(.terminateObserver) {
+            willTerminateObserver = NotificationCenter.default.addObserver(
+                forName: NSApplication.willTerminateNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                // willTerminate is posted synchronously from -[NSApplication
+                // terminate:]; the run loop never turns again, so an enqueued Task
+                // would never execute. The block already runs on the main thread —
+                // call straight through.
+                MainActor.assumeIsolated {
+                    self?.shutdown()
+                }
             }
         }
+    }
+
+    /// The cmux probe, gated so a test never spawns a subprocess.
+    private func refreshRemoteStatus() {
+        guard sideEffects.contains(.cmuxProbe) else { return }
+        remote.refreshStatus()
     }
 
     // MARK: - Wiring
@@ -1516,7 +1583,7 @@ final class AppState: ObservableObject {
             // Our own session would otherwise sit there burning a subscription
             // seat and echoing hook events back at us.
             stopClaude()
-            remote.refreshStatus()
+            refreshRemoteStatus()
             appendEntry(.system, "Remote control mode — buttons and voice now drive your existing Claude session.")
             announce("Remote control")
         } else {
@@ -1557,6 +1624,7 @@ final class AppState: ObservableObject {
 
     /// Binds (or rebinds) the listener whenever the port or token changes.
     private func syncListener() {
+        guard sideEffects.contains(.syncListener) else { return }
         let config = configStore.config
         let token = config.listenerToken
         // No token means no way to tell a hook post from anything else that finds

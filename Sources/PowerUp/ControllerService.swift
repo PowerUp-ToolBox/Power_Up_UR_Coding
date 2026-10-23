@@ -34,7 +34,8 @@ final class ControllerService: ObservableObject {
     private var connectObserver: NSObjectProtocol?
     private var disconnectObserver: NSObjectProtocol?
 
-    private var didStart = false
+    /// True once `start()` has run (readable so tests can prove it never did).
+    private(set) var didStart = false
 
     func start() {
         guard !didStart else { return }

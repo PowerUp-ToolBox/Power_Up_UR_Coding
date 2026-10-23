@@ -29,7 +29,8 @@ final class AudioDeviceStore: ObservableObject {
     /// Fired after the device lists change (hot-plug), lists already updated.
     var onDevicesChanged: (() -> Void)?
 
-    private var didStart = false
+    /// True once `start()` has run (readable so tests can prove it never did).
+    private(set) var didStart = false
     private var listenerBlock: AudioObjectPropertyListenerBlock?
 
     func start() {
