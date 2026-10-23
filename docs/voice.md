@@ -104,3 +104,9 @@ mid-session, PowerUp announces it in the transcript, falls back to the system
 default, and switches back automatically the moment the device returns. A
 disconnected pick shows in the menu as "(Disconnected device)" so you always
 see what's configured.
+
+If your chosen microphone disconnects *while you are recording*, the
+recording stops right there with the error buzz, and nothing is sent or left
+in the prompt box: a half sentence never reaches the agent. Just record
+again; the new recording uses the system default until your microphone
+returns.

@@ -468,6 +468,12 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// UID of the chosen microphone the current capture is recording from;
+    /// nil while not recording, or when it records from the system default.
+    /// Snapshotted when the recognizer starts, so a mid-hold picker change
+    /// can't make the unplug check look at the wrong device.
+    private var captureInputUID: String?
+
     /// Tracks the configured devices' presence for the came/went announcements.
     private var inputAvailability = AudioAvailabilityTracker()
     private var outputAvailability = AudioAvailabilityTracker()
@@ -489,8 +495,35 @@ final class AppState: ObservableObject {
             // A routed utterance whose device just vanished may never fire
             // its completion — resolve it before deciding what to announce.
             self?.tts.recoverIfEngineDied()
+            self?.abortCaptureIfMicrophoneVanished()
             self?.announceAudioDeviceChanges()
         }
+    }
+
+    /// The chosen microphone a capture is recording from went away mid-capture.
+    /// What was heard is cut off mid-sentence, so it is discarded — never sent,
+    /// never left in the prompt box — and the capture ends with the error
+    /// buzz. Applies to every capture (hold, mic button, keyboard): unlike a
+    /// pad dropping (forceReleaseHold), ending here sends nothing, so it is
+    /// safe whoever started it. The next capture falls back to the system
+    /// default through the usual per-press resolution.
+    private func abortCaptureIfMicrophoneVanished() {
+        guard isPTTActive, let uid = captureInputUID,
+              audioDevices.inputDevice(forUID: uid) == nil else { return }
+        captureInputUID = nil
+        isPTTActive = false
+        isDraftDictation = false
+        // The trigger still physically held must not end the next capture.
+        pttHoldButton = nil
+        if pttMode == .draft, !pttDraftTargetsRemote {
+            endDraftCapture(restoringDraft: true)
+        }
+        // Ends the recognizer; whatever it still makes of the cut-off audio
+        // resolves here and is dropped.
+        speech.stopListening { _ in }
+        appendEntry(.error, "🎤 Your microphone disconnected while recording — nothing was sent. Try again; PowerUp will use the system default.")
+        errorHaptic()
+        updateStatus()
     }
 
     /// The (input, output) selection the trackers were last baselined on.
@@ -1108,6 +1141,10 @@ final class AppState: ObservableObject {
                 return
             }
             self.syncSpeechConfiguration()
+            // Same resolution SpeechService does for the engine: the chosen
+            // mic when it is present, else the system default (nil).
+            let chosenUID = self.configStore.config.audioInputUID
+            self.captureInputUID = self.audioDevices.inputDevice(forUID: chosenUID) != nil ? chosenUID : nil
             self.speech.startListening()
         }
     }
@@ -1116,6 +1153,7 @@ final class AppState: ObservableObject {
         guard isPTTActive else { return }
         isPTTActive = false
         isDraftDictation = false
+        captureInputUID = nil
 
         if pttMode == .draft {
             if pttDraftTargetsRemote {

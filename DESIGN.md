@@ -1895,6 +1895,18 @@ engine down. `isSpeaking`/`onFinished` semantics are unchanged for callers.
   (keyed on the two UIDs, run from the derived-update path) whenever the
   selection changes — without that, the first transition after launch or
   after a pick would be swallowed as a rebaseline.
+- **Chosen microphone lost mid-capture (#123).** When a capture is
+  recording from the chosen microphone (snapshotted as `captureInputUID`
+  when the recognizer starts — nil when it records from the system
+  default) and a device-list change shows that UID gone, AppState ends the
+  capture at once, whoever started it: `isPTTActive`/`isDraftDictation`
+  cleared, `pttHoldButton` cleared (the still-held trigger's release is a
+  no-op), a local draft hold restores the prompt box, the recognizer is
+  stopped with its result discarded (nothing is sent or typed), one error
+  transcript entry, the error haptic. The came/went announcement still
+  follows, and the next capture falls back to the system default through
+  the usual per-press resolution. A capture on the system default is left
+  alone. The persisted `audioInputUID` is never touched.
 - Settings → Voice gains an **Audio Devices** section: Microphone and
   Speech Output pickers ("System Default" + live device lists, with a
   "(Disconnected device)" placeholder entry so an unplugged pick stays
