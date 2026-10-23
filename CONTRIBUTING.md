@@ -107,15 +107,20 @@ final class MyScenarioTests: XCTestCase {
   - `ScriptedSpeechEngine`: pass it as
     `speech: SpeechService(engine: engine)`. You script the permission
     answer, partial transcripts and the final transcript.
-  - For **controller input**, pass a plain `ControllerService()` and call
-    its `onButtonDown`, `onButtonUp`, `onDisconnect` and `onLowBattery`
-    callbacks directly.
+  - For **controller input**, pass a plain `ControllerService()`. Its
+    internal test hooks stand in for a pad: `simulateConnect()`,
+    `simulateButton(_:pressed:)` and `simulateDisconnect()` go through the
+    same connection, de-dup and drop paths as a real pad (a drop releases
+    held buttons, then fires `onDisconnect`). You can also call
+    `onButtonDown`, `onButtonUp`, `onDisconnect` and `onLowBattery`
+    directly. Set `recordsOutput = true` to read the light and haptic
+    writes back from `recordedOutput` (they still go to a real pad).
 - A good test plays one scenario through public entry points (a fake's
   callback, a public method, an intent). It asserts on published state and
   on what the fakes recorded. It never reads private fields and never
   asserts on the order of internal calls. Tests are synchronous; when
   AppState hops through a main-actor Task, wait with the bounded
-  `settle(until:)` helper (see `AppStateVoiceCaptureTests`), never with a
+  `settle(until:)` helper (in `AppStateTestSupport.swift`), never with a
   sleep.
 - Keep `let app` alive while you drive callbacks, because the services hold
   AppState weakly. Set `config.projectDir` (a temp folder) when a scenario

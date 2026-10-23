@@ -140,9 +140,12 @@ another one.
   - `ScriptedSpeechEngine` (`speech: SpeechService(engine:)`). It scripts
     authorization, partials and the final transcript, and records its own
     `calls`.
-  - Controller input needs no fake. Pass `ControllerService()` and invoke
-    its `onButtonDown`, `onButtonUp`, `onDisconnect` and `onLowBattery`
-    callbacks.
+  - Controller input needs no fake. Pass `ControllerService()` and drive
+    its test hooks: `simulateConnect()`, `simulateButton(_:pressed:)` and
+    `simulateDisconnect()` (a drop releases held buttons, then fires
+    `onDisconnect`), or invoke `onButtonDown`, `onButtonUp`, `onDisconnect`
+    and `onLowBattery` directly. With `recordsOutput = true`, light and
+    haptic writes are recorded in `recordedOutput`.
 - **Conventions:**
   - Set `config.ttsEnabled = false`, because TTS is real and would speak.
   - Pin the mapping a test presses.
@@ -150,7 +153,7 @@ another one.
   - Keep `app` alive while driving callbacks, because they capture it
     weakly.
   - Never sleep. Wait on main-actor Tasks with the bounded `settle(until:)`
-    from `AppStateVoiceCaptureTests`.
+    from `AppStateTestSupport.swift`.
   - Assert on published state and on what the fakes recorded. Never assert
     on private fields or on the order of internal calls.
 - **Rule: orchestration changes ship with a seam test.** Any change to an

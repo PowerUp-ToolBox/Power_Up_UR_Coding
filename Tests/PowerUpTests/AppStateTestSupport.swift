@@ -1,4 +1,5 @@
 import Foundation
+import XCTest
 @testable import PowerUp
 
 /// A hermetic sandbox for constructing `AppState` through its test seam
@@ -90,5 +91,21 @@ final class AppStateTestEnvironment {
     func tearDown() {
         TestSandbox.parkOverrides()
         try? FileManager.default.removeItem(at: directory)
+    }
+}
+
+extension XCTestCase {
+    /// Yields the main actor until `condition` holds, then asserts it. Enough
+    /// turns for AppState's main-actor Tasks (the speech permission check, the
+    /// coalesced status update after a service changes) to run. Bounded, so a
+    /// broken seam fails instead of hanging. Never a sleep.
+    @MainActor
+    func settle(until condition: @autoclosure () -> Bool,
+                file: StaticString = #filePath, line: UInt = #line) async {
+        for _ in 0..<100 {
+            if condition() { return }
+            await Task.yield()
+        }
+        XCTAssertTrue(condition(), "condition never became true", file: file, line: line)
     }
 }

@@ -7,7 +7,7 @@ import XCTest
 /// push to talk, the prompt box for dictate-to-prompt-box.
 ///
 /// The only asynchronous step is AppState's permission check, which runs in a
-/// main-actor Task; `settle(until:)` yields the main actor a bounded number of
+/// main-actor Task; `settle(until:)` (AppStateTestSupport) yields the main actor a bounded number of
 /// times for it. No sleeps, no timed expectations.
 @MainActor
 final class AppStateVoiceCaptureTests: XCTestCase {
@@ -153,20 +153,6 @@ final class AppStateVoiceCaptureTests: XCTestCase {
 
         XCTAssertEqual(app.draftText, "Keep me")
         XCTAssertTrue(harness.calls.isEmpty)
-    }
-
-    // MARK: Helpers
-
-    /// Yields the main actor until `condition` holds — enough turns for
-    /// AppState's permission Task to run — then asserts it. Bounded, so a
-    /// broken seam fails instead of hanging.
-    private func settle(until condition: @autoclosure () -> Bool,
-                        file: StaticString = #filePath, line: UInt = #line) async {
-        for _ in 0..<100 {
-            if condition() { return }
-            await Task.yield()
-        }
-        XCTAssertTrue(condition(), "condition never became true", file: file, line: line)
     }
 }
 

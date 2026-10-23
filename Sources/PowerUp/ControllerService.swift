@@ -84,12 +84,8 @@ final class ControllerService: ObservableObject {
         // in `wire(...)` is valid and events are processed in exact delivery
         // order (an unstructured Task hop has no ordering guarantee).
         controller.handlerQueue = .main
-        isConnected = true
-        controllerName = controller.vendorName ?? "Controller"
-        isDualSense = controller.productCategory == GCProductCategoryDualSense
-
-        hapticEngine = nil // recreate lazily for the new connection
-        batteryWarningLatch.reset() // one warning per connection, even a swap
+        markConnected(name: controller.vendorName ?? "Controller",
+                      isDualSense: controller.productCategory == GCProductCategoryDualSense)
         wireButtons(on: controller)
         pollBattery()
 
@@ -104,9 +100,27 @@ final class ControllerService: ObservableObject {
         }
     }
 
+    /// Connection bookkeeping shared by a real connect and `simulateConnect`.
+    private func markConnected(name: String, isDualSense: Bool) {
+        isConnected = true
+        controllerName = name
+        self.isDualSense = isDualSense
+
+        hapticEngine = nil // recreate lazily for the new connection
+        batteryWarningLatch.reset() // one warning per connection, even a swap
+    }
+
     private func handleDisconnect(_ controller: GCController) {
         guard controller === currentController else { return }
+        // Fall back to another connected controller, if any.
+        let remaining = GCController.controllers().filter { $0 !== controller }
+        dropCurrentController(fallback: remaining.last)
+    }
 
+    /// The disconnect path shared by a real drop and `simulateDisconnect`:
+    /// switch to `next` (or clear the connection), release every button still
+    /// held, then report the drop.
+    private func dropCurrentController(fallback next: GCController?) {
         hapticEngine?.stop(completionHandler: nil)
         hapticEngine = nil
 
@@ -114,9 +128,7 @@ final class ControllerService: ObservableObject {
         // below rewires and clears `pressedButtons`, so capture first.
         let stuckButtons = pressedButtons
 
-        // Fall back to another connected controller, if any.
-        let remaining = GCController.controllers().filter { $0 !== controller }
-        if let next = remaining.last {
+        if let next {
             handleConnect(next)
         } else {
             currentController = nil
@@ -159,16 +171,7 @@ final class ControllerService: ObservableObject {
                 // only ever accessed on the main actor.
                 MainActor.assumeIsolated {
                     guard let self, let controller, self.currentController === controller else { return }
-                    if pressed {
-                        // De-dup: ignore a repeat press for an already-held button
-                        // (analog-trigger threshold jitter, duplicate events).
-                        guard self.pressedButtons.insert(button).inserted else { return }
-                        self.onButtonDown?(button)
-                    } else {
-                        // Ignore an up for a button we don't consider held.
-                        guard self.pressedButtons.remove(button) != nil else { return }
-                        self.onButtonUp?(button)
-                    }
+                    self.deliver(button, pressed: pressed)
                 }
             }
         }
@@ -199,9 +202,25 @@ final class ControllerService: ObservableObject {
         }
     }
 
+    /// Press/release dispatch shared by the pad's input handlers and
+    /// `simulateButton`.
+    private func deliver(_ button: ControllerButton, pressed: Bool) {
+        if pressed {
+            // De-dup: ignore a repeat press for an already-held button
+            // (analog-trigger threshold jitter, duplicate events).
+            guard pressedButtons.insert(button).inserted else { return }
+            onButtonDown?(button)
+        } else {
+            // Ignore an up for a button we don't consider held.
+            guard pressedButtons.remove(button) != nil else { return }
+            onButtonUp?(button)
+        }
+    }
+
     // MARK: - Light bar
 
     func setLight(r: Float, g: Float, b: Float) {
+        record(.light(r: r, g: g, b: b))
         guard let light = currentController?.light else { return }
         light.color = GCColor(red: r, green: g, blue: b)
     }
@@ -235,6 +254,7 @@ final class ControllerService: ObservableObject {
     }
 
     func rumble(intensity: Float, duration: TimeInterval) {
+        record(.rumble(intensity: intensity, duration: duration))
         guard let controller = currentController, controller.haptics != nil else { return }
         guard let engine = engine(for: controller) else { return }
 
@@ -289,6 +309,58 @@ final class ControllerService: ObservableObject {
             onLowBattery?(battery.batteryLevel)
         }
     }
+
+    // MARK: - Test hooks (internal; production never calls these)
+
+    /// When true, every light and haptic write is appended to
+    /// `recordedOutput` — with or without a pad — and still goes on to the pad
+    /// exactly as it would otherwise. Off in production, so nothing
+    /// accumulates there.
+    var recordsOutput = false
+
+    /// The light and haptic writes made while `recordsOutput` was on, oldest
+    /// first.
+    private(set) var recordedOutput: [ControllerOutput] = []
+
+    func clearRecordedOutput() {
+        recordedOutput.removeAll()
+    }
+
+    private func record(_ output: ControllerOutput) {
+        guard recordsOutput else { return }
+        recordedOutput.append(output)
+    }
+
+    /// Test hook: marks a pad connected as if GameController had reported
+    /// one, without any hardware. Nothing is held on a fresh connection.
+    func simulateConnect(name: String = "DualSense Wireless Controller",
+                         isDualSense: Bool = true) {
+        markConnected(name: name, isDualSense: isDualSense)
+        pressedButtons.removeAll()
+    }
+
+    /// Test hook: a press or release from the connected pad, through the same
+    /// de-dup as its input handlers. Ignored when no pad is connected.
+    func simulateButton(_ button: ControllerButton, pressed: Bool) {
+        guard isConnected else { return }
+        deliver(button, pressed: pressed)
+    }
+
+    /// Test hook: the connected pad drops with no other pad to fall back to,
+    /// through the same path as a GameController disconnect — held buttons
+    /// are released, then `onDisconnect` fires. Ignored when no pad is
+    /// connected.
+    func simulateDisconnect() {
+        guard isConnected else { return }
+        dropCurrentController(fallback: nil)
+    }
+}
+
+/// One write to the pad's outputs, as recorded by
+/// `ControllerService.recordedOutput` (tests only).
+enum ControllerOutput: Equatable {
+    case light(r: Float, g: Float, b: Float)
+    case rumble(intensity: Float, duration: TimeInterval)
 }
 
 /// Once-per-connection latch behind the low-battery warning. Fires only while
