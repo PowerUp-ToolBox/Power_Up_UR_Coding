@@ -1614,7 +1614,9 @@ destructive request first ARMS it (transcript ⚠️ + "Destructive. Press again
 to confirm" + error haptic); the second ✕ approves; ○ denies at any point.
 *Amended by #116:* the two presses must be consecutive. Any other intent
 between them disarms the request (it stays pending, unanswered), so the next
-✕ arms again instead of approving.
+✕ arms again instead of approving. Interrupt (built-in mode) clears
+`pendingPermission` at once, without a `respondToPermission`: the adapter
+already cancels the agent's side of it on interrupt.
 `PermissionRequestBanner` (MainView) shows every pending request under the
 top bar — amber normally, red for destructive, with the ✕/○ legend.
 

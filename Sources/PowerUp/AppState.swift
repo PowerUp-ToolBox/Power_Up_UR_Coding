@@ -1301,6 +1301,10 @@ final class AppState: ObservableObject {
             return
         }
         harness.interrupt()
+        // The interrupt cancels the turn the request belongs to (the adapter
+        // cancels the agent's side), so the banner goes with it — unanswered.
+        // Left up, it would invite a press that answers nothing.
+        pendingPermission = nil
         appendEntry(.system, "Interrupt sent.")
         haptic(intensity: 0.6, duration: 0.08)
         updateStatus()
