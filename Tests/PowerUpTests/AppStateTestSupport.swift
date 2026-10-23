@@ -48,12 +48,14 @@ final class AppStateTestEnvironment {
     }
 
     /// AppState wired to real but unstarted services (pass your own to keep a
-    /// handle on one), with every start-up side effect skipped.
+    /// handle on one), with every start-up side effect skipped. Pass a
+    /// `FakeHarnessAdapter` as `harness` to script the session.
     func makeAppState(configStore: ConfigStore? = nil,
                       controller: ControllerService? = nil,
                       speech: SpeechService? = nil,
                       tts: TTSService? = nil,
                       claude: ClaudeService? = nil,
+                      harness: (any HarnessAdapter)? = nil,
                       remote: RemoteControlService? = nil,
                       listener: RemoteListener? = nil,
                       audioDevices: AudioDeviceStore? = nil,
@@ -63,6 +65,7 @@ final class AppStateTestEnvironment {
                  speech: speech,
                  tts: tts,
                  claude: claude,
+                 harness: harness,
                  remote: remote,
                  listener: listener,
                  audioDevices: audioDevices,

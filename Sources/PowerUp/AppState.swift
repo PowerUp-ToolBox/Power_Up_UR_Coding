@@ -23,10 +23,16 @@ final class AppState: ObservableObject {
     /// which adapter that is follows Settings → General → Harness. `claude`
     /// stays exposed for the views until the UI fully generalizes.
     var harness: any HarnessAdapter {
-        AppState.normalizedHarnessKind(configStore.config.harnessKind) == "acp"
+        if let injectedHarness { return injectedHarness }
+        return AppState.normalizedHarnessKind(configStore.config.harnessKind) == "acp"
             ? acpAdapterInstance()
             : claude
     }
+
+    /// Test seam: an adapter handed to the initializer that stands in for
+    /// whichever harness the config selects (never set by the app). It is
+    /// wired into the same event handler as the real adapters.
+    private let injectedHarness: (any HarnessAdapter)?
 
     /// Lazily created ACP adapter (opencode, the Claude bridge, or a custom
     /// agent command), wired into the same event handler as the Claude adapter.
@@ -257,12 +263,16 @@ final class AppState: ObservableObject {
     /// The one construction path. Any collaborator left nil is created fresh
     /// (real, unstarted); `sideEffects` decides what gets started. Callback
     /// wiring and observation always happen, so injected services reach the
-    /// same handlers in a test as in the app.
+    /// same handlers in a test as in the app. `harness` is the exception to
+    /// "nil means real": nil keeps the config-selected adapter (the app's
+    /// behavior); a test passes a scripted adapter that then IS the harness
+    /// whatever the config's harness kind says.
     init(configStore store: ConfigStore,
          controller: ControllerService? = nil,
          speech: SpeechService? = nil,
          tts: TTSService? = nil,
          claude: ClaudeService? = nil,
+         harness: (any HarnessAdapter)? = nil,
          remote: RemoteControlService? = nil,
          listener: RemoteListener? = nil,
          audioDevices: AudioDeviceStore? = nil,
@@ -273,6 +283,7 @@ final class AppState: ObservableObject {
         self.speech = speech ?? SpeechService()
         self.tts = tts ?? TTSService()
         self.claude = claude ?? ClaudeService()
+        self.injectedHarness = harness
         self.remote = remote ?? RemoteControlService()
         self.listener = listener ?? RemoteListener()
         self.audioDevices = audioDevices ?? AudioDeviceStore()
@@ -368,6 +379,9 @@ final class AppState: ObservableObject {
 
     private func wireClaude() {
         claude.onHarnessEvent = { [weak self] event in
+            self?.handleHarnessEvent(event)
+        }
+        injectedHarness?.onHarnessEvent = { [weak self] event in
             self?.handleHarnessEvent(event)
         }
     }
