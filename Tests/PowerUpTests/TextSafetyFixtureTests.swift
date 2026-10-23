@@ -29,6 +29,24 @@ enum TextSafetyFixtures {
         let reason: String
     }
 
+    /// The same envelope for rules whose input is more than one string
+    /// (condense takes a `maxChars`, the failure message a whole command
+    /// result). The JSON shape is identical; only `input` is an object.
+    struct StructuredFile<Input: Decodable, Expected: Decodable>: Decodable {
+        let description: String
+        let function: String
+        let verifiedBy: String
+        let capturedAgainst: String?
+        let cases: [StructuredCase<Input, Expected>]
+    }
+
+    struct StructuredCase<Input: Decodable, Expected: Decodable>: Decodable {
+        let name: String
+        let input: Input
+        let expected: Expected
+        let reason: String
+    }
+
     /// `Tests/Fixtures/text-safety/`, found relative to this source file so it
     /// works from `swift test` in any checkout without bundling resources.
     static var directory: URL {
@@ -46,16 +64,43 @@ enum TextSafetyFixtures {
         return try JSONDecoder().decode(File<Expected>.self, from: data)
     }
 
+    static func load<Input: Decodable, Expected: Decodable>(
+        _ fileName: String,
+        input _: Input.Type,
+        expected _: Expected.Type
+    ) throws -> StructuredFile<Input, Expected> {
+        let url = directory.appendingPathComponent(fileName)
+        let data = try Data(contentsOf: url)
+        return try JSONDecoder().decode(StructuredFile<Input, Expected>.self, from: data)
+    }
+
     /// The failure text for one case, or nil when `actual` matches. Kept as a
     /// function (rather than an inline assertion) so a test can prove that a
     /// wrong expectation is reported under the case's own name.
     static func mismatch<Expected: Equatable>(in fileName: String,
                                               _ fixtureCase: Case<Expected>,
                                               actual: Expected) -> String? {
-        guard actual != fixtureCase.expected else { return nil }
-        return "\(fileName) case \"\(fixtureCase.name)\" failed — guards: \(fixtureCase.reason)\n"
-            + "  input:    \(debugDescription(fixtureCase.input))\n"
-            + "  expected: \(debugDescription(fixtureCase.expected))\n"
+        report(fileName, name: fixtureCase.name, reason: fixtureCase.reason,
+               input: fixtureCase.input, expected: fixtureCase.expected, actual: actual)
+    }
+
+    static func mismatch<Input, Expected: Equatable>(in fileName: String,
+                                                     _ fixtureCase: StructuredCase<Input, Expected>,
+                                                     actual: Expected) -> String? {
+        report(fileName, name: fixtureCase.name, reason: fixtureCase.reason,
+               input: fixtureCase.input, expected: fixtureCase.expected, actual: actual)
+    }
+
+    private static func report<Input, Expected: Equatable>(_ fileName: String,
+                                                           name: String,
+                                                           reason: String,
+                                                           input: Input,
+                                                           expected: Expected,
+                                                           actual: Expected) -> String? {
+        guard actual != expected else { return nil }
+        return "\(fileName) case \"\(name)\" failed — guards: \(reason)\n"
+            + "  input:    \(debugDescription(input))\n"
+            + "  expected: \(debugDescription(expected))\n"
             + "  actual:   \(debugDescription(actual))"
     }
 
@@ -77,12 +122,31 @@ enum TextSafetyFixtures {
     static func assertWellFormed<Expected>(_ file: File<Expected>,
                                            _ fileName: String,
                                            line: UInt = #line) {
-        XCTAssertFalse(file.description.isEmpty, "\(fileName): empty description", line: line)
-        XCTAssertFalse(file.function.isEmpty, "\(fileName): empty function", line: line)
-        XCTAssertFalse(file.verifiedBy.isEmpty, "\(fileName): empty verifiedBy", line: line)
-        XCTAssertFalse(file.cases.isEmpty, "\(fileName): no cases", line: line)
+        checkEnvelope(fileName, description: file.description, function: file.function,
+                      verifiedBy: file.verifiedBy,
+                      cases: file.cases.map { ($0.name, $0.reason) }, line: line)
+    }
+
+    static func assertWellFormed<Input, Expected>(_ file: StructuredFile<Input, Expected>,
+                                                  _ fileName: String,
+                                                  line: UInt = #line) {
+        checkEnvelope(fileName, description: file.description, function: file.function,
+                      verifiedBy: file.verifiedBy,
+                      cases: file.cases.map { ($0.name, $0.reason) }, line: line)
+    }
+
+    private static func checkEnvelope(_ fileName: String,
+                                      description: String,
+                                      function: String,
+                                      verifiedBy: String,
+                                      cases: [(name: String, reason: String)],
+                                      line: UInt) {
+        XCTAssertFalse(description.isEmpty, "\(fileName): empty description", line: line)
+        XCTAssertFalse(function.isEmpty, "\(fileName): empty function", line: line)
+        XCTAssertFalse(verifiedBy.isEmpty, "\(fileName): empty verifiedBy", line: line)
+        XCTAssertFalse(cases.isEmpty, "\(fileName): no cases", line: line)
         var seen = Set<String>()
-        for fixtureCase in file.cases {
+        for fixtureCase in cases {
             XCTAssertFalse(fixtureCase.name.trimmingCharacters(in: .whitespaces).isEmpty,
                            "\(fileName): a case has no name", line: line)
             XCTAssertFalse(fixtureCase.reason.trimmingCharacters(in: .whitespaces).isEmpty,
@@ -212,8 +276,8 @@ final class TextSafetyFixtureTests: XCTestCase {
     // MARK: Visibility seam
 
     /// The formerly private helpers are reachable from tests under their
-    /// existing names (spec #93, Visibility). Their fixtures land in 1.3.2;
-    /// this only pins that the seam exists and behaves as before.
+    /// existing names (spec #93, Visibility). Their fixtures are tested in
+    /// CmuxReportingFixtureTests (1.3.2); this only pins that the seam exists.
     func testFormerlyPrivateHelpersAreReachable() {
         XCTAssertEqual(RemoteControlService.stripStatusGlyph("✳ Design"), "Design")
         XCTAssertEqual(RemoteControlService.condense("a\n b", maxChars: 10), "a b")

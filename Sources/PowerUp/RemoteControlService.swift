@@ -505,6 +505,7 @@ final class RemoteControlService: ObservableObject {
     /// Parses `cmux list-workspaces` output. Anything that doesn't look like a
     /// workspace row (the legacy-alias notice, blank lines, future decorations)
     /// is skipped rather than guessed at.
+    /// Cases: `Tests/Fixtures/text-safety/cmux-workspaces.json`.
     nonisolated static func parseWorkspaces(_ output: String) -> [CmuxWorkspace] {
         var result: [CmuxWorkspace] = []
         /// Indexes into `result` of rows marked by the leading `*` — the only
@@ -572,6 +573,7 @@ final class RemoteControlService: ObservableObject {
     /// (⠐, ✳, …) — sometimes followed by a space, sometimes not. Only one
     /// leading glyph is ever removed, so an emoji in the user's own title
     /// survives. Cosmetic either way: `ref` is what targeting uses.
+    /// Cases: `Tests/Fixtures/text-safety/status-glyph.json`.
     nonisolated static func stripStatusGlyph(_ title: String) -> String {
         guard isStatusGlyph(title.first) else { return title }
         return String(title.dropFirst()).trimmingCharacters(in: .whitespaces)
@@ -742,6 +744,8 @@ final class RemoteControlService: ObservableObject {
                              spawnFailed: false)
     }
 
+    /// The friendly, action-naming message for a failed cmux command.
+    /// Cases: `Tests/Fixtures/text-safety/failure-message.json`.
     nonisolated static func failureMessage(action: String, result: CommandResult) -> String {
         if result.spawnFailed {
             let detail = condense(result.standardError, maxChars: 160)
@@ -770,6 +774,8 @@ final class RemoteControlService: ObservableObject {
         return "\(action) failed: \(detail)"
     }
 
+    /// Command output as one short display line, cut with "…" past `maxChars`
+    /// characters. Cases: `Tests/Fixtures/text-safety/condense.json`.
     nonisolated static func condense(_ text: String, maxChars: Int) -> String {
         let flattened = text
             .replacingOccurrences(of: "\r", with: " ")
