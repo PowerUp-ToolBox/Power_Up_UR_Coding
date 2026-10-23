@@ -1788,8 +1788,12 @@ final class AppState: ObservableObject {
         case .notification:
             // Sign of life from a turn that's waiting on the user — keep its
             // expiry clock fresh, but a notification alone doesn't start one.
+            // Through beginRemoteTurn, so the notification RE-ARMS the expiry
+            // sweep like a heartbeat: a turn whose last sign of life was a
+            // notification (then Escape pressed in the terminal, no Stop)
+            // must still go idle 15 minutes later, not stay amber forever.
             if remoteActiveTurns[turnKey] != nil {
-                remoteActiveTurns[turnKey] = Date()
+                beginRemoteTurn(key: turnKey)
             }
             let message = (event.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             appendEntry(.system, message.isEmpty ? "Claude needs your attention." : message)
