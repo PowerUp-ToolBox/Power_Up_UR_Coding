@@ -2,6 +2,30 @@ import Foundation
 import Combine
 import AppKit
 
+/// The time source and one-shot timer behind remote-turn expiry and the
+/// remote session registry (DESIGN v1.10, v2.2 A/B). Internal test seam
+/// (#118): the app reads the wall clock and sleeps; a test injects a clock it
+/// advances by hand, so expiry is driven without ever waiting.
+@MainActor
+protocol RemoteTurnClock: AnyObject {
+    var now: Date { get }
+    /// Runs `action` on the main actor once `delay` seconds have passed.
+    func schedule(after delay: TimeInterval, _ action: @escaping @MainActor () -> Void)
+}
+
+/// The app's clock: `Date()` and a sleeping main-actor Task.
+@MainActor
+private final class SystemRemoteTurnClock: RemoteTurnClock {
+    var now: Date { Date() }
+
+    func schedule(after delay: TimeInterval, _ action: @escaping @MainActor () -> Void) {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(max(0, delay) * 1_000_000_000))
+            action()
+        }
+    }
+}
+
 /// Central glue between the controller, speech, TTS and the Claude CLI session.
 ///
 /// Everything here runs on the main actor: the services publish their state from
@@ -262,6 +286,9 @@ final class AppState: ObservableObject {
     /// Which side effects this instance performs; fixed at construction.
     private let sideEffects: SideEffects
 
+    /// Time for remote-turn expiry and the remote session registry.
+    private let remoteTurnClock: any RemoteTurnClock
+
     /// True once the keyboard command monitor is installed (never in a test).
     var hasKeyboardMonitor: Bool { keyMonitor != nil }
     /// True once the shutdown observer is registered (never in a test).
@@ -278,7 +305,8 @@ final class AppState: ObservableObject {
     /// same handlers in a test as in the app. `harness` is the exception to
     /// "nil means real": nil keeps the config-selected adapter (the app's
     /// behavior); a test passes a scripted adapter that then IS the harness
-    /// whatever the config's harness kind says.
+    /// whatever the config's harness kind says. `clock` (nil = the wall clock)
+    /// times remote-turn expiry.
     init(configStore store: ConfigStore,
          controller: ControllerService? = nil,
          speech: SpeechService? = nil,
@@ -289,6 +317,7 @@ final class AppState: ObservableObject {
          listener: RemoteListener? = nil,
          audioDevices: AudioDeviceStore? = nil,
          transcriptStore: TranscriptStore? = nil,
+         clock: (any RemoteTurnClock)? = nil,
          sideEffects: SideEffects) {
         configStore = store
         self.controller = controller ?? ControllerService()
@@ -300,6 +329,7 @@ final class AppState: ObservableObject {
         self.listener = listener ?? RemoteListener()
         self.audioDevices = audioDevices ?? AudioDeviceStore()
         self.transcriptStore = transcriptStore ?? TranscriptStore()
+        self.remoteTurnClock = clock ?? SystemRemoteTurnClock()
         self.sideEffects = sideEffects
 
         // ConfigStore mints a token on first launch; adopt whatever mode the
@@ -1410,7 +1440,7 @@ final class AppState: ObservableObject {
             errorHaptic()
             return
         }
-        let cutoff = Date().addingTimeInterval(-AppState.remoteSessionMemory)
+        let cutoff = remoteTurnClock.now.addingTimeInterval(-AppState.remoteSessionMemory)
         knownRemoteSessions = knownRemoteSessions.filter { $0.value.lastSeen > cutoff }
 
         let ordered = knownRemoteSessions
@@ -1741,7 +1771,7 @@ final class AppState: ObservableObject {
         // Session Focus knows what exists (SessionEnd removes instead).
         if event.kind != .sessionEnd {
             knownRemoteSessions[turnKey] = (cwd: event.cwd ?? knownRemoteSessions[turnKey]?.cwd,
-                                            lastSeen: Date())
+                                            lastSeen: remoteTurnClock.now)
         }
         // Focus gating: when a focus is set, only the focused session speaks,
         // buzzes, and drives the working light; everything still logs.
@@ -1808,11 +1838,10 @@ final class AppState: ObservableObject {
     /// Records a remote turn starting and schedules the expiry check that
     /// clears it if every ending signal (Stop, SessionEnd) is missed.
     private func beginRemoteTurn(key: String) {
-        remoteActiveTurns[key] = Date()
+        remoteActiveTurns[key] = remoteTurnClock.now
         refreshRemoteTurnActive()
 
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64((AppState.remoteTurnExpiry + 1) * 1_000_000_000))
+        remoteTurnClock.schedule(after: AppState.remoteTurnExpiry + 1) { [weak self] in
             guard let self else { return }
             self.refreshRemoteTurnActive()
             self.updateStatus()
@@ -1822,7 +1851,7 @@ final class AppState: ObservableObject {
     /// Recomputes `remoteTurnActive` from the per-session table, dropping
     /// entries whose sessions have gone silent past the expiry.
     private func refreshRemoteTurnActive() {
-        let cutoff = Date().addingTimeInterval(-AppState.remoteTurnExpiry)
+        let cutoff = remoteTurnClock.now.addingTimeInterval(-AppState.remoteTurnExpiry)
         remoteActiveTurns = remoteActiveTurns.filter { $0.value > cutoff }
         // With a focus set, only the focused session's turn lights the bar.
         let active: Bool

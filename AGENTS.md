@@ -126,7 +126,7 @@ another one.
 - **Construct:** in a `@MainActor` XCTestCase, call
   `env = try AppStateTestEnvironment(config:)` in setUp, where `config` is
   written to a sandboxed `config.json` and nil means first launch. Then
-  `let app = env.makeAppState(controller:speech:tts:claude:harness:remote:listener:audioDevices:transcriptStore:)`,
+  `let app = env.makeAppState(controller:speech:tts:claude:harness:remote:listener:audioDevices:transcriptStore:clock:)`,
   where every argument is optional. Call `env.tearDown()` in tearDown. The
   environment is `Tests/PowerUpTests/AppStateTestSupport.swift`. It calls the
   internal `AppState.init(configStore:…, sideEffects: [])`, so nothing
@@ -146,6 +146,14 @@ another one.
     `onDisconnect`), or invoke `onButtonDown`, `onButtonUp`, `onDisconnect`
     and `onLowBattery` directly. With `recordsOutput = true`, light and
     haptic writes are recorded in `recordedOutput`.
+  - `RecordingInjector` (`env.injector`). The environment's default
+    `remote` delivers into it, so remote mode records text and keys instead
+    of typing into cmux or the frontmost app. Never construct
+    `RemoteControlService()` in a test (the source scan rejects it); pass
+    `RemoteControlService(injector:)`. Deliver hooks through your own
+    `RemoteListener()` (`listener:`) by calling `onEvent`.
+  - `ManualRemoteTurnClock` (`clock:`). `advance(by:)` runs remote-turn
+    expiry checks that fall due; never wait 15 minutes.
 - **Conventions:**
   - Set `config.ttsEnabled = false`, because TTS is real and would speak.
   - Pin the mapping a test presses.
@@ -157,7 +165,7 @@ another one.
   - Assert on published state and on what the fakes recorded. Never assert
     on private fields or on the order of internal calls.
 - **Session rules are fixtures.** These are the rules for resume, restarts,
-  permissions, effort and turns. Pin one by adding a JSON scenario to
+  permissions, effort, turns and remote-mode turn tracking. Pin one by adding a JSON scenario to
   `Tests/Fixtures/session/`, named `<name>.json`, rather than writing a
   bespoke test. The format is documented in `Tests/Fixtures/README.md`.
   `SessionScenarioTests` runs every scenario through the seam. The parser is

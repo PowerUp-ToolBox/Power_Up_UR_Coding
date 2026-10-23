@@ -107,6 +107,11 @@ struct SessionScenario {
         case call(Call)
         case intent(Intent)
         case harnessEvent(HarnessEvent)
+        /// A Claude Code hook as the remote listener delivers it (remote mode).
+        case hookEvent(RemoteHookEvent)
+        /// Moves the scripted clock forward this many seconds, running the
+        /// expiry checks that fall due on the way. Never a sleep.
+        case advanceClock(TimeInterval)
     }
 
     struct Step {
@@ -142,6 +147,15 @@ struct SessionScenario {
         var liveModel: String??
         /// The model chip's label.
         var modelChip: String?
+        /// Remote mode: a remote turn drives the working state (the focused
+        /// session's, when a focus is set).
+        var remoteTurnActive: Bool?
+        /// Remote mode: the focused session id. `.some(nil)` asserts no focus
+        /// (every session is heard).
+        var remoteFocus: String??
+        /// Everything remote mode typed or pressed in the remote session, in
+        /// order and with an exact count.
+        var injectorCalls: [[String: ScenarioJSON]]?
     }
 
     static let formatVersion = 1
@@ -209,13 +223,6 @@ struct SessionScenario {
         config.effort = try reader.optionalString(fields["effort"], at: "$.config.effort")
         config.permissionMode = try reader.optionalString(fields["permissionMode"], at: "$.config.permissionMode")
         config.controlMode = try reader.optionalString(fields["controlMode"], at: "$.config.controlMode")
-        if config.controlMode == "remote" {
-            // Remote mode types into a real terminal (cmux / the frontmost
-            // app). The runner has no fake remote target yet, and the safety
-            // rails forbid driving the real one.
-            throw reader.error("$.config.controlMode",
-                               "\"remote\" needs a fake remote target, which this runner does not have yet")
-        }
         config.project = try reader.optionalBool(fields["project"], at: "$.config.project") ?? false
         config.lastSessionID = try reader.optionalString(fields["lastSessionID"], at: "$.config.lastSessionID")
         config.controllerConnected = try reader.optionalBool(fields["controllerConnected"],
@@ -226,8 +233,8 @@ struct SessionScenario {
     private static func parseStep(_ json: ScenarioJSON, number: Int, reader: inout Reader) throws -> Step {
         let path = "$.script[\(number - 1)]"
         let fields = try reader.object(json, at: path, allowed: [
-            "call", "intent", "harnessEvent", "text", "allow", "reason", "expectNoChange",
-            "settle", "expect",
+            "call", "intent", "harnessEvent", "hookEvent", "advanceClock", "text", "allow", "reason",
+            "expectNoChange", "settle", "expect",
         ])
         if let reason = fields["reason"] { _ = try reader.string(reason, at: "\(path).reason") }
         let expectNoChange = try reader.optionalBool(fields["expectNoChange"], at: "\(path).expectNoChange") ?? false
@@ -235,9 +242,10 @@ struct SessionScenario {
         let checkpoint = try fields["expect"].map {
             try parseExpectations($0, at: "\(path).expect", reader: &reader)
         }
-        let kinds = ["call", "intent", "harnessEvent"].filter { fields[$0] != nil }
+        let kinds = ["call", "intent", "harnessEvent", "hookEvent", "advanceClock"].filter { fields[$0] != nil }
         guard kinds.count == 1 else {
-            throw reader.error(path, "a step has exactly one of \"call\", \"intent\" or \"harnessEvent\"")
+            throw reader.error(path, "a step has exactly one of \"call\", \"intent\", \"harnessEvent\", "
+                               + "\"hookEvent\" or \"advanceClock\"")
         }
         let text = try reader.optionalString(fields["text"], at: "\(path).text")
         let allow = try reader.optionalBool(fields["allow"], at: "\(path).allow")
@@ -282,6 +290,12 @@ struct SessionScenario {
             }
             if name != "sendPrompt" { try unused("text", text) }
             action = .intent(parsed)
+        } else if let hook = fields["hookEvent"] {
+            try unused("text", text); try unused("allow", allow)
+            action = .hookEvent(try parseHookEvent(hook, at: "\(path).hookEvent", reader: &reader))
+        } else if let seconds = fields["advanceClock"] {
+            try unused("text", text); try unused("allow", allow)
+            action = .advanceClock(try reader.seconds(seconds, at: "\(path).advanceClock"))
         } else {
             try unused("text", text); try unused("allow", allow)
             action = .harnessEvent(try parseEvent(fields["harnessEvent"], at: "\(path).harnessEvent", reader: &reader))
@@ -355,6 +369,26 @@ struct SessionScenario {
         }
     }
 
+    /// A Claude Code hook as `RemoteListener` normalizes it, tagged by
+    /// `type` (the `RemoteHookEvent.Kind` case), with `sessionID`, `cwd` and
+    /// `text` (prompt / reply / message / tool name / end reason) optional.
+    private static func parseHookEvent(_ json: ScenarioJSON, at path: String,
+                                       reader: inout Reader) throws -> RemoteHookEvent {
+        let fields = try reader.object(json, at: path, allowed: ["type", "sessionID", "cwd", "text"])
+        let type = try reader.string(fields["type"], at: "\(path).type")
+        let kinds: [String: RemoteHookEvent.Kind] = [
+            "userPromptSubmit": .userPromptSubmit, "postToolUse": .postToolUse, "notification": .notification,
+            "stop": .stop, "sessionEnd": .sessionEnd,
+        ]
+        guard let kind = kinds[type] else {
+            throw reader.error("\(path).type", "unknown hook event \"\(type)\" (allowed: \(kinds.keys.sorted().joined(separator: ", ")))")
+        }
+        return RemoteHookEvent(kind: kind,
+                               text: try reader.optionalString(fields["text"], at: "\(path).text"),
+                               sessionID: try reader.optionalString(fields["sessionID"], at: "\(path).sessionID"),
+                               cwd: try reader.optionalString(fields["cwd"], at: "\(path).cwd"))
+    }
+
     static let statusNames = ["noController", "idle", "listening", "thinking", "speaking"]
     static let transcriptKinds = ["user", "assistant", "tool", "system", "error"]
     static let callTypes: [String: Set<String>] = [
@@ -367,6 +401,10 @@ struct SessionScenario {
         "respondToPermission": ["id", "allow"],
         "stop": [],
     ]
+    static let injectorCallTypes: [String: Set<String>] = [
+        "text": ["text", "submit"],
+        "key": ["key"],
+    ]
 
     private static func parseExpectations(_ json: ScenarioJSON?, at root: String,
                                           reader: inout Reader) throws -> Expectations {
@@ -374,6 +412,7 @@ struct SessionScenario {
         let fields = try reader.object(json, at: root, allowed: [
             "harnessCalls", "transcript", "errorShown", "lastSessionID", "pendingPermission",
             "pendingPermissionArmed", "status", "liveModel", "modelChip",
+            "remoteTurnActive", "remoteFocus", "injectorCalls",
         ])
         guard !fields.isEmpty else { throw reader.error(root, "expects nothing") }
         var expect = Expectations()
@@ -421,6 +460,24 @@ struct SessionScenario {
             expect.liveModel = .some(try reader.optionalString(model, at: "\(root).liveModel"))
         }
         expect.modelChip = try reader.optionalString(fields["modelChip"], at: "\(root).modelChip")
+        expect.remoteTurnActive = try reader.optionalBool(fields["remoteTurnActive"], at: "\(root).remoteTurnActive")
+        if let focus = fields["remoteFocus"] {
+            expect.remoteFocus = .some(try reader.optionalString(focus, at: "\(root).remoteFocus"))
+        }
+        if let calls = fields["injectorCalls"] {
+            guard case .array(let items) = calls else { throw reader.error("\(root).injectorCalls", "must be an array") }
+            expect.injectorCalls = try items.enumerated().map { index, item in
+                let path = "\(root).injectorCalls[\(index)]"
+                guard case .object(let object) = item, let typeJSON = object["type"] else {
+                    throw reader.error(path, "must be an object with a \"type\"")
+                }
+                let type = try reader.string(typeJSON, at: "\(path).type")
+                guard let allowed = injectorCallTypes[type] else {
+                    throw reader.error("\(path).type", "unknown injector call \"\(type)\"")
+                }
+                return try reader.object(item, at: path, allowed: allowed.union(["type"]))
+            }
+        }
         return expect
     }
 
@@ -472,6 +529,14 @@ struct SessionScenario {
             return Int(value)
         }
 
+        /// A finite, non-negative number of seconds.
+        func seconds(_ json: ScenarioJSON?, at path: String) throws -> TimeInterval {
+            guard case .number(let value)? = json, value.isFinite, value >= 0 else {
+                throw error(path, "must be a number of seconds, zero or more")
+            }
+            return value
+        }
+
         func optionalDouble(_ json: ScenarioJSON?, at path: String) throws -> Double? {
             guard let json, json != .null else { return nil }
             guard case .number(let value) = json else { throw error(path, "must be a number") }
@@ -483,8 +548,10 @@ struct SessionScenario {
 // MARK: - Runner
 
 /// Plays a scenario through the AppState seam (#110) with a scripted
-/// `FakeHarnessAdapter` (#111) and returns every mismatch, each prefixed with
-/// the scenario name. An empty result means the scenario passed.
+/// `FakeHarnessAdapter` (#111), a `RecordingInjector` standing in for the
+/// remote session and a `ManualRemoteTurnClock` (#118), and returns every
+/// mismatch, each prefixed with the scenario name. An empty result means the
+/// scenario passed.
 @MainActor
 enum SessionScenarioRunner {
 
@@ -555,26 +622,31 @@ enum SessionScenarioRunner {
         // the built-in Claude adapter switches effort by restart + resume,
         // ACP agents have no effort setting (Harness.swift defaults).
         harness.supportsEffort = scenario.config.harnessKind != "acp"
-        let app = env.makeAppState(controller: controller, harness: harness)
+        // Hooks arrive through the listener's callback; it never binds a port
+        // here (the environment skips `.syncListener`). Remote mode types into
+        // the environment's recording injector, never a real terminal.
+        let listener = RemoteListener()
+        let clock = ManualRemoteTurnClock()
+        let injector = env.injector
+        let app = env.makeAppState(controller: controller, harness: harness, listener: listener, clock: clock)
         await settle()
 
         // Facts are measured from here: anything AppState logged while being
         // built is not part of the script.
         let transcriptBase = app.transcript.count
         harness.clearCalls()
+        injector.clearCalls()
         let projectPath = scenario.config.project ? projectURL.path : nil
+        func observe() -> Observation {
+            observation(app, harness, injector, transcriptBase: transcriptBase, projectPath: projectPath)
+        }
 
         var failures: [String] = []
         for step in scenario.script {
-            if app.isRemoteMode {
-                failures.append("\(prefix) step \(step.number) \(step.label): AppState is in remote mode; "
-                                + "this runner has no fake remote target, so it stops here")
-                return failures
-            }
-            let before = observation(app, harness, transcriptBase: transcriptBase, projectPath: projectPath)
-            perform(step.action, on: app, harness: harness)
+            let before = observe()
+            perform(step.action, on: app, harness: harness, listener: listener, clock: clock)
             if step.settle { await settle() }
-            let after = observation(app, harness, transcriptBase: transcriptBase, projectPath: projectPath)
+            let after = observe()
             if step.expectNoChange, let difference = firstDifference(before, after) {
                 failures.append("\(prefix) step \(step.number) \(step.label) is tagged expectNoChange "
                                 + "but changed \(difference)")
@@ -586,18 +658,23 @@ enum SessionScenarioRunner {
             }
         }
 
-        let final = observation(app, harness, transcriptBase: transcriptBase, projectPath: projectPath)
+        let final = observe()
         failures += compare(scenario.expect, with: final).map { "\(prefix) \($0)" }
-        withExtendedLifetime(app) {}
+        withExtendedLifetime((app, listener)) {}
         return failures
     }
 
     // MARK: Playing a step
 
-    private static func perform(_ action: SessionScenario.Action, on app: AppState, harness: FakeHarnessAdapter) {
+    private static func perform(_ action: SessionScenario.Action, on app: AppState, harness: FakeHarnessAdapter,
+                                listener: RemoteListener, clock: ManualRemoteTurnClock) {
         switch action {
         case .harnessEvent(let event):
             harness.emit(event)
+        case .hookEvent(let event):
+            listener.onEvent?(event)
+        case .advanceClock(let seconds):
+            clock.advance(by: seconds)
         case .intent(let intent):
             app.handle(intent)
         case .call(let call):
@@ -627,9 +704,12 @@ enum SessionScenarioRunner {
         var status: String
         var liveModel: String?
         var modelChip: String
+        var remoteTurnActive: Bool
+        var remoteFocus: String?
+        var injectorCalls: [[String: ScenarioJSON]]
     }
 
-    private static func observation(_ app: AppState, _ harness: FakeHarnessAdapter,
+    private static func observation(_ app: AppState, _ harness: FakeHarnessAdapter, _ injector: RecordingInjector,
                                     transcriptBase: Int, projectPath: String?) -> Observation {
         Observation(
             harnessCalls: harness.calls.map { describe($0, projectPath: projectPath) },
@@ -641,7 +721,25 @@ enum SessionScenarioRunner {
             pendingPermissionArmed: app.pendingPermission?.armed ?? false,
             status: statusName(app.status),
             liveModel: app.harnessReportedModel,
-            modelChip: app.modelChipLabel)
+            modelChip: app.modelChipLabel,
+            remoteTurnActive: app.remoteTurnActive,
+            remoteFocus: app.remoteFocusSessionID,
+            injectorCalls: injector.calls.map(describe))
+    }
+
+    private static func describe(_ call: RecordingInjector.Call) -> [String: ScenarioJSON] {
+        switch call {
+        case .text(let text, let submit):
+            return ["type": .string("text"), "text": .string(text), "submit": .bool(submit)]
+        case .key(let key):
+            let name: String
+            switch key {
+            case .enter: name = "enter"
+            case .escape: name = "escape"
+            case .shiftTab: name = "shiftTab"
+            }
+            return ["type": .string("key"), "key": .string(name)]
+        }
     }
 
     private static func statusName(_ status: AppStatus) -> String {
@@ -713,6 +811,16 @@ enum SessionScenarioRunner {
         if before.modelChip != after.modelChip {
             return "modelChip (\(before.modelChip) → \(after.modelChip))"
         }
+        if before.remoteTurnActive != after.remoteTurnActive {
+            return "remoteTurnActive (\(before.remoteTurnActive) → \(after.remoteTurnActive))"
+        }
+        if before.remoteFocus != after.remoteFocus {
+            return "remoteFocus (\(before.remoteFocus ?? "null") → \(after.remoteFocus ?? "null"))"
+        }
+        if before.injectorCalls != after.injectorCalls {
+            let added = after.injectorCalls.dropFirst(before.injectorCalls.count).map { ScenarioJSON.object($0).description }
+            return "injectorCalls (recorded \(added.joined(separator: ", ")))"
+        }
         return nil
     }
 
@@ -746,6 +854,7 @@ enum SessionScenarioRunner {
         }
 
         if let calls = expect.harnessCalls { compareList("harnessCalls", calls, actual.harnessCalls) }
+        if let calls = expect.injectorCalls { compareList("injectorCalls", calls, actual.injectorCalls) }
         if let transcript = expect.transcript { compareList("transcript", transcript, actual.transcript) }
         if let errorShown = expect.errorShown {
             let shown = actual.transcript.contains { $0["kind"] == .string("error") }
@@ -772,6 +881,13 @@ enum SessionScenarioRunner {
         }
         if let chip = expect.modelChip, chip != actual.modelChip {
             failures.append("\(root).modelChip: expected \"\(chip)\", got \"\(actual.modelChip)\"")
+        }
+        if let active = expect.remoteTurnActive, active != actual.remoteTurnActive {
+            failures.append("\(root).remoteTurnActive: expected \(active), got \(actual.remoteTurnActive)")
+        }
+        if let wanted = expect.remoteFocus, wanted != actual.remoteFocus {
+            failures.append("\(root).remoteFocus: expected \(wanted.map { "\"\($0)\"" } ?? "null"), "
+                            + "got \(actual.remoteFocus.map { "\"\($0)\"" } ?? "null")")
         }
         return failures
     }

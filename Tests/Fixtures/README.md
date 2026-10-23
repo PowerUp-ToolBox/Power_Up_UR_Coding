@@ -24,7 +24,8 @@ CI fails if this directory holds no JSON fixtures.
 ## `session/`: session scenarios (format 1)
 
 Each file is one rule of the session state machine (epic #92), played
-through AppState's test seam with a scripted harness. The file is named
+through AppState's test seam with a scripted harness, a recording injector
+standing in for the remote session, and a scripted clock. The file is named
 `<name>.json`. To pin a new session rule, add a scenario here rather than
 writing a bespoke test. The Swift runner is
 `Tests/PowerUpTests/SessionScenario.swift`, and the table test is
@@ -60,7 +61,7 @@ Anything not set here comes from the default config, with TTS off.
 | Key | Meaning |
 | --- | --- |
 | `harnessKind`, `model`, `effort`, `permissionMode` | the `AppConfig` fields of the same name. The scripted harness reports the capabilities of the adapter it stands in for: `"claude"` supports effort (restart + resume), `"acp"` does not |
-| `controlMode` | `"builtin"` only for now; `"remote"` is refused until the runner has a fake remote target |
+| `controlMode` | `"builtin"` or `"remote"`. In remote mode nothing is typed into a real terminal: every text and key goes to a recording injector (see `injectorCalls`) |
 | `project` | `true`: a fresh project folder, written `"$project"` in expectations; default `false` (no folder chosen) |
 | `lastSessionID` | the stored resumable id (it also seeds the folder's own entry, as on a real launch) |
 | `controllerConnected` | `true`: a simulated pad is connected before AppState is built |
@@ -88,6 +89,18 @@ Each step has exactly one of these:
   - `notification {message}`
   - `runtimeError {message}`
   - `ended {exitCode}`
+- `"hookEvent"`: one Claude Code hook as PowerUp's listener delivers it in
+  remote mode (`RemoteHookEvent`), tagged by `type`: `userPromptSubmit`,
+  `postToolUse` (the heartbeat), `notification`, `stop` or `sessionEnd`.
+  The optional fields are `sessionID`, `cwd` and `text` (the prompt, the
+  reply, the message, the tool name or the end reason, by type). A missing
+  `sessionID` is tracked as one shared unknown session.
+- `"advanceClock"`: a number of seconds (zero or more). The scripted clock
+  moves forward, and every remote-turn expiry check that falls due on the
+  way runs at its due time. Time never passes otherwise, and nothing
+  sleeps. The remote-turn expiry is 15 minutes (900 seconds) without a sign
+  of life; scenarios check just under it (`899`) and just past it (`901`)
+  rather than the exact instant.
 
 A step may also carry:
 
@@ -123,6 +136,9 @@ acknowledged `set_model` `controlResult` sets its model, and `ended` or
 | `status` | `noController`, `idle`, `listening`, `thinking` or `speaking` |
 | `liveModel` | the model the harness last reported (its init echo, or an acknowledged switch), sent to protocol clients as `liveModel`; `null` when nothing has been reported |
 | `modelChip` | the model chip's label: the configured model when it is an explicit alias, otherwise `liveModel`, otherwise `"default"` |
+| `remoteTurnActive` | remote mode: a remote turn is in flight (the focused session's, when a focus is set). This is what lights the working status in remote mode |
+| `remoteFocus` | remote mode: the focused session id, or `null` when every session is heard |
+| `injectorCalls` | everything remote mode delivered into the remote session, in order and with an exact count: `text {text, submit}` (text after line breaks are flattened; `submit` presses Enter after it) or `key {key}`, where key is `enter`, `escape` or `shiftTab` |
 
 A failure names the scenario and its first mismatched expectation. For
 example: `[resume-failure-retried-once-without-resume] (….json)

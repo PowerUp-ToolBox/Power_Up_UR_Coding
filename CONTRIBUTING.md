@@ -115,6 +115,14 @@ final class MyScenarioTests: XCTestCase {
     `onButtonDown`, `onButtonUp`, `onDisconnect` and `onLowBattery`
     directly. Set `recordsOutput = true` to read the light and haptic
     writes back from `recordedOutput` (they still go to a real pad).
+  - **Remote mode** never types into a real terminal in a test: the
+    environment's default `remote` service delivers into `env.injector`, a
+    `RecordingInjector` that records every text and key (`calls`) and can
+    report a scripted `failure`. Deliver Claude Code hooks by passing your
+    own `RemoteListener()` as `listener:` and calling its `onEvent`.
+  - **Remote-turn time:** pass a `ManualRemoteTurnClock` as `clock:` and
+    call `advance(by:)` to make a silent remote turn expire. Never wait for
+    it.
 - A good test plays one scenario through public entry points (a fake's
   callback, a public method, an intent). It asserts on published state and
   on what the fakes recorded. It never reads private fields and never
@@ -127,7 +135,8 @@ final class MyScenarioTests: XCTestCase {
   sends a prompt. Without it, no session starts.
 
 **Session rules are data.** A session rule is anything that happens between
-the person and the harness: resume, restarts, permissions, effort or turns.
+the person and the harness: resume, restarts, permissions, effort, turns,
+or remote-mode turn tracking (hook events, heartbeats, expiry, focus).
 Pin it by adding a JSON scenario to `Tests/Fixtures/session/` instead of
 writing a bespoke test. `SessionScenarioTests` finds every file there and
 plays it through the same seam with a `FakeHarnessAdapter`. A broken rule

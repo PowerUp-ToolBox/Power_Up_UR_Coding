@@ -1,0 +1,33 @@
+{
+  "formatVersion": 1,
+  "name": "remote-session-end-of-an-idle-session-is-silent",
+  "description": "A remote session that has no turn in flight ends. Nothing observable changes: no transcript note, no status change. Another session's live turn is untouched.",
+  "reason": "Claude sessions end on this machine all the time. Only a session PowerUp believed was working is worth a note, and one session ending must not clear another's turn.",
+  "source": "DESIGN.md v1.10 'sessions we weren't tracking end silently'; AppState.handleRemoteEvent(.sessionEnd)",
+  "verifiedBy": ["swift"],
+  "config": {
+    "controlMode": "remote",
+    "controllerConnected": true
+  },
+  "script": [
+    {
+      "hookEvent": { "type": "userPromptSubmit", "sessionID": "session-alpha", "cwd": "/work/alpha", "text": "Fix the build." },
+      "reason": "Session alpha is working."
+    },
+    {
+      "hookEvent": { "type": "stop", "sessionID": "session-beta", "cwd": "/work/beta" },
+      "reason": "Session beta is seen, idle."
+    },
+    {
+      "hookEvent": { "type": "sessionEnd", "sessionID": "session-beta", "cwd": "/work/beta", "text": "logout" },
+      "reason": "The idle session ends.",
+      "expectNoChange": true
+    }
+  ],
+  "expect": {
+    "status": "thinking",
+    "remoteTurnActive": true,
+    "transcript": [],
+    "injectorCalls": []
+  }
+}

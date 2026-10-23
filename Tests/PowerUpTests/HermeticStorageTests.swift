@@ -133,9 +133,10 @@ final class HermeticStorageTests: XCTestCase {
     // MARK: No suite bypasses the seams
 
     /// A source scan of the test target: the constructions below resolve the
-    /// real configuration, support folder or Claude settings file, so a test
-    /// that uses them would touch the person's own data. Use
-    /// `AppStateTestEnvironment` (or pass `settingsURL:` / set the overrides)
+    /// real configuration, support folder or Claude settings file, or type
+    /// into the person's real terminal, so a test that uses them would touch
+    /// the person's own data. Use `AppStateTestEnvironment` (or pass
+    /// `settingsURL:` / set the overrides, or inject a `RecordingInjector`)
     /// and park the overrides with `TestSandbox` in tearDown instead.
     func testNoTestSourceBypassesTheStorageSeams() throws {
         let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
@@ -154,6 +155,8 @@ final class HermeticStorageTests: XCTestCase {
             ("HookInstaller.defaultSettingsURL", "that is the real ~/.claude/settings.json unless the override is set"),
             ("supportDirectoryOverride = nil", "park the override with TestSandbox instead of reverting to the real folder"),
             ("settingsURLOverride = nil", "park the override with TestSandbox instead of reverting to the real file"),
+            ("RemoteControlService()", "the production remote service types into the real terminal (cmux or the "
+                + "frontmost app); pass RemoteControlService(injector: RecordingInjector())"),
         ]
         // HookInstaller entry points whose settings path defaults to the real
         // file: in a test they must name `settingsURL:` explicitly.

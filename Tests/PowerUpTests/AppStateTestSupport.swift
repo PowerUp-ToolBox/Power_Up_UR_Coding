@@ -11,7 +11,9 @@ import XCTest
 /// overrides) and `~/.claude/settings.json` (`HookInstaller.settingsURLOverride`),
 /// so AppState's hook install/uninstall edits a throwaway copy. No controller, audio device listener, loopback port, keyboard
 /// monitor, terminate observer or cmux probe is started, so a test needs no
-/// hardware, prompts nobody and binds nothing.
+/// hardware, prompts nobody and binds nothing. Remote mode delivers into
+/// `injector` (a `RecordingInjector`) unless a test passes its own `remote`,
+/// so nothing is ever typed into a real terminal.
 ///
 /// Usage (from a `@MainActor` XCTestCase):
 ///
@@ -32,6 +34,9 @@ final class AppStateTestEnvironment {
     /// Stands in for `~/.claude/settings.json` (where the remote-control
     /// hooks are registered).
     let settingsURL: URL
+    /// Records what remote mode would type or press. The default `remote`
+    /// service delivers here instead of into cmux or the frontmost app.
+    let injector = RecordingInjector()
 
     /// - Parameter config: written to the sandboxed `config.json` before any
     ///   store reads it; nil starts from no file at all (first launch).
@@ -62,7 +67,9 @@ final class AppStateTestEnvironment {
     /// handle on one), with every start-up side effect skipped. Pass a
     /// `FakeHarnessAdapter` as `harness` to script the session, and
     /// `SpeechService(engine: ScriptedSpeechEngine())` as `speech` to script
-    /// what the microphone "hears".
+    /// what the microphone "hears", and a `ManualRemoteTurnClock` as `clock`
+    /// to drive remote-turn expiry by advancing time. Without a `remote`,
+    /// remote mode delivers into `injector`.
     func makeAppState(configStore: ConfigStore? = nil,
                       controller: ControllerService? = nil,
                       speech: SpeechService? = nil,
@@ -72,17 +79,19 @@ final class AppStateTestEnvironment {
                       remote: RemoteControlService? = nil,
                       listener: RemoteListener? = nil,
                       audioDevices: AudioDeviceStore? = nil,
-                      transcriptStore: TranscriptStore? = nil) -> AppState {
+                      transcriptStore: TranscriptStore? = nil,
+                      clock: (any RemoteTurnClock)? = nil) -> AppState {
         AppState(configStore: configStore ?? makeConfigStore(),
                  controller: controller,
                  speech: speech,
                  tts: tts,
                  claude: claude,
                  harness: harness,
-                 remote: remote,
+                 remote: remote ?? RemoteControlService(injector: injector),
                  listener: listener,
                  audioDevices: audioDevices,
                  transcriptStore: transcriptStore,
+                 clock: clock,
                  sideEffects: [])
     }
 

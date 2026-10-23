@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "name": "remote-session-end-clears-a-working-turn",
+  "description": "A remote session closes mid-turn: its SessionEnd arrives with no Stop before it. The working state clears at once and the transcript notes that the session ended before replying.",
+  "reason": "SessionEnd is the only signal a session that dies mid-turn ever sends. Before it was handled, the light stayed amber after the terminal was closed.",
+  "source": "DESIGN.md v1.10 'sessionEnd for a session we believed was working appends a .system entry \"Claude session ended before replying.\" (label-prefixed by cwd)'; AppState.handleRemoteEvent(.sessionEnd)",
+  "verifiedBy": ["swift"],
+  "config": {
+    "controlMode": "remote",
+    "controllerConnected": true
+  },
+  "script": [
+    {
+      "hookEvent": { "type": "userPromptSubmit", "sessionID": "session-alpha", "cwd": "/work/alpha", "text": "Run the tests." },
+      "reason": "The turn starts.",
+      "expect": { "status": "thinking" }
+    },
+    {
+      "hookEvent": { "type": "sessionEnd", "sessionID": "session-alpha", "cwd": "/work/alpha", "text": "prompt_input_exit" },
+      "reason": "The terminal is closed mid-turn."
+    }
+  ],
+  "expect": {
+    "status": "idle",
+    "remoteTurnActive": false,
+    "transcript": [
+      { "kind": "system", "text": "[alpha] Claude session ended before replying." }
+    ],
+    "injectorCalls": []
+  }
+}

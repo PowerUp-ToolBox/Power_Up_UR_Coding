@@ -228,13 +228,79 @@ final class SessionScenarioTests: XCTestCase {
         }
     }
 
-    func testRemoteModeScenariosAreRefusedUntilAFakeRemoteTargetExists() throws {
-        var json = try Self.fixture("resume-failure-retried-once-without-resume")
-        json = Self.replacing(json, at: ["config", "controlMode"], with: .string("remote"))
+    func testAdvanceClockMustBeANonNegativeNumberOfSeconds() throws {
+        var json = try Self.fixture("remote-turn-expires-after-fifteen-silent-minutes")
+        json = Self.replacing(json, at: ["script", 1, "advanceClock"], with: .number(-1))
 
-        XCTAssertThrowsError(try SessionScenario(json: json, file: "remote.json")) { error in
-            XCTAssertTrue(String(describing: error).contains("$.config.controlMode"), "\(error)")
+        XCTAssertThrowsError(try SessionScenario(json: json, file: "clock.json")) { error in
+            XCTAssertTrue(String(describing: error).contains("$.script[1].advanceClock"), "\(error)")
         }
+    }
+
+    func testAnUnknownHookEventIsALoadError() throws {
+        var json = try Self.fixture("remote-turn-expires-after-fifteen-silent-minutes")
+        json = Self.replacing(json, at: ["script", 0, "hookEvent", "type"], with: .string("preToolUse"))
+
+        XCTAssertThrowsError(try SessionScenario(json: json, file: "hook.json")) { error in
+            XCTAssertTrue(String(describing: error).contains("$.script[0].hookEvent.type"), "\(error)")
+        }
+    }
+
+    // MARK: Remote mode (#118)
+
+    func testRemoteModeTypesIntoTheRecordingInjectorNeverARealTerminal() async throws {
+        let scenario = try SessionScenario(json: Self.json("""
+            {
+              "formatVersion": 1, "name": "probe-remote", "description": "d", "reason": "r",
+              "verifiedBy": ["swift"],
+              "config": { "controlMode": "remote" },
+              "script": [
+                { "intent": "sendPrompt", "text": "Hello there" },
+                { "intent": "reject" }
+              ],
+              "expect": {
+                "injectorCalls": [
+                  { "type": "text", "text": "Hello there", "submit": true },
+                  { "type": "key", "key": "enter" }
+                ]
+              }
+            }
+            """), file: "probe.json")
+
+        let failures = await SessionScenarioRunner.run(scenario)
+
+        // Reject is Escape in remote mode, not Enter: the mismatch shows the
+        // recording is real and compared element by element.
+        XCTAssertEqual(failures.count, 1, "\(failures)")
+        let message = try XCTUnwrap(failures.first)
+        XCTAssertTrue(message.hasPrefix("[probe-remote]"), message)
+        XCTAssertTrue(message.contains("expect.injectorCalls[1].key: expected \"enter\", got \"escape\""), message)
+    }
+
+    func testAnExpiringRemoteTurnIsAnObservableChange() async throws {
+        var json = try Self.fixture("remote-turn-expires-after-fifteen-silent-minutes")
+        json = Self.replacing(json, at: ["script", 2, "expectNoChange"], with: .bool(true))
+        let scenario = try SessionScenario(json: json, file: "expiry.json")
+
+        let failures = await SessionScenarioRunner.run(scenario)
+
+        XCTAssertEqual(failures.count, 1, "\(failures)")
+        let message = try XCTUnwrap(failures.first)
+        XCTAssertTrue(message.contains("step 3"), message)
+        XCTAssertTrue(message.contains("status (thinking → idle)"), message)
+    }
+
+    func testWithoutAdvancingTheClockARemoteTurnNeverExpires() async throws {
+        // The expiry is driven by the scripted clock alone: drop the step that
+        // crosses fifteen minutes and the turn is still working at the end.
+        var json = try Self.fixture("remote-turn-expires-after-fifteen-silent-minutes")
+        json = Self.replacing(json, at: ["script", 2, "advanceClock"], with: .number(0))
+        let scenario = try SessionScenario(json: json, file: "frozen.json")
+
+        let failures = await SessionScenarioRunner.run(scenario)
+
+        let first = try XCTUnwrap(failures.first, "the turn should still be working")
+        XCTAssertTrue(first.contains("expect.status: expected \"idle\", got \"thinking\""), first)
     }
 
     // MARK: Helpers

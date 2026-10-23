@@ -1351,6 +1351,14 @@ nonsense.
   crashed CLI, Escape pressed directly in the session). A legitimate longer
   turn may go idle early and self-corrects on its next hook event; the
   reverse tradeoff (amber forever) has no recovery.
+  *Amended by #118:* every sign of life that refreshes an entry (a
+  `userPromptSubmit`, a v2.2 `postToolUse` heartbeat, or a `notification`
+  for a turn already tracked) also re-arms the expiry check, so an entry
+  clears 15 minutes after its LAST sign of life whatever that sign was. A
+  notification used to refresh the timestamp without re-arming, which left
+  a turn that went silent after a notification amber until an unrelated
+  hook pruned it. Pinned by the `remote-*` scenarios in
+  `Tests/Fixtures/session/`.
 - `sessionEnd` for a session we believed was working appends a `.system`
   entry "Claude session ended before replying." (label-prefixed by cwd);
   sessions we weren't tracking end silently.

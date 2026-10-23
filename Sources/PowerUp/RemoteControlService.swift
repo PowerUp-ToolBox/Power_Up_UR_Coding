@@ -39,6 +39,21 @@ struct CmuxWorkspace: Identifiable, Hashable {
     }
 }
 
+// MARK: - RemoteInjector
+
+/// Where remote mode's text and keys are delivered, when something other than
+/// the real routes should receive them. Internal test seam (#118): a test
+/// injects a recorder so remote mode never types into the person's real
+/// terminal. Production passes nothing and keeps the cmux / Accessibility
+/// typing routes below. Completions are called on the main actor, once.
+@MainActor
+protocol RemoteInjector: AnyObject {
+    func injectText(_ text: String, submit: Bool, config: AppConfig,
+                    completion: @escaping (String?) -> Void)
+    func injectKey(_ key: RemoteControlService.RemoteKey, config: AppConfig,
+                   completion: @escaping (String?) -> Void)
+}
+
 // MARK: - RemoteControlService
 
 /// Delivers text and keystrokes into a Claude Code session PowerUp does not own.
@@ -112,6 +127,15 @@ final class RemoteControlService: ObservableObject {
 
     private var isRefreshing = false
     private var axRecheckCount = 0
+
+    /// Replaces every delivery route when set (test seam); nil in the app.
+    private let injector: (any RemoteInjector)?
+
+    /// - Parameter injector: nil (the app) delivers through cmux or
+    ///   Accessibility typing; a test passes a recorder.
+    init(injector: (any RemoteInjector)? = nil) {
+        self.injector = injector
+    }
 
     // MARK: - Status
 
@@ -206,6 +230,11 @@ final class RemoteControlService: ObservableObject {
         // Flatten real line breaks so the prompt arrives as one prompt.
         let text = RemoteControlService.flattenLineBreaks(in: text)
 
+        if let injector {
+            injector.injectText(text, submit: submit, config: config, completion: completion)
+            return
+        }
+
         switch RemoteControlService.route(for: config) {
         case .cmux:
             let workspace = RemoteControlService.trimmedOrNil(config.remoteCmuxWorkspace)
@@ -235,6 +264,11 @@ final class RemoteControlService: ObservableObject {
     func sendKey(_ key: RemoteKey,
                  config: AppConfig,
                  completion: @escaping (String?) -> Void) {
+
+        if let injector {
+            injector.injectKey(key, config: config, completion: completion)
+            return
+        }
 
         switch RemoteControlService.route(for: config) {
         case .cmux:
