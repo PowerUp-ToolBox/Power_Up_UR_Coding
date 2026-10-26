@@ -806,7 +806,8 @@ enum SessionScenarioRunner {
             if let value = change.acpAgent { app.configStore.config.acpAgent = value }
             if let value = change.acpCustomCommand { app.configStore.config.acpCustomCommand = value }
         case .hookEvent(let event):
-            listener.onEvent?(event)
+            listener.onEvent?(RemoteHookEvent(kind: event.kind, text: event.text, sessionID: event.sessionID,
+                                              cwd: try event.cwd.map(projects.path)))
         case .advanceClock(let seconds):
             clock.advance(by: seconds)
         case .intent(let intent):
@@ -900,6 +901,16 @@ enum SessionScenarioRunner {
             let url = sandbox.appendingPathComponent(name, isDirectory: true)
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
             return url
+        }
+
+        /// A hook's `cwd` as written in a fixture: `$<name>` is that sandbox
+        /// folder, `$<name>/sub/dir` a folder below it, anything else a path.
+        func path(_ written: String) throws -> String {
+            guard written.hasPrefix("$") else { return written }
+            let parts = written.dropFirst().split(separator: "/", maxSplits: 1)
+            var url = try folder(String(parts.first ?? ""))
+            if parts.count > 1 { url.appendPathComponent(String(parts[1]), isDirectory: true) }
+            return url.path
         }
 
         /// `$<name>` for a sandbox folder, the path itself otherwise.

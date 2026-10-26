@@ -28,7 +28,7 @@
       }
     },
     {
-      "hookEvent": { "type": "userPromptSubmit", "sessionID": "session-1", "cwd": "/work/app", "text": "Echo." },
+      "hookEvent": { "type": "userPromptSubmit", "sessionID": "session-1", "cwd": "$project", "text": "Echo." },
       "reason": "Our own exiting session's hook: dropped.",
       "expectNoChange": true
     },
@@ -38,7 +38,7 @@
       "expect": { "liveSessionID": null, "status": "idle" }
     },
     {
-      "hookEvent": { "type": "userPromptSubmit", "sessionID": "session-1", "cwd": "/work/app", "text": "Carry on." },
+      "hookEvent": { "type": "userPromptSubmit", "sessionID": "session-1", "cwd": "$project", "text": "Carry on." },
       "reason": "The person resumed the conversation in a terminal. That session is somebody else's now, and it is heard."
     }
   ],

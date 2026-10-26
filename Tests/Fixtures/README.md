@@ -146,7 +146,9 @@ Each step has exactly one of these:
   `postToolUse` (the heartbeat), `notification`, `stop` or `sessionEnd`.
   The optional fields are `sessionID`, `cwd` and `text` (the prompt, the
   reply, the message, the tool name or the end reason, by type). A missing
-  `sessionID` is tracked as one shared unknown session.
+  `sessionID` is tracked as one shared unknown session. A `cwd` written
+  `$<name>` is that sandbox folder (`$project` is the configured one), and
+  `$<name>/sub/dir` a folder below it.
 - `"advanceClock"`: a number of seconds (zero or more). The scripted clock
   moves forward, and every remote-turn expiry check that falls due on the
   way runs at its due time. Time never passes otherwise, and nothing

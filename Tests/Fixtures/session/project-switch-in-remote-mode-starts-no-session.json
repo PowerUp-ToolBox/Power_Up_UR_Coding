@@ -1,7 +1,7 @@
 {
   "formatVersion": 1,
   "name": "project-switch-in-remote-mode-starts-no-session",
-  "description": "In remote mode, switching project folders only changes which folder labels read-back. PowerUp starts no session of its own and types nothing into the remote session.",
+  "description": "In remote mode, switching project folders only changes which sessions are heard (DESIGN v2.8 A). PowerUp starts no session of its own and types nothing into the remote session.",
   "reason": "Remote mode drives a session the person is already running. Starting PowerUp's own session would duplicate the work and echo its own hooks back.",
   "source": "DESIGN.md v2.1 B 'adoptProject … (built-in mode) restarts the session'; AppState.adoptProject",
   "verifiedBy": ["swift"],

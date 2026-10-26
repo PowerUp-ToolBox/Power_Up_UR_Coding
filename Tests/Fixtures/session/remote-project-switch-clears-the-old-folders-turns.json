@@ -1,0 +1,45 @@
+{
+  "formatVersion": 1,
+  "name": "remote-project-switch-clears-the-old-folders-turns",
+  "description": "In remote mode a session in the project folder is mid-turn when the person switches to another folder. The old folder's turn is dropped with the switch, so the status goes idle at once, and that session's later reply is not heard.",
+  "reason": "Once the folder changes, the old folder's hooks are filtered out, including the Stop that would end its turn. Keeping the turn would leave the light on thinking until the fifteen-minute expiry.",
+  "source": "DESIGN.md v2.8 addendum A (remote read-back is scoped to the project folder); AppState.adoptProject",
+  "verifiedBy": ["swift"],
+  "config": {
+    "controlMode": "remote",
+    "project": true,
+    "controllerConnected": true
+  },
+  "script": [
+    {
+      "hookEvent": { "type": "userPromptSubmit", "sessionID": "session-here", "cwd": "$project", "text": "Fix the build." },
+      "expect": { "status": "thinking", "remoteTurnActive": true }
+    },
+    {
+      "call": "switchProject",
+      "project": "other",
+      "reason": "The person picks another folder while that turn is running.",
+      "expect": { "status": "idle", "remoteTurnActive": false }
+    },
+    {
+      "hookEvent": { "type": "stop", "sessionID": "session-here", "cwd": "$project", "text": "Build fixed." },
+      "reason": "The old folder's reply arrives after the switch: not heard.",
+      "expectNoChange": true
+    },
+    {
+      "hookEvent": { "type": "stop", "sessionID": "session-other", "cwd": "$other", "text": "Other folder done." },
+      "reason": "The new folder's sessions are heard."
+    }
+  ],
+  "expect": {
+    "transcript": [
+      { "kind": "system", "text": "Project folder: other" },
+      { "kind": "assistant", "text": "Other folder done." }
+    ],
+    "status": "idle",
+    "remoteTurnActive": false,
+    "injectorCalls": [],
+    "harnessCalls": [],
+    "errorShown": false
+  }
+}
