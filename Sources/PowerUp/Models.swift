@@ -61,14 +61,14 @@ enum ControllerButton: String, Codable, CaseIterable, Identifiable, Hashable {
     }
 }
 
-/// Makes `[ControllerButton: ControllerAction]` encode as a keyed JSON object
+/// Makes `[ControllerButton: Action]` encode as a keyed JSON object
 /// (button name → action) instead of a flat array of alternating keys/values.
 /// The default implementation for String-raw-value types does the work.
 extension ControllerButton: CodingKeyRepresentable {}
 
-// MARK: - ControllerAction
+// MARK: - Action
 
-enum ControllerAction: Codable, Hashable {
+enum Action: Codable, Hashable {
     case none
     case pushToTalk               // hold to record, release to send transcript to Claude
     case sendPrompt(String)       // send a fixed text prompt to Claude
@@ -118,6 +118,13 @@ enum ControllerAction: Codable, Hashable {
     var isHoldAction: Bool { self == .pushToTalk || self == .pushToTalkDraft }
 }
 
+/// The pre-v2.7 spelling of `Action`. Kept for one release so an out-of-tree
+/// caller (a fork, a plugin) gets a warning instead of a source break; the
+/// vocabulary is `Action` everywhere (DESIGN.md v2.7 addendum, §A). Deleted in
+/// the release after this one.
+@available(*, deprecated, message: "Renamed to Action in DESIGN v2.7; this alias is deleted in the release after.")
+typealias ControllerAction = Action
+
 // MARK: - Device profiles (ADR 0006)
 
 /// One control on a device, described as data. String ids are the stable
@@ -125,7 +132,35 @@ enum ControllerAction: Codable, Hashable {
 /// live in bundled JSON files (HID profiles), and be consumed by non-Swift
 /// cores — never Swift enum cases.
 struct ControlDescriptor: Codable, Equatable, Hashable, Identifiable {
-    enum Kind: String, Codable { case button, hold, axis, key }
+    /// The kinds a control can have. v2.7 dropped `hold`: whether an action
+    /// holds is a property of the action (`Action.isHoldAction`), never of the
+    /// control.
+    enum Kind: String, Codable {
+        case button, axis, key
+
+        /// A profile written before v2.7 may carry the obsolete `"hold"`
+        /// value; it reads as a button rather than failing the profile, and
+        /// encoding goes through the raw value, which no longer has `hold`.
+        init(from decoder: Decoder) throws {
+            let container = try decoder.singleValueContainer()
+            let raw = try container.decode(String.self)
+            if raw == "hold" {
+                self = .button
+                return
+            }
+            guard let kind = Kind(rawValue: raw) else {
+                throw DecodingError.dataCorruptedError(
+                    in: container,
+                    debugDescription: "Unknown control kind \"\(raw)\"")
+            }
+            self = kind
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.singleValueContainer()
+            try container.encode(rawValue)
+        }
+    }
 
     let id: String
     var kind: Kind
@@ -157,7 +192,7 @@ struct DeviceProfile: Codable, Equatable, Identifiable {
 }
 
 /// controlId → action; stored per profile id in `AppConfig.deviceMappings`.
-typealias DeviceMapping = [String: ControllerAction]
+typealias DeviceMapping = [String: Action]
 
 // MARK: - AppConfig
 
@@ -177,6 +212,7 @@ struct AppConfig: Codable, Equatable {
     var onDeviceRecognition: Bool         // default false
     var audioInputUID: String?            // STT microphone device UID; nil = system default
     var audioOutputUID: String?           // TTS output device UID; nil = system default
+    var controllerDeviceID: String?       // Controller slot pin; nil = Automatic (DESIGN v2.7 B)
     var hapticsEnabled: Bool              // default true
     var lightEnabled: Bool                // default true
     var effort: String                    // "default" (omit the flag) | "low" | "medium" | "high" | "xhigh"
@@ -213,9 +249,9 @@ struct AppConfig: Codable, Equatable {
     /// Compatibility view of the DualSense profile's mapping, keyed by the
     /// enum. Reads and writes route to `deviceMappings`, so there is exactly
     /// one source of truth and every existing call site keeps working.
-    var mapping: [ControllerButton: ControllerAction] {
+    var mapping: [ControllerButton: Action] {
         get {
-            var out: [ControllerButton: ControllerAction] = [:]
+            var out: [ControllerButton: Action] = [:]
             for (controlID, action) in deviceMappings[DeviceProfile.dualSenseID] ?? [:] {
                 if let button = ControllerButton(rawValue: controlID) { out[button] = action }
             }
@@ -237,7 +273,7 @@ struct AppConfig: Codable, Equatable {
 
     /// The action mapped to (profile, control); `.none` when unmapped. The
     /// single resolution point every input surface routes through.
-    func action(onProfile profileID: String, control controlID: String) -> ControllerAction {
+    func action(onProfile profileID: String, control controlID: String) -> Action {
         deviceMappings[profileID]?[controlID] ?? .none
     }
 
@@ -340,6 +376,7 @@ struct AppConfig: Codable, Equatable {
             onDeviceRecognition: false,
             audioInputUID: nil,
             audioOutputUID: nil,
+            controllerDeviceID: nil,
             hapticsEnabled: true,
             lightEnabled: true,
             effort: "default",
@@ -371,7 +408,7 @@ struct AppConfig: Codable, Equatable {
             Dictionary(uniqueKeysWithValues: defaultMapping().map { ($0.key.rawValue, $0.value) })]
     }
 
-    static func defaultMapping() -> [ControllerButton: ControllerAction] {
+    static func defaultMapping() -> [ControllerButton: Action] {
         [
             .r2: .pushToTalk,
             .cross: .approve,
@@ -400,7 +437,7 @@ struct AppConfig: Codable, Equatable {
         case projectDir, model, permissionMode, claudePath, lastSessionID
         case ttsEnabled, ttsRate, ttsVoiceID, maxSpokenChars
         case speakSummaries, summaryModel
-        case localeID, onDeviceRecognition, audioInputUID, audioOutputUID
+        case localeID, onDeviceRecognition, audioInputUID, audioOutputUID, controllerDeviceID
         case hapticsEnabled, lightEnabled
         case effort, modelCycle
         case harnessKind, acpAgent, acpCustomCommand
@@ -412,7 +449,7 @@ struct AppConfig: Codable, Equatable {
 
     /// Keys older builds wrote that the tolerant decoder still reads.
     fileprivate enum LegacyCodingKeys: String, CodingKey {
-        case mapping    // [ControllerButton: ControllerAction], pre-ADR-0006
+        case mapping    // [ControllerButton: Action], pre-ADR-0006
     }
 }
 
@@ -466,6 +503,7 @@ extension AppConfig {
             onDeviceRecognition: value(.onDeviceRecognition, fallback.onDeviceRecognition),
             audioInputUID: optionalString(.audioInputUID),
             audioOutputUID: optionalString(.audioOutputUID),
+            controllerDeviceID: optionalString(.controllerDeviceID),
             hapticsEnabled: value(.hapticsEnabled, fallback.hapticsEnabled),
             lightEnabled: value(.lightEnabled, fallback.lightEnabled),
             effort: value(.effort, fallback.effort),
@@ -499,7 +537,7 @@ extension AppConfig {
                 }
                 let legacy = try? decoder.container(keyedBy: AppConfig.LegacyCodingKeys.self)
                 if let old = ((try? legacy?.decodeIfPresent(
-                        [ControllerButton: ControllerAction].self, forKey: .mapping)) ?? nil) {
+                        [ControllerButton: Action].self, forKey: .mapping)) ?? nil) {
                     return [DeviceProfile.dualSenseID:
                         Dictionary(uniqueKeysWithValues: old.map { ($0.key.rawValue, $0.value) })]
                 }
@@ -513,9 +551,9 @@ extension AppConfig {
 /// action (written by a newer build, or hand-edited) drops that one binding —
 /// never the profile, never the whole tree.
 private struct TolerantAction: Decodable {
-    let value: ControllerAction?
+    let value: Action?
     init(from decoder: Decoder) {
-        value = try? ControllerAction(from: decoder)
+        value = try? Action(from: decoder)
     }
 }
 

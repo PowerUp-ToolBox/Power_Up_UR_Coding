@@ -1,0 +1,38 @@
+{
+  "formatVersion": 1,
+  "name": "remote-interrupt-clears-every-turn",
+  "description": "Two remote sessions are working when the person interrupts. PowerUp presses Escape in the remote session and clears every remote turn at once, so the status goes idle without waiting for a Stop.",
+  "reason": "A turn interrupted with Escape never sends a Stop. Without the reset the status would claim Claude is working until the expiry, fifteen minutes later.",
+  "source": "DESIGN.md v1.10 'clearRemoteTurns() empties the table and the flag — used by Interrupt, Reject, remote New Session, and every control-mode switch'; AppState.interruptClaude (remote branch)",
+  "verifiedBy": ["swift"],
+  "config": {
+    "controlMode": "remote",
+    "controllerConnected": true
+  },
+  "script": [
+    {
+      "hookEvent": { "type": "userPromptSubmit", "sessionID": "session-alpha", "cwd": "/work/alpha", "text": "Fix the build." },
+      "reason": "Session alpha is working."
+    },
+    {
+      "hookEvent": { "type": "userPromptSubmit", "sessionID": "session-beta", "cwd": "/work/beta", "text": "Write the docs." },
+      "reason": "Session beta is working."
+    },
+    {
+      "intent": "interrupt",
+      "reason": "The person stops the turn."
+    }
+  ],
+  "expect": {
+    "status": "idle",
+    "remoteTurnActive": false,
+    "transcript": [
+      { "kind": "system", "text": "Interrupt sent (Esc)." }
+    ],
+    "injectorCalls": [
+      { "type": "key", "key": "escape" }
+    ],
+    "harnessCalls": [],
+    "errorShown": false
+  }
+}

@@ -77,7 +77,7 @@ enum Theme {
 
     // MARK: Actions
 
-    static func symbol(for action: ControllerAction) -> String {
+    static func symbol(for action: Action) -> String {
         switch action {
         case .none: return "minus"
         case .pushToTalk: return "mic.fill"
@@ -102,7 +102,7 @@ enum Theme {
     }
 
     /// Short, human label for a mapped action — quotes the text of a fixed prompt.
-    static func label(for action: ControllerAction) -> String {
+    static func label(for action: Action) -> String {
         if case .sendPrompt(let prompt) = action {
             let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? "Send Prompt…" : "“\(trimmed)”"
@@ -168,10 +168,6 @@ enum Theme {
         let f = DateFormatter()
         f.dateFormat = "HH:mm"
         return f.string(from: date)
-    }
-
-    static func costString(_ usd: Double) -> String {
-        String(format: usd >= 1 ? "$%.2f" : "$%.4f", usd)
     }
 }
 
@@ -467,6 +463,29 @@ struct PairingHintCard: View {
     }
 }
 
+/// Shown instead of the pairing steps when a controller is connected but the
+/// Controller slot is pinned to one that is away (DESIGN v2.7 §B) — the
+/// person has nothing to pair; the text comes from
+/// `ViewLogic.pinnedControllerAwayNote`.
+struct PinnedControllerAwayCard: View {
+    let note: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionLabel(text: "Controller pinned", symbol: "pin")
+            Text(note)
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("The keyboard and the mic button below the transcript still work.")
+                .font(.system(size: 10.5))
+                .foregroundStyle(Theme.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .powerUpCard(fill: Theme.accent.opacity(0.07), stroke: Theme.accent.opacity(0.22))
+    }
+}
+
 /// Centred call-to-action shown when no project folder has been chosen.
 struct NoProjectCard: View {
     let chooseAction: () -> Void
@@ -523,7 +542,7 @@ struct EmptyTranscriptCard: View {
             Text("Ready when you are")
                 .font(.system(size: 15, weight: .semibold, design: .rounded))
                 .foregroundStyle(Theme.textPrimary)
-            Text(hintText)
+            Text(ViewLogic.emptyTranscriptPrompt(pushToTalkHint: pushToTalkHint))
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.textSecondary)
                 .multilineTextAlignment(.center)
@@ -532,13 +551,6 @@ struct EmptyTranscriptCard: View {
         }
         .padding(24)
         .powerUpCard(padding: 8, cornerRadius: 18)
-    }
-
-    private var hintText: String {
-        if let pushToTalkHint {
-            return "Hold \(pushToTalkHint) on the controller and speak, click the mic (or press ⌘D) to dictate, or type a message below."
-        }
-        return "Click the mic (or press ⌘D) to dictate, or type a message below — no controller needed."
     }
 }
 
@@ -550,7 +562,7 @@ struct MappingLegendRow: View {
     enum Emphasis { case action, button }
 
     let button: ControllerButton
-    let action: ControllerAction
+    let action: Action
     var emphasis: Emphasis = .action
 
     var body: some View {

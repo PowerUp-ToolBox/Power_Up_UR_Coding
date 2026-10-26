@@ -1,0 +1,42 @@
+{
+  "formatVersion": 1,
+  "name": "remote-focused-session-ending-returns-focus-to-all",
+  "description": "Two remote sessions are working and the focus is on alpha. Alpha's session ends mid-turn: the focus returns to all sessions, the transcript notes both the focus change and the ended session, and the status stays thinking because beta is still working.",
+  "reason": "A focus on a session that no longer exists would mute every reply and leave the status idle while another session works, with nothing on screen to explain why.",
+  "source": "DESIGN.md v2.2 B 'Focus clears on control-mode switch and when the focused session ends'; AppState.handleRemoteEvent(.sessionEnd)",
+  "verifiedBy": ["swift"],
+  "config": {
+    "controlMode": "remote",
+    "controllerConnected": true
+  },
+  "script": [
+    {
+      "hookEvent": { "type": "userPromptSubmit", "sessionID": "session-alpha", "cwd": "/work/alpha", "text": "Fix the build." },
+      "reason": "Session alpha is working."
+    },
+    {
+      "hookEvent": { "type": "userPromptSubmit", "sessionID": "session-beta", "cwd": "/work/beta", "text": "Write the docs." },
+      "reason": "Session beta is working."
+    },
+    {
+      "intent": "cycleFocus",
+      "reason": "All → alpha.",
+      "expect": { "remoteFocus": "session-alpha" }
+    },
+    {
+      "hookEvent": { "type": "sessionEnd", "sessionID": "session-alpha", "cwd": "/work/alpha", "text": "other" },
+      "reason": "The focused session closes mid-turn."
+    }
+  ],
+  "expect": {
+    "remoteFocus": null,
+    "status": "thinking",
+    "remoteTurnActive": true,
+    "transcript": [
+      { "kind": "system", "text": "Focus → alpha — only this session is spoken now." },
+      { "kind": "system", "text": "Focused session ended — back to hearing everything." },
+      { "kind": "system", "text": "[alpha] Claude session ended before replying." }
+    ],
+    "injectorCalls": []
+  }
+}

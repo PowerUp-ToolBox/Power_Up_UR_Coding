@@ -1,0 +1,11 @@
+id	reference	identifiers
+clip01	帮我看一下 parseConfig 这个函数为什么返回 undefined	parseConfig|undefined
+clip02	把 ControllerService 里面的 setLight 改成 async 的	ControllerService|setLight|async
+clip03	在 src/app.ts 里面加一个 useEffect，依赖是 userId	src/app.ts|useEffect|userId
+clip04	跑一下 swift test，然后告诉我哪个 test 挂了	swift test
+clip05	这个 PR 的 diff 太大了，先把 README 的改动拆出去	PR|diff|README
+clip06	给 HookInstaller 加一个 unit test，覆盖 settingsURL 不存在的情况	HookInstaller|unit test|settingsURL
+clip07	用 git rebase 把最后三个 commit 合成一个	git rebase|commit
+clip08	这里的 JSON 解析不要用 force unwrap，改成 guard let	JSON|force unwrap|guard let
+clip09	把 timeout 从 500 毫秒改成 2 秒，然后重新 build	timeout|build
+clip10	解释一下 control_request 和 control_response 的区别	control_request|control_response

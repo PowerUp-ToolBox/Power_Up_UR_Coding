@@ -1,0 +1,42 @@
+{
+  "formatVersion": 1,
+  "name": "resume-retry-fires-only-once",
+  "description": "When the fresh retry also exits before init, PowerUp does not retry again: the failure is reported as an unexpected end and no third start is made.",
+  "reason": "The retry exists for stale ids only. A harness that cannot start at all (bad binary, not logged in) must surface as an error instead of a restart loop.",
+  "source": "DESIGN.md core rule 'retry ONCE without resumeSessionID'; AppState.handleTermination",
+  "verifiedBy": ["swift"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "builtin",
+    "project": true,
+    "lastSessionID": "stale-session-id"
+  },
+  "script": [
+    {
+      "call": "startSessionIfNeeded",
+      "reason": "App launch resumes the saved conversation."
+    },
+    {
+      "harnessEvent": { "type": "ended", "exitCode": 1 },
+      "reason": "The resume fails before init; this is the one retry."
+    },
+    {
+      "harnessEvent": { "type": "ended", "exitCode": 1 },
+      "reason": "The fresh start fails too; there is no second retry."
+    }
+  ],
+  "expect": {
+    "harnessCalls": [
+      { "type": "start", "resumeSessionID": "stale-session-id" },
+      { "type": "start", "resumeSessionID": null }
+    ],
+    "transcript": [
+      { "kind": "system", "text": "Couldn't resume the previous session — starting a fresh one." },
+      { "kind": "error", "text": "Claude session ended unexpectedly (exit code 1)." }
+    ],
+    "errorShown": true,
+    "lastSessionID": null,
+    "pendingPermission": false,
+    "status": "noController"
+  }
+}

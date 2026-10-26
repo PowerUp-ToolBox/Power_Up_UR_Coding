@@ -1,0 +1,203 @@
+# Shared fixtures
+
+Language-neutral test data that every implementation of PowerUp's rules is
+checked against: the Swift app's XCTest suites today and the Rust core's
+`cargo test` later (PLAN-any-device-any-os.md, ADR 0012). Each implementation
+loads these files from its own source location. Swift resolves them relative
+to `#filePath`, because SwiftPM accepts no resources outside a target. Do not
+copy them into a target.
+
+CI fails if this directory holds no JSON fixtures.
+
+## Conventions
+
+- One subdirectory per area: `session/` (scenarios), `text-safety/` and
+  `status/` (case tables).
+- Plain JSON only, with no comments and no implementation-specific shapes.
+- Every file starts with a header and gives a `reason` for each thing it
+  pins. There are two formats:
+  - Session scenarios (`session/`) use `formatVersion`, `name`,
+    `description`, `reason` (why the rule exists), `source` (where the rule
+    is written down) and `verifiedBy` (the implementations that run it, for
+    example `["swift"]`). See [`session/`](#session-session-scenarios-format-1).
+  - Case tables (`text-safety/`, `status/`) use `description`, `function`,
+    `verifiedBy`, `capturedAgainst` and a `cases` list in which every case
+    has a `reason`. See [case tables](#text-safety-and-status-case-tables).
+- Add `capturedAgainst` when the data was recorded from a real tool (for
+  example a `claude` CLI version) or characterizes a specific build.
+- Use the terms in `CONTEXT.md`.
+
+## `text-safety/` and `status/`: case tables
+
+Each file pins one pure function as a table of input → expected rows: what
+remote mode does to text before it is typed or shown (`text-safety/`, epic
+#93) and how the status pill and light bar are derived (`status/`, epic
+#94). The Swift loader is `TextSafetyFixtures` in
+`Tests/PowerUpTests/TextSafetyFixtureTests.swift`; `TextSafetyFixtureTests`,
+`CmuxReportingFixtureTests` and `StatusDerivationTests` run the files.
+
+```json
+{
+  "description": "What the rule does, precisely enough to reimplement it.",
+  "function": "RemoteControlService.condense(_:maxChars:) — input {text, maxChars} in, string out",
+  "verifiedBy": "Where the rule is written down and which tests run this file.",
+  "capturedAgainst": "The build or tool version the expected values were taken from.",
+  "cases": [
+    { "name": "tab becomes a space", "input": { "text": "a\tb", "maxChars": 80 },
+      "expected": "a b", "reason": "The failure this case guards against." }
+  ]
+}
+```
+
+| Key | Meaning |
+| --- | --- |
+| `description` | the rule in prose, including any edge it depends on (for example, Characters are extended grapheme clusters, never bytes) |
+| `function` | the function under test, with the shape of `input` and `expected` |
+| `verifiedBy` | a string: the contract text the rule comes from, and the test files that run the table |
+| `capturedAgainst` | a string: the build or tool the expected values were recorded from |
+| `cases` | a non-empty list. Each case has a unique `name`, an `input` (a string, or an object when the function takes more than one value), an `expected` value (a string, a list or an object, per file) and a non-empty `reason` |
+
+The loader rejects a file with an empty `description`, `function` or
+`verifiedBy`, no cases, a blank or duplicate case name, or an empty
+`reason`. A failure names the file and the case.
+
+## `session/`: session scenarios (format 1)
+
+Each file is one rule of the session state machine (epic #92), played
+through AppState's test seam with two scripted harnesses (one standing in
+for the built-in Claude adapter, one for the ACP adapter), a recording
+injector standing in for the remote session, and a scripted clock. The file is named
+`<name>.json`. To pin a new session rule, add a scenario here rather than
+writing a bespoke test. The Swift runner is
+`Tests/PowerUpTests/SessionScenario.swift`, and the table test is
+`SessionScenarioTests`.
+
+```json
+{
+  "formatVersion": 1,
+  "name": "resume-failure-retried-once-without-resume",
+  "description": "What happens, in one or two sentences.",
+  "reason": "Why the rule exists (the failure it prevents).",
+  "source": "DESIGN.md section / code location",
+  "verifiedBy": ["swift"],
+  "config": { "harnessKind": "claude", "project": true, "lastSessionID": "stale-session-id" },
+  "script": [
+    { "call": "startSessionIfNeeded", "reason": "App launch." },
+    { "harnessEvent": { "type": "ended", "exitCode": 1 }, "reason": "…" }
+  ],
+  "expect": {
+    "harnessCalls": [ { "type": "start", "resumeSessionID": "stale-session-id" } ],
+    "status": "noController"
+  }
+}
+```
+
+The parser is strict: an unknown key, a missing required key or a value of
+the wrong type is a load error that names the file and the JSON path.
+
+### `config` (all keys optional)
+
+Anything not set here comes from the default config, with TTS off.
+
+| Key | Meaning |
+| --- | --- |
+| `harnessKind`, `model`, `effort`, `permissionMode` | the `AppConfig` fields of the same name. The harness kind picks which scripted adapter is the harness. Each reports the capabilities of the adapter it stands in for: `"claude"` supports effort (restart + resume), `"acp"` does not |
+| `acpAgent`, `acpCustomCommand` | the ACP agent. Whenever the ACP harness is selected (here or by a `settings` step), the agent must be `"custom"`: the other agents' commands are looked up on the machine running the tests. A load error says so |
+| `controlMode` | `"builtin"` or `"remote"`. In remote mode nothing is typed into a real terminal: every text and key goes to a recording injector (see `injectorCalls`) |
+| `project` | `true`: a fresh project folder named `project` (written `"$project"` in expectations); default `false` (no folder chosen) |
+| `lastSessionID` | the stored resumable id (it also seeds the folder's own entry, as on a real launch) |
+| `controllerConnected` | `true`: a simulated pad is connected before AppState is built |
+
+### `script`: an ordered list of steps
+
+Each step has exactly one of these:
+
+- `"call"`: a public AppState call. The options are `startSessionIfNeeded`
+  (what app launch does), `newSession`, `sendUserText` (needs `"text"`),
+  `interruptClaude`, `answerPendingPermission` (needs `"allow"`) and
+  `switchProject` (the Settings recents list's Switch button; needs
+  `"project"`, a folder name such as `"other"`). Project folders live in the
+  sandbox, are created when first named and are written `"$<name>"` in
+  expectations; `"project"` is the folder `config.project` makes.
+- `"intent"`: an intent by its protocol wire name (docs/protocol.md), for
+  example `approve`, `reject`, `interrupt`, `cycleEffort`, or `sendPrompt`
+  with `"text"`. `showWindow` and the voice-capture intents are not
+  supported here.
+- `"settings"`: a Settings window edit to the harness picker, an object
+  with any of `harnessKind`, `acpAgent` and `acpCustomCommand`. AppState
+  picks it up in its derived-update pass, as it does in the app.
+- `"harnessEvent"`: one normalized `HarnessEvent`, tagged by `type`, with
+  fields named as in Swift. It comes from the adapter the config currently
+  selects, unless the step names one with `"adapter": "claude"` or
+  `"adapter": "acp"` (for example, a late event from an adapter a harness
+  switch retired). The events:
+  - `sessionReady {sessionID, model}`
+  - `replyDelta {text}`
+  - `reply {text}`
+  - `toolUse {name, detail}`
+  - `turnCompleted {resultText?, costUSD?, isError, detail}`
+  - `controlResult {action, ok, detail, value?}`
+  - `permissionRequest {id, name, kind, detail}`
+  - `notification {message}`
+  - `runtimeError {message}`
+  - `ended {exitCode}`
+- `"hookEvent"`: one Claude Code hook as PowerUp's listener delivers it in
+  remote mode (`RemoteHookEvent`), tagged by `type`: `userPromptSubmit`,
+  `postToolUse` (the heartbeat), `notification`, `stop` or `sessionEnd`.
+  The optional fields are `sessionID`, `cwd` and `text` (the prompt, the
+  reply, the message, the tool name or the end reason, by type). A missing
+  `sessionID` is tracked as one shared unknown session.
+- `"advanceClock"`: a number of seconds (zero or more). The scripted clock
+  moves forward, and every remote-turn expiry check that falls due on the
+  way runs at its due time. Time never passes otherwise, and nothing
+  sleeps. The remote-turn expiry is 15 minutes (900 seconds) without a sign
+  of life; scenarios check just under it (`899`) and just past it (`901`)
+  rather than the exact instant.
+
+A step may also carry:
+
+- `"reason"`: why the step is there.
+- `"expectNoChange": true`: asserts the step leaves every observable fact
+  below unchanged, which is how a fixture shows that an input is ignored.
+- `"expect": {…}`: a checkpoint. The same keys as the final `expect`
+  block, checked right after this step, so a fixture can show *when*
+  something happened (for example, that no restart was recorded until the
+  turn completed). A failure names the step: `step 4 expect.harnessCalls…`.
+- `"settle": false`: the next step runs straight after this one, before
+  AppState gets to run work it deferred (a hop off the event delivery, such
+  as the effort restart after `turnCompleted`). This models input that was
+  already on its way when the step happened. By default every step settles
+  first. The last step cannot set it.
+
+The scripted harnesses follow the real adapters' own state: `start` makes
+one starting, with the id it resumes as its session id and no model yet;
+`sessionReady` makes it ready and sets its session id and model; `send`
+makes it working; `turnCompleted` makes it ready again; an acknowledged
+`set_model` `controlResult` sets its model; `stop` stops it; and `ended`
+stops it and clears its session id (a dead process owns no session id).
+After `stop` the Claude stand-in keeps its session id until `ended`
+arrives, because the real process takes a moment to exit; the ACP stand-in
+drops it at once, as the ACP adapter does.
+
+### `expect`: facts checked after the script (each key optional, at least one)
+
+| Key | Checks |
+| --- | --- |
+| `harnessCalls` | every call AppState made on either scripted harness, in one ordered log with an exact count. `adapter` (`claude` or `acp`) is the one that received it, and `type` is one of `start {projectDir, model, permissionMode, effort, resumeSessionID, binaryPathOverride, agentCommand}`, `send {text}`, `interrupt`, `setModel {model}`, `setPermissionMode {mode}`, `respondToPermission {id, allow}` or `stop`. Only the keys you write are compared, so `"resumeSessionID": null` asserts a fresh start. |
+| `transcript` | the transcript entries that appeared during the script, in order of first appearance and with an exact count: `{kind, text?}`, where kind is one of `user`, `assistant`, `tool`, `system` or `error`. A project switch swaps in the new folder's stored history: entries already seen are not counted again, but the "Earlier conversation restored" marker on top of it is new |
+| `errorShown` | whether any `error` entry was appended |
+| `lastSessionID` | the stored resumable id (a string, or `null` for none) |
+| `liveSessionID` | the session id the running harness owns, sent to protocol clients as `sessionID` (a string, or `null` when no process owns one) |
+| `permissionMode` | the configured permission mode |
+| `pendingPermission` | whether a permission request is waiting for an answer |
+| `pendingPermissionArmed` | whether the waiting request is a destructive one that a first `approve` has armed (the banner reads "Confirm"); `false` when nothing is waiting |
+| `status` | `noController`, `idle`, `listening`, `thinking` or `speaking` |
+| `liveModel` | the model the harness last reported (its init echo, or an acknowledged switch), sent to protocol clients as `liveModel`; `null` when nothing has been reported |
+| `modelChip` | the model chip's label: the configured model when it is an explicit alias, otherwise `liveModel`, otherwise `"default"` |
+| `remoteTurnActive` | remote mode: a remote turn is in flight (the focused session's, when a focus is set). This is what lights the working status in remote mode |
+| `remoteFocus` | remote mode: the focused session id, or `null` when every session is heard |
+| `injectorCalls` | everything remote mode delivered into the remote session, in order and with an exact count: `text {text, submit}` (text after line breaks are flattened; `submit` presses Enter after it) or `key {key}`, where key is `enter`, `escape` or `shiftTab` |
+
+A failure names the scenario and its first mismatched expectation. For
+example: `[resume-failure-retried-once-without-resume] (….json)
+expect.harnessCalls[1].resumeSessionID: expected "stale-session-id", got null`.

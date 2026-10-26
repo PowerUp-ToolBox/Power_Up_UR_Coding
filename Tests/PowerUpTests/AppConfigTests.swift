@@ -10,6 +10,239 @@ final class AppConfigTests: XCTestCase {
         try JSONDecoder().decode(AppConfig.self, from: Data(json.utf8))
     }
 
+    // MARK: v2.7 A - the on-disk config bytes do not move
+
+    /// config.json exactly as the pre-rename build wrote it: captured from
+    /// that build's writer (pretty-printed, key-sorted; note the escaped
+    /// slashes). Renaming the mapping vocabulary must not move a single byte
+    /// on disk.
+    private let onDiskConfigFixture = #"""
+    {
+      "acpAgent" : "opencode",
+      "acpCustomCommand" : "",
+      "audioInputUID" : "BuiltInMicrophoneDevice",
+      "audioOutputUID" : "BuiltInSpeakerDevice",
+      "claudePath" : "\/usr\/local\/bin\/claude",
+      "controlMode" : "remote",
+      "deviceMappings" : {
+        "dualsense" : {
+          "circle" : {
+            "interrupt" : {
+    
+            }
+          },
+          "create" : {
+            "showWindow" : {
+    
+            }
+          },
+          "cross" : {
+            "approve" : {
+    
+            }
+          },
+          "dpadDown" : {
+            "sendPrompt" : {
+              "_0" : "Explain what you just did, briefly"
+            }
+          },
+          "dpadLeft" : {
+            "sendPrompt" : {
+              "_0" : "Undo the last change you made"
+            }
+          },
+          "dpadRight" : {
+            "sendPrompt" : {
+              "_0" : "Commit the current changes with a good message"
+            }
+          },
+          "dpadUp" : {
+            "sendPrompt" : {
+              "_0" : "Run the tests and report the results"
+            }
+          },
+          "l1" : {
+            "sendDraft" : {
+    
+            }
+          },
+          "l2" : {
+            "pushToTalkDraft" : {
+    
+            }
+          },
+          "l3" : {
+            "cycleModel" : {
+    
+            }
+          },
+          "options" : {
+            "newSession" : {
+    
+            }
+          },
+          "ps" : {
+            "none" : {
+    
+            }
+          },
+          "r1" : {
+            "toggleTTS" : {
+    
+            }
+          },
+          "r2" : {
+            "pushToTalk" : {
+    
+            }
+          },
+          "r3" : {
+            "cycleEffort" : {
+    
+            }
+          },
+          "square" : {
+            "sendPrompt" : {
+              "_0" : "Run the tests"
+            }
+          },
+          "touchpad" : {
+            "cyclePermissionMode" : {
+    
+            }
+          },
+          "triangle" : {
+            "stopSpeaking" : {
+    
+            }
+          }
+        },
+        "streamdeck-test" : {
+          "key-1" : {
+            "approve" : {
+    
+            }
+          }
+        }
+      },
+      "effort" : "high",
+      "hapticsEnabled" : true,
+      "harnessKind" : "claude",
+      "lastSessionID" : "3f2b1a4c-1111-2222-3333-444455556666",
+      "lightEnabled" : true,
+      "listenerPort" : 48738,
+      "listenerToken" : "0B7C1D5E-8A9F-4C3D-B2E1-66778899AABB",
+      "localeID" : "en-US",
+      "maxSpokenChars" : 900,
+      "model" : "opus",
+      "modelCycle" : [
+        "sonnet",
+        "opus",
+        "haiku",
+        "fable"
+      ],
+      "onDeviceRecognition" : false,
+      "permissionMode" : "plan",
+      "projectDir" : "\/Users\/someone\/Projects\/demo",
+      "recentProjectDirs" : [
+        "\/Users\/someone\/Projects\/demo",
+        "\/tmp\/other"
+      ],
+      "remoteAutoSubmit" : true,
+      "remoteCmuxWorkspace" : "workspace:11",
+      "remoteTargetKind" : "cmux",
+      "sessionIDsByProject" : {
+        "\/Users\/someone\/Projects\/demo" : "3f2b1a4c-1111-2222-3333-444455556666"
+      },
+      "speakSummaries" : false,
+      "summaryModel" : "haiku",
+      "ttsEnabled" : false,
+      "ttsRate" : 0.5
+    }
+    """#
+
+    func testExistingOnDiskConfigReencodesByteIdentically() throws {
+        let fixture = Data(onDiskConfigFixture.utf8)
+        let config = try JSONDecoder().decode(AppConfig.self, from: fixture)
+        XCTAssertEqual(try ConfigStore.encode(config), fixture,
+                       "the rename must not move a byte of an existing config.json")
+        // The renamed vocabulary resolves the same bindings the fixture holds.
+        let resolved: Action = config.action(onProfile: DeviceProfile.dualSenseID,
+                                             control: "square")
+        XCTAssertEqual(resolved, .sendPrompt("Run the tests"))
+        XCTAssertEqual(config.action(onProfile: DeviceProfile.dualSenseID, control: "r2"),
+                       .pushToTalk)
+        XCTAssertEqual(config.action(onProfile: "streamdeck-test", control: "key-1"), .approve)
+        let bridge: [ControllerButton: Action] = config.mapping
+        XCTAssertEqual(bridge[.r2], .pushToTalk)
+    }
+
+    // MARK: v2.7 B - the Controller slot pin
+
+    /// DESIGN v2.7 section B's `controllerDeviceID` is the Controller slot:
+    /// nil means Automatic, and it is the field that pins one pad across
+    /// restarts. A config written before the slot existed must read as
+    /// Automatic, not fail.
+    func testConfigWithoutControllerDeviceIDDecodesAsAutomatic() throws {
+        XCTAssertNil(AppConfig.defaultConfig().controllerDeviceID)
+        XCTAssertNil(try decode("{}").controllerDeviceID,
+                     "a config written before the Controller slot existed must read as Automatic")
+        let legacy = try decode(#"{"model":"opus","audioInputUID":"BuiltInMicrophoneDevice"}"#)
+        XCTAssertEqual(legacy.model, "opus")
+        XCTAssertNil(legacy.controllerDeviceID)
+    }
+
+    /// An empty string is not a pin: it reads as Automatic, exactly like the
+    /// other optional device ids.
+    func testEmptyControllerDeviceIDReadsAsAutomatic() throws {
+        XCTAssertNil(try decode(#"{"controllerDeviceID":""}"#).controllerDeviceID)
+    }
+
+    /// The pin survives an encode -> decode round trip AND is actually
+    /// written: a build that dropped the key would silently unpin the pad.
+    func testControllerDeviceIDSurvivesEncodeDecodeRoundTrip() throws {
+        var config = AppConfig.defaultConfig()
+        config.controllerDeviceID = "dualsense-B0:1C:30:11:22:33"
+
+        let data = try JSONEncoder().encode(config)
+        let decoded = try JSONDecoder().decode(AppConfig.self, from: data)
+        XCTAssertEqual(decoded.controllerDeviceID, "dualsense-B0:1C:30:11:22:33")
+        XCTAssertEqual(decoded, config, "the whole config survives the round trip")
+
+        let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(root["controllerDeviceID"] as? String, "dualsense-B0:1C:30:11:22:33",
+                       "the pinned id must be on disk, not dropped by the encoder")
+    }
+
+    /// While the pin is nil the key is absent entirely — that is what keeps an
+    /// existing config.json byte-identical (see the fixture test above).
+    func testNilControllerDeviceIDIsOmittedFromTheEncodedConfig() throws {
+        let config = AppConfig.defaultConfig()
+        XCTAssertNil(config.controllerDeviceID)
+
+        let data = try ConfigStore.encode(config)
+        let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertNil(root["controllerDeviceID"],
+                     "an Automatic Controller slot must not write the key at all")
+    }
+
+    // MARK: v2.7 A - the deprecated alias (source compatibility)
+
+    /// The old type name must keep compiling for one release: an out-of-tree
+    /// caller gets a deprecation warning, not a break. This reference is the
+    /// compile-time proof of the alias — it builds only while
+    /// `ControllerAction` still names `Action`, and the compiler reports
+    /// "'ControllerAction' is deprecated" for each line below.
+    func testDeprecatedControllerActionAliasStillNamesAction() {
+        let alias: ControllerAction = .approve
+        XCTAssertEqual(alias, Action.approve)
+        XCTAssertEqual(alias.displayName, Action.approve.displayName)
+        XCTAssertTrue(ControllerAction.pushToTalk.isHoldAction)
+        XCTAssertFalse(ControllerAction.sendDraft.isHoldAction)
+        let migrated: [ControllerButton: ControllerAction] = [.cross: .approve]
+        XCTAssertEqual(Array(migrated.values), [Action.approve])
+    }
+
     // MARK: Default mapping (pinned to the v1.3 layout)
 
     func testDefaultMappingCoversEveryButton() {
@@ -27,17 +260,17 @@ final class AppConfigTests: XCTestCase {
         XCTAssertEqual(mapping[.l3], .cycleModel)
         XCTAssertEqual(mapping[.r3], .cycleEffort)
         XCTAssertEqual(mapping[.touchpad], .cyclePermissionMode)
-        XCTAssertEqual(mapping[.ps], ControllerAction.none)
+        XCTAssertEqual(mapping[.ps], Action.none)
         XCTAssertEqual(mapping[.cross], .approve)
         XCTAssertEqual(mapping[.circle], .interrupt)
         XCTAssertEqual(mapping[.square], .sendPrompt("Continue"))
     }
 
     func testHoldActions() {
-        XCTAssertTrue(ControllerAction.pushToTalk.isHoldAction)
-        XCTAssertTrue(ControllerAction.pushToTalkDraft.isHoldAction)
-        XCTAssertFalse(ControllerAction.sendDraft.isHoldAction)
-        XCTAssertFalse(ControllerAction.approve.isHoldAction)
+        XCTAssertTrue(Action.pushToTalk.isHoldAction)
+        XCTAssertTrue(Action.pushToTalkDraft.isHoldAction)
+        XCTAssertFalse(Action.sendDraft.isHoldAction)
+        XCTAssertFalse(Action.approve.isHoldAction)
     }
 
     func testEffortCycleEndsAtUltra() {

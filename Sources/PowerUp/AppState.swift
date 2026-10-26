@@ -2,6 +2,31 @@ import Foundation
 import Combine
 import AppKit
 
+/// The time source and one-shot timer behind remote-turn expiry and the
+/// remote session registry (DESIGN v1.10, v2.2 A/B), also used to time the
+/// error haptic's second buzz. Internal test seam (#118): the app reads the
+/// wall clock and sleeps; a test injects a clock it advances by hand, so
+/// expiry (and the delayed buzz) is driven without ever waiting.
+@MainActor
+protocol RemoteTurnClock: AnyObject {
+    var now: Date { get }
+    /// Runs `action` on the main actor once `delay` seconds have passed.
+    func schedule(after delay: TimeInterval, _ action: @escaping @MainActor () -> Void)
+}
+
+/// The app's clock: `Date()` and a sleeping main-actor Task.
+@MainActor
+private final class SystemRemoteTurnClock: RemoteTurnClock {
+    var now: Date { Date() }
+
+    func schedule(after delay: TimeInterval, _ action: @escaping @MainActor () -> Void) {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(max(0, delay) * 1_000_000_000))
+            action()
+        }
+    }
+}
+
 /// Central glue between the controller, speech, TTS and the Claude CLI session.
 ///
 /// Everything here runs on the main actor: the services publish their state from
@@ -24,9 +49,21 @@ final class AppState: ObservableObject {
     /// stays exposed for the views until the UI fully generalizes.
     var harness: any HarnessAdapter {
         AppState.normalizedHarnessKind(configStore.config.harnessKind) == "acp"
-            ? acpAdapterInstance()
-            : claude
+            ? (injectedACPHarness ?? acpAdapterInstance())
+            : claudeHarness
     }
+
+    /// Test seams (never set by the app): adapters handed to the initializer
+    /// in place of the real ones, wired into the same event handler.
+    /// `injectedHarness` stands in for the built-in Claude adapter and
+    /// `injectedACPHarness` for the ACP adapter. A test that injects only the
+    /// first gets it in both slots, so it IS the harness whatever the config's
+    /// harness kind says.
+    private let injectedHarness: (any HarnessAdapter)?
+    private let injectedACPHarness: (any HarnessAdapter)?
+
+    /// The adapter behind the built-in Claude harness kind.
+    private var claudeHarness: any HarnessAdapter { injectedHarness ?? claude }
 
     /// Lazily created ACP adapter (opencode, the Claude bridge, or a custom
     /// agent command), wired into the same event handler as the Claude adapter.
@@ -35,11 +72,23 @@ final class AppState: ObservableObject {
     /// What the active harness reports as its model, for the model chip.
     var harnessReportedModel: String? { harness.modelName }
 
+    /// The model chip's label (DESIGN.md v1.3 C). `config.model` wins whenever
+    /// it is an explicit alias, so a Cycle Model press shows up instantly
+    /// (optimistic); only when the config says "default" does the chip fall
+    /// back to whatever the ACTIVE harness reported (Claude adapter or ACP agent).
+    var modelChipLabel: String {
+        let configured = configStore.config.model
+        if configured != "default", !configured.isEmpty { return configured }
+        if let reported = harnessReportedModel, !reported.isEmpty { return reported }
+        return "default"
+    }
+
     private func acpAdapterInstance() -> ACPAdapter {
         if let acpAdapter { return acpAdapter }
         let adapter = ACPAdapter()
-        adapter.onHarnessEvent = { [weak self] event in
-            self?.handleHarnessEvent(event)
+        adapter.onHarnessEvent = { [weak self, weak adapter] event in
+            guard let self, let adapter else { return }
+            self.route(event, from: adapter)
         }
         adapter.objectWillChange
             .sink { [weak self] _ in self?.scheduleDerivedUpdate() }
@@ -57,7 +106,7 @@ final class AppState: ObservableObject {
     let remote: RemoteControlService
     /// Audio device catalogue: which mics/outputs exist, tracked by stable UID,
     /// with hot-plug updates (Settings pickers + STT/TTS routing).
-    let audioDevices = AudioDeviceStore()
+    let audioDevices: AudioDeviceStore
     /// Writes 1-2 sentence spoken conclusions of long replies (Settings → Voice).
     private let summary = SummaryService()
     /// Local HTTP endpoint the Claude Code hooks post replies back to.
@@ -94,7 +143,7 @@ final class AppState: ObservableObject {
 
     /// Per-project transcript history on disk, so the conversation a resumed
     /// session (`--resume`) continues is actually visible after a relaunch.
-    private let transcriptStore = TranscriptStore()
+    private let transcriptStore: TranscriptStore
 
     private var cancellables: Set<AnyCancellable> = []
     private var statusUpdateScheduled = false
@@ -109,9 +158,14 @@ final class AppState: ObservableObject {
     /// button *or* from Settings) runs its side effects exactly once.
     private var lastControlMode: String = "builtin"
 
-    /// The button currently held down for push-to-talk (nil when not holding).
-    private var pttHoldButton: ControllerButton?
-    /// Mode of the hold `pttHoldButton` started; only meaningful while holding.
+    /// Which control on the active controller owns the running hold (its
+    /// `owner`; nil when the pad owns no capture), and the v2.7 §C rules for
+    /// what each press and release does. Wherever a capture ends other than
+    /// through the tracker (a toggle stop, a denied permission, a vanished
+    /// microphone), it is replaced with a fresh `HoldTracker()` so a trigger
+    /// still physically held can't end or cancel the next capture.
+    private var holdTracker = HoldTracker()
+    /// Mode of the capture `startPushToTalk` began; only meaningful while capturing.
     private var pttMode: VoiceCaptureMode = .send
     /// True when the active draft hold belongs to remote mode: the transcript
     /// is typed into the remote target (without Enter) instead of the local
@@ -167,8 +221,9 @@ final class AppState: ObservableObject {
     /// (missed Stop: killed terminal, crashed CLI, Escape pressed directly in
     /// the session). Long legitimate turns can exceed it — the tradeoff is a
     /// too-early idle that self-corrects on the next hook, versus an amber
-    /// light no event will ever clear.
-    private static let remoteTurnExpiry: TimeInterval = 15 * 60
+    /// light no event will ever clear. Internal so the status tests can pin
+    /// the 15 minutes their fixture rows assume.
+    static let remoteTurnExpiry: TimeInterval = 15 * 60
 
     /// Remote sessions seen via hooks recently (id → cwd + last activity),
     /// so Cycle Session Focus has something to step through. In-memory only.
@@ -207,7 +262,8 @@ final class AppState: ObservableObject {
         let detail: String
         /// The classifier flagged this as destructive → two ✕ presses needed.
         let isDestructive: Bool
-        /// First ✕ received; the next one within the window confirms.
+        /// First ✕ received; the next ✕ confirms if no other intent came in
+        /// between (any other intent disarms — see `handle(_:)`).
         var armed: Bool = false
     }
     @Published private(set) var pendingPermission: PendingPermission?
@@ -216,22 +272,92 @@ final class AppState: ObservableObject {
 
     // MARK: - Init
 
-    init() {
-        let store = ConfigStore()
+    /// The side effects of bringing the app up that reach outside the
+    /// process — hardware, ports, global event monitors, subprocesses. The
+    /// app runs with `.all`; a test constructs AppState with `[]` so it needs
+    /// no pad, binds nothing, prompts nobody and registers no global observer.
+    struct SideEffects: OptionSet {
+        let rawValue: Int
+
+        /// `ControllerService.start()` — GameController connect/disconnect observers.
+        static let startController = SideEffects(rawValue: 1 << 0)
+        /// `AudioDeviceStore.start()` — CoreAudio hardware property listener.
+        static let startAudioDevices = SideEffects(rawValue: 1 << 1)
+        /// Binding the loopback listener (at start-up, on every port/token
+        /// change, and on `restartListener()`) and refreshing the hook script.
+        static let syncListener = SideEffects(rawValue: 1 << 2)
+        /// The app-wide `NSEvent` keyDown monitor (keyboard commands).
+        static let keyboardMonitor = SideEffects(rawValue: 1 << 3)
+        /// The `NSApplication.willTerminateNotification` shutdown observer.
+        static let terminateObserver = SideEffects(rawValue: 1 << 4)
+        /// cmux status probes (subprocess + Accessibility check) in remote mode.
+        static let cmuxProbe = SideEffects(rawValue: 1 << 5)
+
+        static let all: SideEffects = [.startController, .startAudioDevices, .syncListener,
+                                       .keyboardMonitor, .terminateObserver, .cmuxProbe]
+    }
+
+    /// Which side effects this instance performs; fixed at construction.
+    private let sideEffects: SideEffects
+
+    /// Time for remote-turn expiry and the remote session registry.
+    private let remoteTurnClock: any RemoteTurnClock
+
+    /// True once the keyboard command monitor is installed (never in a test).
+    var hasKeyboardMonitor: Bool { keyMonitor != nil }
+    /// True once the shutdown observer is registered (never in a test).
+    var hasTerminateObserver: Bool { willTerminateObserver != nil }
+
+    /// The app's AppState: real services, every side effect on.
+    convenience init() {
+        self.init(configStore: ConfigStore(), sideEffects: .all)
+    }
+
+    /// The one construction path. Any collaborator left nil is created fresh
+    /// (real, unstarted); `sideEffects` decides what gets started. Callback
+    /// wiring and observation always happen, so injected services reach the
+    /// same handlers in a test as in the app. `harness` and `acpHarness` are
+    /// the exception to "nil means real": nil keeps the config-selected real
+    /// adapter (the app's behavior). A test passes scripted adapters: with
+    /// both, `harness` stands in for the built-in Claude adapter and
+    /// `acpHarness` for the ACP one, and the config's harness kind picks
+    /// between them as in the app; with `harness` alone, that adapter IS the
+    /// harness whatever the config's harness kind says. `clock` (nil = the
+    /// wall clock) times remote-turn expiry and the error haptic's second
+    /// buzz.
+    init(configStore store: ConfigStore,
+         controller: ControllerService? = nil,
+         speech: SpeechService? = nil,
+         tts: TTSService? = nil,
+         claude: ClaudeService? = nil,
+         harness: (any HarnessAdapter)? = nil,
+         acpHarness: (any HarnessAdapter)? = nil,
+         remote: RemoteControlService? = nil,
+         listener: RemoteListener? = nil,
+         audioDevices: AudioDeviceStore? = nil,
+         transcriptStore: TranscriptStore? = nil,
+         clock: (any RemoteTurnClock)? = nil,
+         sideEffects: SideEffects) {
         configStore = store
-        controller = ControllerService()
-        speech = SpeechService()
-        tts = TTSService()
-        claude = ClaudeService()
-        remote = RemoteControlService()
-        listener = RemoteListener()
+        self.controller = controller ?? ControllerService()
+        self.speech = speech ?? SpeechService()
+        self.tts = tts ?? TTSService()
+        self.claude = claude ?? ClaudeService()
+        self.injectedHarness = harness
+        self.injectedACPHarness = acpHarness ?? harness
+        self.remote = remote ?? RemoteControlService()
+        self.listener = listener ?? RemoteListener()
+        self.audioDevices = audioDevices ?? AudioDeviceStore()
+        self.transcriptStore = transcriptStore ?? TranscriptStore()
+        self.remoteTurnClock = clock ?? SystemRemoteTurnClock()
+        self.sideEffects = sideEffects
 
         // ConfigStore mints a token on first launch; adopt whatever mode the
         // config already holds without running the mode-switch side effects.
         lastControlMode = AppState.normalizedControlMode(store.config.controlMode)
         lastHarnessKey = AppState.harnessKey(for: store.config)
 
-        transcriptStore.setProject(store.config.projectDir)
+        self.transcriptStore.setProject(store.config.projectDir)
         restorePersistedTranscript()
         seedProjectBookkeeping()
 
@@ -242,8 +368,15 @@ final class AppState: ObservableObject {
         wireAudioDevices()
         observeServices()
 
-        controller.start()
-        audioDevices.start()
+        // Before the controller starts, so the pads it seeds already land in
+        // the pinned slot.
+        syncControllerSlot()
+        if sideEffects.contains(.startController) {
+            self.controller.start()
+        }
+        if sideEffects.contains(.startAudioDevices) {
+            self.audioDevices.start()
+        }
         syncAudioAvailabilityBaseline()
         syncSpeechConfiguration()
         syncListener()
@@ -251,25 +384,35 @@ final class AppState: ObservableObject {
         if lastControlMode == "remote" {
             // Populate the cmux availability / workspace list for the UI. All of
             // these probes are read-only.
-            remote.refreshStatus()
+            refreshRemoteStatus()
         }
         updateStatus()
 
-        installKeyMonitor()
+        if sideEffects.contains(.keyboardMonitor) {
+            installKeyMonitor()
+        }
 
-        willTerminateObserver = NotificationCenter.default.addObserver(
-            forName: NSApplication.willTerminateNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            // willTerminate is posted synchronously from -[NSApplication
-            // terminate:]; the run loop never turns again, so an enqueued Task
-            // would never execute. The block already runs on the main thread —
-            // call straight through.
-            MainActor.assumeIsolated {
-                self?.shutdown()
+        if sideEffects.contains(.terminateObserver) {
+            willTerminateObserver = NotificationCenter.default.addObserver(
+                forName: NSApplication.willTerminateNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                // willTerminate is posted synchronously from -[NSApplication
+                // terminate:]; the run loop never turns again, so an enqueued Task
+                // would never execute. The block already runs on the main thread —
+                // call straight through.
+                MainActor.assumeIsolated {
+                    self?.shutdown()
+                }
             }
         }
+    }
+
+    /// The cmux probe, gated so a test never spawns a subprocess.
+    private func refreshRemoteStatus() {
+        guard sideEffects.contains(.cmuxProbe) else { return }
+        remote.refreshStatus()
     }
 
     // MARK: - Wiring
@@ -301,8 +444,33 @@ final class AppState: ObservableObject {
 
     private func wireClaude() {
         claude.onHarnessEvent = { [weak self] event in
-            self?.handleHarnessEvent(event)
+            guard let self else { return }
+            self.route(event, from: self.claude)
         }
+        if let injected = injectedHarness {
+            injected.onHarnessEvent = { [weak self, weak injected] event in
+                guard let self, let injected else { return }
+                self.route(event, from: injected)
+            }
+        }
+        if let acp = injectedACPHarness, acp !== injectedHarness {
+            acp.onHarnessEvent = { [weak self, weak acp] event in
+                guard let self, let acp else { return }
+                self.route(event, from: acp)
+            }
+        }
+    }
+
+    /// Hands an adapter's event to the session logic, but only while that
+    /// adapter is the active harness. A harness switch stops the outgoing
+    /// adapter, yet a stopped claude process can still flush output and exit
+    /// up to two seconds later. Those events belong to a retired session: a
+    /// late turn completion must not clear the new session's permission
+    /// request, and a late exit must not be taken for the new session ending
+    /// (it would even run the resume retry and restart the new harness).
+    private func route(_ event: HarnessEvent, from adapter: any HarnessAdapter) {
+        guard adapter === harness else { return }
+        handleHarnessEvent(event)
     }
 
     private func wireTTS() {
@@ -310,6 +478,12 @@ final class AppState: ObservableObject {
             self?.updateStatus()
         }
     }
+
+    /// UID of the chosen microphone the current capture is recording from;
+    /// nil while not recording, or when it records from the system default.
+    /// Snapshotted when the recognizer starts, so a mid-hold picker change
+    /// can't make the unplug check look at the wrong device.
+    private var captureInputUID: String?
 
     /// Tracks the configured devices' presence for the came/went announcements.
     private var inputAvailability = AudioAvailabilityTracker()
@@ -332,8 +506,35 @@ final class AppState: ObservableObject {
             // A routed utterance whose device just vanished may never fire
             // its completion — resolve it before deciding what to announce.
             self?.tts.recoverIfEngineDied()
+            self?.abortCaptureIfMicrophoneVanished()
             self?.announceAudioDeviceChanges()
         }
+    }
+
+    /// The chosen microphone a capture is recording from went away mid-capture.
+    /// What was heard is cut off mid-sentence, so it is discarded — never sent,
+    /// never left in the prompt box — and the capture ends with the error
+    /// buzz. Applies to every capture (hold, mic button, keyboard): unlike a
+    /// pad dropping (forceReleaseHold), ending here sends nothing, so it is
+    /// safe whoever started it. The next capture falls back to the system
+    /// default through the usual per-press resolution.
+    private func abortCaptureIfMicrophoneVanished() {
+        guard isPTTActive, let uid = captureInputUID,
+              audioDevices.inputDevice(forUID: uid) == nil else { return }
+        captureInputUID = nil
+        isPTTActive = false
+        isDraftDictation = false
+        // The trigger still physically held must not end the next capture.
+        holdTracker = HoldTracker()
+        if pttMode == .draft, !pttDraftTargetsRemote {
+            endDraftCapture(restoringDraft: true)
+        }
+        // Ends the recognizer; whatever it still makes of the cut-off audio
+        // resolves here and is dropped.
+        speech.stopListening { _ in }
+        appendEntry(.error, "🎤 Your microphone disconnected while recording — nothing was sent. Try again; PowerUp will use the system default.")
+        errorHaptic()
+        updateStatus()
     }
 
     /// The (input, output) selection the trackers were last baselined on.
@@ -465,55 +666,96 @@ final class AppState: ObservableObject {
         // Resolve through the (profile, control) mapper — the same path every
         // future input surface (HID profiles, virtual devices) routes through.
         // The DualSense service still speaks the enum; its control ids are the
-        // enum's raw values.
-        let action = configStore.config.action(onProfile: DeviceProfile.dualSenseID,
-                                               control: button.rawValue)
-        if action.isHoldAction {
-            // One hold at a time: a second hold press of either kind while one is
-            // already running is ignored, so the button that started the recorder
-            // stays the button that can stop it.
-            guard pttHoldButton == nil, !isPTTActive else { return }
-            pttHoldButton = button
-        }
-        guard let intent = IntentMapper.intent(for: action, phase: .began) else { return }
-        handle(intent)
+        // enum's raw values. Only the controller in the slot delivers presses,
+        // so its profile is the one to resolve against (DESIGN v2.7 B).
+        let action = configStore.config.action(
+            onProfile: controller.active?.profileID ?? DeviceProfile.dualSenseID,
+            control: button.rawValue)
+        apply(holdTracker.effect(for: action, control: button.rawValue, phase: .began,
+                                 toggleCaptureActive: isToggleCaptureActive))
     }
 
     private func handleButtonUp(_ button: ControllerButton) {
-        // Only hold actions care about the release. Use the button we recorded on
-        // the way down so a mapping edit mid-hold can't strand the recorder — and
-        // so the release of any other button is ignored outright. The end intent
-        // is emitted unconditionally for the recorded button for the same reason:
-        // whatever the mapping says *now*, this button started a capture.
-        guard pttHoldButton == button else { return }
-        pttHoldButton = nil
-        handle(.endVoiceCapture)
+        // The tracker ends the capture only for the control that started it,
+        // whatever that control is mapped to *now* — so a mapping edit mid-hold
+        // can't strand the recorder, and every other release (both releases
+        // after a cancel included) does nothing.
+        let action = configStore.config.action(
+            onProfile: controller.active?.profileID ?? DeviceProfile.dualSenseID,
+            control: button.rawValue)
+        apply(holdTracker.effect(for: action, control: button.rawValue, phase: .ended,
+                                 toggleCaptureActive: isToggleCaptureActive))
+    }
+
+    /// A capture is running that the pad does not own: started by the mic
+    /// button or the keyboard, which have no press/release pair (v2.6). A hold
+    /// press during it is ignored rather than taken as a second hold (v2.7 §C).
+    private var isToggleCaptureActive: Bool {
+        isPTTActive && holdTracker.owner == nil
+    }
+
+    /// Turns one hold-tracker effect into today's capture paths (v2.7 §C).
+    private func apply(_ effect: HoldEffect) {
+        switch effect {
+        case .beginCapture(let mode):
+            handle(.beginVoiceCapture(mode))
+        case .endCapture:
+            handle(.endVoiceCapture)
+        case .cancelCapture:
+            cancelHoldCapture()
+        case .deliver(let intent):
+            handle(intent)
+        case .ignore:
+            break
+        }
+    }
+
+    /// Two holds on the active controller cancel both (v2.7 §C): the capture
+    /// ends without sending or drafting — the recognizer is stopped without
+    /// consulting its transcript, a local draft hold puts the prompt box back
+    /// as it was — and the pad gets the error haptic. The tracker has already
+    /// cleared its owner, so neither trigger's later release does anything.
+    private func cancelHoldCapture() {
+        if isPTTActive {
+            isPTTActive = false
+            isDraftDictation = false
+            captureInputUID = nil
+            // Only a local draft hold mirrored partials into the prompt box; a
+            // remote draft hold has typed nothing yet, so there is nothing to undo.
+            if pttMode == .draft, !pttDraftTargetsRemote {
+                endDraftCapture(restoringDraft: true)
+            }
+            // Ends the recognizer (or nothing, while the permission prompt is
+            // still up); whatever it makes of the audio resolves here and is dropped.
+            speech.stopListening { _ in }
+        }
+        errorHaptic()
+        updateStatus()
     }
 
     /// Safety net for a hold that can no longer be released the normal way —
-    /// e.g. the controller disconnected between the button's down and up events.
-    /// Ends a CONTROLLER-owned hold so the mic and status can never stay
-    /// wedged. Deliberately scoped to `pttHoldButton != nil`: a capture
-    /// started from the mic button or the keyboard has nothing to do with the
-    /// pad, keeps its working stop affordances (mic click, ⌘D/⇧⌘D), and must
-    /// survive a pad powering off mid-dictation — ending a `.send` capture
-    /// here would fire the half-finished transcript at Claude uninvited.
+    /// the controller disconnected between the button's down and up events,
+    /// or the Controller slot changed to another pad (v2.7 §C). Ends a
+    /// CONTROLLER-owned hold so the mic and status can never stay wedged.
+    /// Deliberately scoped to the tracker's owner: a capture started from the
+    /// mic button or the keyboard has nothing to do with the pad, keeps its
+    /// working stop affordances (mic click, ⌘D/⇧⌘D), and must survive a pad
+    /// powering off mid-dictation — ending a `.send` capture here would fire
+    /// the half-finished transcript at Claude uninvited.
     func forceReleaseHold() {
-        guard pttHoldButton != nil else { return }
-        pttHoldButton = nil
-        stopPushToTalk()
+        apply(holdTracker.releaseAll())
     }
 
     /// Toggle-style voice capture for input sources that have no press/release
     /// pair — the on-screen mic button and the keyboard shortcuts. A click (or
     /// key press) while idle starts a capture in `mode`; the next one ends
     /// whatever capture is active, regardless of who started it or in which
-    /// mode. Clearing `pttHoldButton` on the way out means a controller
-    /// trigger still physically held after a keyboard stop can't end the
-    /// *next* capture when it is finally released.
+    /// mode. Resetting the hold tracker on the way out means a controller
+    /// trigger still physically held after a keyboard stop can't end (or
+    /// cancel) the *next* capture when it is finally released.
     func toggleVoiceCapture(_ mode: VoiceCaptureMode) {
         if isPTTActive {
-            pttHoldButton = nil
+            holdTracker = HoldTracker()
             handle(.endVoiceCapture)
         } else {
             // The UI disables its mic button and menu items on this same
@@ -635,6 +877,13 @@ final class AppState: ObservableObject {
     /// The single dispatcher every input source funnels into: controller
     /// buttons (via the mapping), and protocol clients (via the listener).
     func handle(_ intent: Intent) {
+        // A destructive confirmation is two Approves IN A ROW. Anything else in
+        // between disarms it (the request itself stays pending), so a stray
+        // Approve later can never complete a confirmation the person moved on
+        // from — it arms again instead.
+        if intent != .approve, pendingPermission?.armed == true {
+            pendingPermission?.armed = false
+        }
         switch intent {
         case .beginVoiceCapture(let mode):
             startPushToTalk(mode: mode)
@@ -931,7 +1180,7 @@ final class AppState: ObservableObject {
             guard granted else {
                 self.isPTTActive = false
                 self.isDraftDictation = false
-                self.pttHoldButton = nil
+                self.holdTracker = HoldTracker()
                 // Only a local draft hold has a mirror to tear down — and only
                 // it may touch the prompt box (a .send hold never wrote to it,
                 // and a remote draft hold never began capturing).
@@ -944,6 +1193,10 @@ final class AppState: ObservableObject {
                 return
             }
             self.syncSpeechConfiguration()
+            // Same resolution SpeechService does for the engine: the chosen
+            // mic when it is present, else the system default (nil).
+            let chosenUID = self.configStore.config.audioInputUID
+            self.captureInputUID = self.audioDevices.inputDevice(forUID: chosenUID) != nil ? chosenUID : nil
             self.speech.startListening()
         }
     }
@@ -952,6 +1205,7 @@ final class AppState: ObservableObject {
         guard isPTTActive else { return }
         isPTTActive = false
         isDraftDictation = false
+        captureInputUID = nil
 
         if pttMode == .draft {
             if pttDraftTargetsRemote {
@@ -1212,6 +1466,10 @@ final class AppState: ObservableObject {
             return
         }
         harness.interrupt()
+        // The interrupt cancels the turn the request belongs to (the adapter
+        // cancels the agent's side), so the banner goes with it — unanswered.
+        // Left up, it would invite a press that answers nothing.
+        pendingPermission = nil
         appendEntry(.system, "Interrupt sent.")
         haptic(intensity: 0.6, duration: 0.08)
         updateStatus()
@@ -1306,7 +1564,7 @@ final class AppState: ObservableObject {
             errorHaptic()
             return
         }
-        let cutoff = Date().addingTimeInterval(-AppState.remoteSessionMemory)
+        let cutoff = remoteTurnClock.now.addingTimeInterval(-AppState.remoteSessionMemory)
         knownRemoteSessions = knownRemoteSessions.filter { $0.value.lastSeen > cutoff }
 
         let ordered = knownRemoteSessions
@@ -1485,10 +1743,12 @@ final class AppState: ObservableObject {
 
         pendingPermission = nil
         cancelPendingSummary()
-        acpAdapter?.stop()
-        if claude.state != .stopped {
+        if let acp = injectedACPHarness ?? acpAdapter, acp.state != .stopped {
+            acp.stop()
+        }
+        if claudeHarness.state != .stopped {
             expectedTerminations += 1
-            claude.stop()
+            claudeHarness.stop()
         }
 
         let kind = AppState.normalizedHarnessKind(configStore.config.harnessKind)
@@ -1516,7 +1776,7 @@ final class AppState: ObservableObject {
             // Our own session would otherwise sit there burning a subscription
             // seat and echoing hook events back at us.
             stopClaude()
-            remote.refreshStatus()
+            refreshRemoteStatus()
             appendEntry(.system, "Remote control mode — buttons and voice now drive your existing Claude session.")
             announce("Remote control")
         } else {
@@ -1557,6 +1817,7 @@ final class AppState: ObservableObject {
 
     /// Binds (or rebinds) the listener whenever the port or token changes.
     private func syncListener() {
+        guard sideEffects.contains(.syncListener) else { return }
         let config = configStore.config
         let token = config.listenerToken
         // No token means no way to tell a hook post from anything else that finds
@@ -1636,7 +1897,7 @@ final class AppState: ObservableObject {
         // Session Focus knows what exists (SessionEnd removes instead).
         if event.kind != .sessionEnd {
             knownRemoteSessions[turnKey] = (cwd: event.cwd ?? knownRemoteSessions[turnKey]?.cwd,
-                                            lastSeen: Date())
+                                            lastSeen: remoteTurnClock.now)
         }
         // Focus gating: when a focus is set, only the focused session speaks,
         // buzzes, and drives the working light; everything still logs.
@@ -1683,8 +1944,12 @@ final class AppState: ObservableObject {
         case .notification:
             // Sign of life from a turn that's waiting on the user — keep its
             // expiry clock fresh, but a notification alone doesn't start one.
+            // Through beginRemoteTurn, so the notification RE-ARMS the expiry
+            // sweep like a heartbeat: a turn whose last sign of life was a
+            // notification (then Escape pressed in the terminal, no Stop)
+            // must still go idle 15 minutes later, not stay amber forever.
             if remoteActiveTurns[turnKey] != nil {
-                remoteActiveTurns[turnKey] = Date()
+                beginRemoteTurn(key: turnKey)
             }
             let message = (event.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             appendEntry(.system, message.isEmpty ? "Claude needs your attention." : message)
@@ -1699,11 +1964,10 @@ final class AppState: ObservableObject {
     /// Records a remote turn starting and schedules the expiry check that
     /// clears it if every ending signal (Stop, SessionEnd) is missed.
     private func beginRemoteTurn(key: String) {
-        remoteActiveTurns[key] = Date()
+        remoteActiveTurns[key] = remoteTurnClock.now
         refreshRemoteTurnActive()
 
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64((AppState.remoteTurnExpiry + 1) * 1_000_000_000))
+        remoteTurnClock.schedule(after: AppState.remoteTurnExpiry + 1) { [weak self] in
             guard let self else { return }
             self.refreshRemoteTurnActive()
             self.updateStatus()
@@ -1713,18 +1977,32 @@ final class AppState: ObservableObject {
     /// Recomputes `remoteTurnActive` from the per-session table, dropping
     /// entries whose sessions have gone silent past the expiry.
     private func refreshRemoteTurnActive() {
-        let cutoff = Date().addingTimeInterval(-AppState.remoteTurnExpiry)
-        remoteActiveTurns = remoteActiveTurns.filter { $0.value > cutoff }
-        // With a focus set, only the focused session's turn lights the bar.
-        let active: Bool
-        if let focus = remoteFocusSessionID {
-            active = remoteActiveTurns[focus] != nil
-        } else {
-            active = !remoteActiveTurns.isEmpty
-        }
+        remoteActiveTurns = AppState.liveRemoteTurns(remoteActiveTurns, now: remoteTurnClock.now,
+                                                     expiry: AppState.remoteTurnExpiry)
+        let active = AppState.remoteTurnIsActive(remoteActiveTurns, focus: remoteFocusSessionID)
         if remoteTurnActive != active {
             remoteTurnActive = active
         }
+    }
+
+    /// The turn table with expired entries dropped: an entry survives only
+    /// while its last sign of life is strictly newer than `now - expiry`.
+    /// Pure; pinned by Tests/Fixtures/status/remote-turns.json.
+    nonisolated static func liveRemoteTurns(_ turns: [String: Date],
+                                            now: Date,
+                                            expiry: TimeInterval) -> [String: Date] {
+        let cutoff = now.addingTimeInterval(-expiry)
+        return turns.filter { $0.value > cutoff }
+    }
+
+    /// Whether a remote turn lights the bar: any live entry, or — with a
+    /// focus set — only the focused session's (DESIGN v2.2 §B). Pure; pinned
+    /// by Tests/Fixtures/status/remote-turns.json.
+    nonisolated static func remoteTurnIsActive(_ turns: [String: Date], focus: String?) -> Bool {
+        if let focus {
+            return turns[focus] != nil
+        }
+        return !turns.isEmpty
     }
 
     /// Hard reset of remote turn state — the user's escape hatch (Interrupt /
@@ -1760,7 +2038,11 @@ final class AppState: ObservableObject {
         // resume-retry-once rule still fires when `--resume` fails).
         expectedTerminations = 0
 
-        startedWithResume = (resumeSessionID != nil)
+        // ACP sessions always start fresh (no resume id is passed), so an ACP
+        // launch is never a resume: the resume retry must not fire for it, or
+        // an agent's crash would wipe the stored Claude session id.
+        startedWithResume = resumeSessionID != nil
+            && AppState.normalizedHarnessKind(configStore.config.harnessKind) == "claude"
         liveAssistantText = ""
         // A queued effort change is satisfied by this launch.
         pendingEffortRestart = false
@@ -1959,7 +2241,13 @@ final class AppState: ObservableObject {
         if startedWithResume && !hasRetriedWithoutResume {
             startedWithResume = false
             hasRetriedWithoutResume = true
+            // Forget the stale id everywhere it is kept — the folder's own
+            // entry too, or the next start would resume it again with the
+            // one retry already spent.
             configStore.config.lastSessionID = nil
+            if let dir = configStore.config.projectDir, !dir.isEmpty {
+                configStore.config.sessionIDsByProject.removeValue(forKey: dir)
+            }
             appendEntry(.system, "Couldn't resume the previous session — starting a fresh one.")
             startSession(resumeSessionID: nil)
             return
@@ -2012,6 +2300,7 @@ final class AppState: ObservableObject {
         Task { @MainActor [weak self] in
             guard let self else { return }
             self.statusUpdateScheduled = false
+            self.syncControllerSlot()
             self.syncSpeechConfiguration()
             self.syncAudioAvailabilityBaseline()
             // Both are no-ops unless the config actually changed, so Settings
@@ -2033,7 +2322,9 @@ final class AppState: ObservableObject {
             controllerConnected: controller.isConnected,
             isPTTActive: isPTTActive,
             isSpeaking: tts.isSpeaking,
-            isWorking: harness.state == .working || (isRemoteMode && remoteTurnActive))
+            isWorking: AppState.derivedIsWorking(harnessState: harness.state,
+                                                 isRemoteMode: isRemoteMode,
+                                                 remoteTurnActive: remoteTurnActive))
 
         if newStatus != status {
             status = newStatus
@@ -2042,7 +2333,8 @@ final class AppState: ObservableObject {
         applyLight(for: newStatus)
     }
 
-    /// Pure status derivation (DESIGN v2.6). Live activity outranks the
+    /// Pure status derivation (DESIGN v2.6; the full precedence table is
+    /// Tests/Fixtures/status/derivation.json). Live activity outranks the
     /// missing controller: the pad is optional — voice capture can be started
     /// from the mic button or the keyboard, replies still speak, and turns
     /// still run — so "No Controller" is only the *resting* state, never a
@@ -2055,6 +2347,16 @@ final class AppState: ObservableObject {
         if isSpeaking { return .speaking }
         if isWorking { return .thinking }
         return controllerConnected ? .idle : .noController
+    }
+
+    /// The `isWorking` input to `derivedStatus` (DESIGN v2.6 §B): the harness
+    /// is working, or — in remote mode only — a hooked session's turn is
+    /// active. A remote-turn flag left over in built-in mode never counts.
+    /// Pure; pinned by Tests/Fixtures/status/working.json.
+    nonisolated static func derivedIsWorking(harnessState: HarnessState,
+                                             isRemoteMode: Bool,
+                                             remoteTurnActive: Bool) -> Bool {
+        harnessState == .working || (isRemoteMode && remoteTurnActive)
     }
 
     private func applyLight(for status: AppStatus) {
@@ -2071,16 +2373,24 @@ final class AppState: ObservableObject {
             color = (0.0, 0.0, 0.0)
         }
 
-        // The key includes connection state: with activity now outranking
-        // .noController, a pad that (re)connects mid-listening/-thinking sees
-        // no status change, so the color alone would memo-match and the fresh
-        // pad's light bar would keep its firmware default. setLight on a
-        // disconnected pad is a harmless no-op, so keying on isConnected is
+        // The key includes which controller fills the slot: with activity now
+        // outranking .noController, a pad that (re)connects mid-listening/
+        // -thinking sees no status change, and a slot change between two
+        // connected pads changes neither status nor connection state, so the
+        // color alone would memo-match and the pad now in the slot would keep
+        // its firmware default (or the dark it was given). setLight with the
+        // slot empty is a harmless no-op, so keying on the active id is
         // exactly the re-push needed.
-        let key = "\(controller.isConnected)|\(color.r),\(color.g),\(color.b)"
+        let key = "\(controller.active?.id ?? "-")|\(color.r),\(color.g),\(color.b)"
         guard key != lastLightKey else { return }
         lastLightKey = key
         controller.setLight(r: color.r, g: color.g, b: color.b)
+    }
+
+    /// Hands the Controller slot pin (DESIGN v2.7 B) to the controller
+    /// service, which re-selects the slot only when the pin actually changed.
+    private func syncControllerSlot() {
+        controller.pinnedControllerID = configStore.config.controllerDeviceID
     }
 
     private func syncSpeechConfiguration() {
@@ -2099,10 +2409,11 @@ final class AppState: ObservableObject {
     }
 
     /// Two short buzzes: "that didn't work".
+    /// The second buzz is timed on the injected clock (the wall clock in
+    /// the app), so a test sees it only when it advances that clock.
     private func errorHaptic() {
         haptic(intensity: 0.9, duration: 0.06)
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 140_000_000)
+        remoteTurnClock.schedule(after: 0.14) { [weak self] in
             self?.haptic(intensity: 0.9, duration: 0.06)
         }
     }

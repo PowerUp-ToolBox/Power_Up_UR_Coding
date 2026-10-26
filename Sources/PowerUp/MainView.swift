@@ -124,6 +124,7 @@ private struct RemoteAXWarningBanner: View {
 @MainActor
 private struct ControllerInfoChip: View {
     @EnvironmentObject private var controller: ControllerService
+    @EnvironmentObject private var configStore: ConfigStore
 
     var body: some View {
         HStack(spacing: 7) {
@@ -150,15 +151,18 @@ private struct ControllerInfoChip: View {
     }
 
     private var name: String {
-        if let name = controller.controllerName, !name.isEmpty { return name }
-        return controller.isConnected ? "Controller" : "No controller"
+        ViewLogic.controllerChipName(controllerName: controller.controllerName,
+                                     isConnected: controller.isConnected)
     }
 
     private var helpText: String {
-        guard controller.isConnected else {
-            return "No controller connected — see the pairing steps in the sidebar"
-        }
-        return controller.isDualSense ? "\(name) (DualSense)" : name
+        ViewLogic.controllerChipHelp(controllerName: controller.controllerName,
+                                     isConnected: controller.isConnected,
+                                     isDualSense: controller.isDualSense,
+                                     pinnedAwayNote: ViewLogic.pinnedControllerAwayNote(
+                                        connected: controller.connected,
+                                        active: controller.active,
+                                        pinnedID: configStore.config.controllerDeviceID))
     }
 }
 
@@ -228,24 +232,18 @@ private struct BarStatusPill: View {
     }
 }
 
-/// Model chip. `config.model` wins whenever it is an explicit alias, so a
-/// controller-driven Cycle Model press shows up instantly (optimistic); only
-/// when the config says "default" do we fall back to whatever the CLI reported.
+/// Model chip. The label rule (explicit alias first, else what the active
+/// harness reported) lives in `AppState.modelChipLabel`, where the session
+/// scenarios pin it. `configStore` is still observed so a Cycle Model press
+/// redraws the chip instantly.
 @MainActor
 private struct ModelChip: View {
     @EnvironmentObject private var configStore: ConfigStore
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
+        let label = appState.modelChipLabel
         SessionChip(symbol: "cpu", label: label, help: "Model: \(label)")
-    }
-
-    private var label: String {
-        let configured = configStore.config.model
-        if configured != "default", !configured.isEmpty { return configured }
-        // Whatever the ACTIVE harness reports (Claude adapter or ACP agent).
-        if let reported = appState.harnessReportedModel, !reported.isEmpty { return reported }
-        return "default"
     }
 }
 
@@ -291,30 +289,22 @@ private struct PermissionChip: View {
 
 /// Dollars when the harness reports them (built-in Claude), token count when
 /// only usage is known (the Claude ACP bridge), hidden when the harness
-/// reports nothing (opencode) — never a misleading $0.00 (issue #12).
+/// reports nothing (opencode) — never a misleading $0.00 (issue #12). The
+/// rule and the text live in `ViewLogic.costChip`.
 @MainActor
 private struct CostChip: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var claude: ClaudeService     // re-render driver
 
     var body: some View {
-        if appState.harness.reportsCostUSD {
+        if let chip = ViewLogic.costChip(reportsCostUSD: appState.harness.reportsCostUSD,
+                                         totalCostUSD: appState.harness.totalCostUSD,
+                                         totalTokens: appState.harness.totalTokens) {
             SessionChip(symbol: "sum",
-                        label: Theme.costString(appState.harness.totalCostUSD),
+                        label: chip.label,
                         tint: Theme.textSecondary,
-                        help: "Total cost of this session so far (CLI estimate)")
-        } else if appState.harness.totalTokens > 0 {
-            SessionChip(symbol: "sum",
-                        label: tokenLabel,
-                        tint: Theme.textSecondary,
-                        help: "Tokens this session — this harness doesn't report dollar cost")
+                        help: chip.help)
         }
-    }
-
-    private var tokenLabel: String {
-        let tokens = appState.harness.totalTokens
-        if tokens >= 1000 { return String(format: "%.1fk tok", Double(tokens) / 1000) }
-        return "\(tokens) tok"
     }
 }
 
@@ -345,19 +335,19 @@ private struct PermissionRequestBanner: View {
             HStack(spacing: 8) {
                 Image(systemName: pending.isDestructive ? "exclamationmark.octagon.fill" : "hand.raised.fill")
                     .foregroundStyle(pending.isDestructive ? Theme.danger : Theme.amber)
-                Text(bannerText(pending))
+                Text(ViewLogic.permissionBannerText(pending))
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(2)
                 Spacer()
-                Text(pending.armed ? "✕ confirm  ·  ○ deny" : "✕ allow  ·  ○ deny")
+                Text(ViewLogic.permissionLegend(armed: pending.armed))
                     .font(Theme.monoSmall)
                     .foregroundStyle(Theme.textSecondary)
 
                 // Mouse path, so a tool approval never requires a controller.
                 // Same intents as ✕/○ — a destructive request still takes two
                 // Allow clicks (arm, then confirm).
-                Button(pending.armed ? "Confirm" : "Allow") {
+                Button(ViewLogic.permissionAllowButtonTitle(armed: pending.armed)) {
                     appState.answerPendingPermission(allow: true)
                 }
                 .buttonStyle(.bordered)
@@ -383,16 +373,6 @@ private struct PermissionRequestBanner: View {
             .padding(.horizontal, 12)
             .padding(.bottom, 10)
         }
-    }
-
-    private func bannerText(_ pending: AppState.PendingPermission) -> String {
-        let what = pending.detail.isEmpty ? pending.name : "\(pending.name) — \(pending.detail)"
-        if pending.isDestructive {
-            return pending.armed
-                ? "DESTRUCTIVE: \(what) — press ✕ again to confirm"
-                : "DESTRUCTIVE: \(what)"
-        }
-        return "The agent wants to: \(what)"
     }
 }
 
@@ -510,6 +490,7 @@ private struct SettingsGearButton: View {
 @MainActor
 private struct SidebarPane: View {
     @EnvironmentObject private var controller: ControllerService
+    @EnvironmentObject private var configStore: ConfigStore
     @Binding var showsAllButtons: Bool
 
     var body: some View {
@@ -520,7 +501,13 @@ private struct SidebarPane: View {
                 KeyboardHintsCard()
 
                 if !controller.isConnected {
-                    PairingHintCard()
+                    if let note = ViewLogic.pinnedControllerAwayNote(connected: controller.connected,
+                                                                     active: controller.active,
+                                                                     pinnedID: configStore.config.controllerDeviceID) {
+                        PinnedControllerAwayCard(note: note)
+                    } else {
+                        PairingHintCard()
+                    }
                 }
 
                 Spacer(minLength: 0)
@@ -549,7 +536,7 @@ private struct ControlsCard: View {
 
     /// Order is fixed and meaningful: dictate → send → talk, then the three
     /// session cycles.
-    private static let order: [(action: ControllerAction, label: String)] = [
+    private static let order: [(action: Action, label: String)] = [
         (.pushToTalkDraft, "Dictate to prompt box (hold)"),
         (.sendDraft, "Send prompt box"),
         (.pushToTalk, "Talk to Claude (hold)"),
@@ -708,7 +695,7 @@ private struct TranscriptScrollView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {
                     if appState.transcript.isEmpty && !showsLiveReply {
-                        EmptyTranscriptCard(pushToTalkHint: pushToTalkButtonName(in: configStore.config.mapping))
+                        EmptyTranscriptCard(pushToTalkHint: ViewLogic.pushToTalkButtonName(in: configStore.config.mapping))
                             .frame(maxWidth: .infinity)
                             .padding(.top, 48)
                     }
@@ -812,7 +799,7 @@ private struct ComposerBar: View {
                          isRemoteDraft: appState.draftDictationTargetsRemote,
                          isRemoteMode: isRemote,
                          partialTranscript: speech.partialTranscript,
-                         hint: pushToTalkButtonName(in: configStore.config.mapping))
+                         hint: ViewLogic.pushToTalkButtonName(in: configStore.config.mapping))
         }
         .buttonStyle(.plain)
         // The gate must never block the STOP half of the toggle: a capture can
@@ -892,19 +879,4 @@ private struct ComposerBar: View {
         guard canCompose else { return }
         appState.sendDraft()
     }
-}
-
-// MARK: - Helpers
-
-/// Friendly name of whichever button is currently mapped to push-to-talk —
-/// falling back to a dictate-to-draft mapping so a user who only mapped
-/// `.pushToTalkDraft` still gets a hint instead of none at all.
-private func pushToTalkButtonName(in mapping: [ControllerButton: ControllerAction]) -> String? {
-    for button in ControllerButton.allCases where mapping[button] == .pushToTalk {
-        return button.displayName
-    }
-    for button in ControllerButton.allCases where mapping[button] == .pushToTalkDraft {
-        return button.displayName
-    }
-    return nil
 }

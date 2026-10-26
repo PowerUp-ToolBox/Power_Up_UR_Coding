@@ -1,0 +1,4 @@
+# S4 spike probes (#134). Throwaway code; see ../s4-windows-controller.md.
+[workspace]
+resolver = "2"
+members = ["rung1-sdl3", "rung2-sdl3-sys", "rung3-gilrs-hidapi"]

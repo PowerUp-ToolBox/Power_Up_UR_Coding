@@ -1,0 +1,69 @@
+{
+  "formatVersion": 1,
+  "name": "effort-change-mid-turn-restarts-with-resume-after-the-turn",
+  "description": "Cycle Effort pressed while a turn is in flight only queues the change. Once the turn completes, PowerUp restarts the harness with the new effort and resumes the same session, so the conversation carries on.",
+  "reason": "Effort has no live switch: it only changes by relaunching the CLI with --effort and --resume. Restarting at once would kill the answer being written, so the restart waits for the turn to finish.",
+  "source": "DESIGN.md v1.2 E '.cycleEffort' (pendingEffortRestart honored on the next .turnCompleted, restart with resume) and v2.0 'cycleEffort refuses when !harness.supportsEffort'; AppState.cycleEffort / restartForEffort / handleHarnessEvent(.turnCompleted)",
+  "verifiedBy": ["swift"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "builtin",
+    "project": true,
+    "effort": "medium"
+  },
+  "script": [
+    {
+      "call": "startSessionIfNeeded",
+      "reason": "App launch: no saved conversation, so a fresh session starts with effort medium."
+    },
+    {
+      "harnessEvent": { "type": "sessionReady", "sessionID": "session-1", "model": "claude-sonnet-4-5" },
+      "reason": "The CLI's system/init."
+    },
+    {
+      "call": "sendUserText",
+      "text": "Refactor the parser.",
+      "reason": "A turn is now in flight."
+    },
+    {
+      "intent": "cycleEffort",
+      "reason": "Medium → High mid-turn: the change is queued, nothing is restarted yet.",
+      "expect": {
+        "harnessCalls": [
+          { "type": "start", "effort": "medium", "resumeSessionID": null },
+          { "type": "send", "text": "Refactor the parser." }
+        ]
+      }
+    },
+    {
+      "harnessEvent": { "type": "reply", "text": "Done." },
+      "reason": "The answer arrives in full; the queued restart still waits for the turn's end.",
+      "expect": {
+        "harnessCalls": [
+          { "type": "start", "effort": "medium", "resumeSessionID": null },
+          { "type": "send", "text": "Refactor the parser." }
+        ]
+      }
+    },
+    {
+      "harnessEvent": { "type": "turnCompleted", "resultText": "Done.", "costUSD": 0.01, "isError": false, "detail": "success" },
+      "reason": "The turn is over: the queued effort change now restarts the harness with --resume."
+    }
+  ],
+  "expect": {
+    "harnessCalls": [
+      { "type": "start", "projectDir": "$project", "effort": "medium", "resumeSessionID": null },
+      { "type": "send", "text": "Refactor the parser." },
+      { "type": "start", "projectDir": "$project", "effort": "high", "resumeSessionID": "session-1" }
+    ],
+    "transcript": [
+      { "kind": "system", "text": "Session started (claude-sonnet-4-5)" },
+      { "kind": "user", "text": "Refactor the parser." },
+      { "kind": "system", "text": "Effort → High (applies when this turn finishes)" },
+      { "kind": "assistant", "text": "Done." },
+      { "kind": "system", "text": "Resuming the session with effort high…" }
+    ],
+    "errorShown": false,
+    "lastSessionID": "session-1"
+  }
+}

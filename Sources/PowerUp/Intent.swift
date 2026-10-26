@@ -12,7 +12,7 @@ enum VoiceCaptureMode: String, Equatable {
 /// source (the DualSense today; headsets, pedals, macropads, and protocol
 /// clients tomorrow) into `AppState`'s dispatcher.
 ///
-/// This is deliberately distinct from `ControllerAction` (the *mapping*
+/// This is deliberately distinct from `Action` (the *mapping*
 /// vocabulary stored per button in the config): a hold-style action like
 /// `.pushToTalk` becomes a begin/end intent *pair*, and a source that has no
 /// buttons at all (a protocol client) can emit intents directly without any
@@ -53,7 +53,7 @@ enum IntentMapper {
     /// The intent a mapped action produces for a press (`.began`) or release
     /// (`.ended`). Non-hold actions fire on the press and return nil for the
     /// release; hold actions return the begin/end pair.
-    static func intent(for action: ControllerAction, phase: ControlPhase) -> Intent? {
+    static func intent(for action: Action, phase: ControlPhase) -> Intent? {
         switch phase {
         case .ended:
             return action.isHoldAction ? .endVoiceCapture : nil

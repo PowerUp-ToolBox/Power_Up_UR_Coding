@@ -1,0 +1,44 @@
+Darwin arm64
+swift-driver version: 1.87.3 Apple Swift version 5.9.2 (swiftlang-5.9.2.2.56 clang-1500.1.0.2.5)
+
+== ALONE
+ACPAdapter.swift                   FAIL  ACPAdapter.swift:16:40: error: cannot find type 'HarnessState' in scope
+AppState.swift                     FAIL  AppState.swift:68:46: error: cannot find type 'TranscriptEntry' in scope
+AudioDeviceStore.swift             PASS
+ClaudeService.swift                FAIL  ClaudeService.swift:16:40: error: cannot find type 'ClaudeState' in scope
+ComponentViews.swift               FAIL  ComponentViews.swift:50:35: error: cannot find type 'AppStatus' in scope
+ConfigStore.swift                  FAIL  ConfigStore.swift:5:28: error: cannot find type 'AppConfig' in scope
+ControllerService.swift            FAIL  ControllerService.swift:16:25: error: cannot find type 'ControllerButton' in scope
+ControllerSlot.swift               FAIL  ControllerSlot.swift:51:23: error: cannot find type 'VoiceCaptureMode' in scope
+DestructiveActionClassifier.swift  PASS
+Harness.swift                      FAIL  Harness.swift:7:26: error: cannot find type 'ClaudeState' in scope
+HookInstaller.swift                PASS
+Intent.swift                       FAIL  Intent.swift:56:36: error: cannot find type 'Action' in scope
+MainView.swift                     FAIL  MainView.swift:100:49: error: cannot find type 'ConfigStore' in scope
+MappingView.swift                  FAIL  MappingView.swift:6:41: error: cannot find type 'ConfigStore' in scope
+Models.swift                       PASS
+PowerUpApp.swift                   FAIL  PowerUpApp.swift:6:41: error: cannot find 'AppState' in scope
+PowerUpProtocol.swift              FAIL  PowerUpProtocol.swift:56:21: error: cannot find type 'Intent' in scope
+RemoteControlService.swift         FAIL  RemoteControlService.swift:200:27: error: cannot find type 'AppConfig' in scope
+RemoteListener.swift               FAIL  RemoteListener.swift:52:21: error: cannot find type 'Intent' in scope
+SettingsView.swift                 FAIL  SettingsView.swift:75:38: error: cannot find type 'AppState' in scope
+SpeechService.swift                FAIL  SpeechService.swift:202:35: error: cannot find 'AudioDeviceStore' in scope
+SummaryService.swift               FAIL  SummaryService.swift:57:26: error: cannot find 'ClaudeService' in scope
+TranscriptStore.swift              FAIL  TranscriptStore.swift:70:26: error: cannot find type 'TranscriptEntry' in scope
+TTSService.swift                   PASS
+ViewLogic.swift                    FAIL  ViewLogic.swift:19:51: error: cannot find type 'ControllerButton' in scope
+WebSocketFraming.swift             PASS
+
+== PURE-SET (typechecks together after 7 round(s))
+DestructiveActionClassifier.swift
+HookInstaller.swift
+
+== DROPPED from the Foundation-only candidates
+ACPAdapter.swift                   round 1: ACPAdapter.swift:55:54: error: cannot find type 'AppConfig' in scope
+ConfigStore.swift                  round 2: ConfigStore.swift:5:28: error: cannot find type 'AppConfig' in scope
+ControllerSlot.swift               round 3: ControllerSlot.swift:88:21: error: cannot find type 'Action' in scope
+Harness.swift                      round 1: Harness.swift:7:26: error: cannot find type 'ClaudeState' in scope
+Intent.swift                       round 3: Intent.swift:56:36: error: cannot find type 'Action' in scope
+PowerUpProtocol.swift              round 4: PowerUpProtocol.swift:56:21: error: cannot find type 'Intent' in scope
+SummaryService.swift               round 5: SummaryService.swift:57:26: error: cannot find 'ClaudeService' in scope
+ViewLogic.swift                    round 6: ViewLogic.swift:19:51: error: cannot find type 'ControllerButton' in scope

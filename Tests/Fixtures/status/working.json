@@ -1,0 +1,104 @@
+{
+  "description": "The isWorking input of the status derivation (DESIGN v2.6 §B, v1.4 'Status derivation'): the agent counts as working when the harness itself is working, or when PowerUp is in remote mode and a remote turn is active (hooks bracket the turn: UserPromptSubmit to Stop). A remote turn flag left over in built-in mode is ignored. Every combination of harness state (stopped, starting, ready, working), mode and remote turn flag (16 rows).",
+  "function": "AppState.derivedIsWorking(harnessState:isRemoteMode:remoteTurnActive:) — input {harnessState, isRemoteMode, remoteTurnActive} in, Bool out",
+  "verifiedBy": "DESIGN.md v1.4 addendum (status derivation in remote mode) and v2.6 addendum §B, plus characterization of the Swift implementation (spec #94, ticket #125); Tests/PowerUpTests/StatusDerivationTests.swift.",
+  "capturedAgainst": "PowerUp macOS app, branch stage-1-text-views-spikes, 2026-10-23",
+  "cases": [
+    {
+      "name": "built-in, harness stopped",
+      "input": { "harnessState": "stopped", "isRemoteMode": false, "remoteTurnActive": false },
+      "expected": false,
+      "reason": "No session is running, so nothing is working."
+    },
+    {
+      "name": "built-in, harness starting",
+      "input": { "harnessState": "starting", "isRemoteMode": false, "remoteTurnActive": false },
+      "expected": false,
+      "reason": "Spawning the CLI is not a turn: the light stays at rest until a prompt is actually being worked on."
+    },
+    {
+      "name": "built-in, harness ready",
+      "input": { "harnessState": "ready", "isRemoteMode": false, "remoteTurnActive": false },
+      "expected": false,
+      "reason": "A ready session waiting for a prompt is not working."
+    },
+    {
+      "name": "built-in, harness working",
+      "input": { "harnessState": "working", "isRemoteMode": false, "remoteTurnActive": false },
+      "expected": true,
+      "reason": "The built-in turn is the ordinary source of the amber light."
+    },
+    {
+      "name": "built-in ignores a stale remote turn, harness stopped",
+      "input": { "harnessState": "stopped", "isRemoteMode": false, "remoteTurnActive": true },
+      "expected": false,
+      "reason": "Remote turns only count in remote mode; a flag left behind must never pin the light amber in built-in mode."
+    },
+    {
+      "name": "built-in ignores a stale remote turn, harness starting",
+      "input": { "harnessState": "starting", "isRemoteMode": false, "remoteTurnActive": true },
+      "expected": false,
+      "reason": "Remote turns only count in remote mode, whatever the harness is doing."
+    },
+    {
+      "name": "built-in ignores a stale remote turn, harness ready",
+      "input": { "harnessState": "ready", "isRemoteMode": false, "remoteTurnActive": true },
+      "expected": false,
+      "reason": "Remote turns only count in remote mode, whatever the harness is doing."
+    },
+    {
+      "name": "built-in, harness working, stale remote turn",
+      "input": { "harnessState": "working", "isRemoteMode": false, "remoteTurnActive": true },
+      "expected": true,
+      "reason": "The built-in turn alone is enough; the stale flag changes nothing."
+    },
+    {
+      "name": "remote, no turn, harness stopped",
+      "input": { "harnessState": "stopped", "isRemoteMode": true, "remoteTurnActive": false },
+      "expected": false,
+      "reason": "The normal remote resting state: our own session is stopped and no hooked session is mid-turn."
+    },
+    {
+      "name": "remote, no turn, harness starting",
+      "input": { "harnessState": "starting", "isRemoteMode": true, "remoteTurnActive": false },
+      "expected": false,
+      "reason": "A harness that is only starting is not working, in either mode."
+    },
+    {
+      "name": "remote, no turn, harness ready",
+      "input": { "harnessState": "ready", "isRemoteMode": true, "remoteTurnActive": false },
+      "expected": false,
+      "reason": "A ready harness is not working, in either mode."
+    },
+    {
+      "name": "remote, no turn, harness still working",
+      "input": { "harnessState": "working", "isRemoteMode": true, "remoteTurnActive": false },
+      "expected": true,
+      "reason": "Characterization: the harness state is trusted in either mode, so a built-in turn still winding down right after the switch to remote keeps the light amber until the harness reports it has stopped (the switch to remote mode stops our own session)."
+    },
+    {
+      "name": "remote turn active, harness stopped",
+      "input": { "harnessState": "stopped", "isRemoteMode": true, "remoteTurnActive": true },
+      "expected": true,
+      "reason": "Remote mode has no process of ours to watch (the harness is stopped there); the hooks bracket the turn instead."
+    },
+    {
+      "name": "remote turn active, harness starting",
+      "input": { "harnessState": "starting", "isRemoteMode": true, "remoteTurnActive": true },
+      "expected": true,
+      "reason": "The remote turn alone is enough."
+    },
+    {
+      "name": "remote turn active, harness ready",
+      "input": { "harnessState": "ready", "isRemoteMode": true, "remoteTurnActive": true },
+      "expected": true,
+      "reason": "The remote turn alone is enough."
+    },
+    {
+      "name": "remote turn active, harness working",
+      "input": { "harnessState": "working", "isRemoteMode": true, "remoteTurnActive": true },
+      "expected": true,
+      "reason": "Both sources agree."
+    }
+  ]
+}

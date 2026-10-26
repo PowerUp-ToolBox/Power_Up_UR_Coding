@@ -1,0 +1,200 @@
+{
+  "description": "Stripping the activity glyph cmux prints between a workspace ref and its title. Exactly one leading character is removed, then surrounding spaces are trimmed, when that character is a single scalar in the Braille Patterns block (U+2800–U+28FF, cmux's spinner frames) or the Dingbats block (U+2700–U+27BF: ✳ ✓ ✗ …) without emoji presentation. Everything else is returned verbatim: colour emoji (including emoji-presentation Dingbats like ✅ ✨ ❌ and any glyph followed by VS16), the leading … cmux prints on truncated path titles, other symbols, and any glyph that is not first. Cosmetic only: targeting uses the ref.",
+  "function": "RemoteControlService.stripStatusGlyph(_:) — title string in, title string out",
+  "verifiedBy": "Characterization of the Swift implementation (spec #93, ticket #121); Tests/PowerUpTests/CmuxReportingFixtureTests.swift. Emoji presentation follows the Unicode Emoji_Presentation property as reported by Swift's Unicode.Scalar.Properties.",
+  "capturedAgainst": "cmux 0.64.17 (97) [9ed29d81a]; PowerUp macOS app, branch stage-1-text-views-spikes, 2026-10-23",
+  "cases": [
+    {
+      "name": "empty input",
+      "input": "",
+      "expected": "",
+      "reason": "An empty title stays empty."
+    },
+    {
+      "name": "plain title untouched",
+      "input": "Build PS5 controller voice app",
+      "expected": "Build PS5 controller voice app",
+      "reason": "Titles without a glyph must arrive unchanged."
+    },
+    {
+      "name": "Braille spinner frame U+2810 with space",
+      "input": "⠐ Build app",
+      "expected": "Build app",
+      "reason": "cmux's activity spinner uses Braille Patterns; the frame is noise in a picker."
+    },
+    {
+      "name": "Braille spinner frame U+280B",
+      "input": "⠋ Build app",
+      "expected": "Build app",
+      "reason": "Every spinner frame is stripped, not just one."
+    },
+    {
+      "name": "Braille spinner frame U+2839",
+      "input": "⠹ Build app",
+      "expected": "Build app",
+      "reason": "Every spinner frame is stripped, not just one."
+    },
+    {
+      "name": "Braille block lower bound U+2800",
+      "input": "⠀ Build app",
+      "expected": "Build app",
+      "reason": "The blank Braille cell is a spinner frame too; it must not leave an invisible prefix."
+    },
+    {
+      "name": "Braille block upper bound U+28FF",
+      "input": "⣿ Build app",
+      "expected": "Build app",
+      "reason": "The full Braille range is treated as spinner frames."
+    },
+    {
+      "name": "Dingbat eight-spoked asterisk U+2733",
+      "input": "✳ Design the mini program",
+      "expected": "Design the mini program",
+      "reason": "cmux's idle/attention mark; text-presentation Dingbat."
+    },
+    {
+      "name": "Dingbat check mark U+2713",
+      "input": "✓ Done task",
+      "expected": "Done task",
+      "reason": "cmux's finished mark."
+    },
+    {
+      "name": "Dingbat heavy check mark U+2714",
+      "input": "✔ Done task",
+      "expected": "Done task",
+      "reason": "Text-presentation Dingbat is a status mark."
+    },
+    {
+      "name": "Dingbat ballot X U+2717",
+      "input": "✗ Failed task",
+      "expected": "Failed task",
+      "reason": "cmux's failure mark."
+    },
+    {
+      "name": "Dingbat block lower bound U+2700",
+      "input": "✀ Cut",
+      "expected": "Cut",
+      "reason": "The full Dingbats block is treated as status marks."
+    },
+    {
+      "name": "glyph glued to the title",
+      "input": "✳Design",
+      "expected": "Design",
+      "reason": "cmux sometimes prints no space after the glyph."
+    },
+    {
+      "name": "glyph followed by several spaces",
+      "input": "⠐   Build app",
+      "expected": "Build app",
+      "reason": "All padding after the glyph goes with it."
+    },
+    {
+      "name": "glyph alone",
+      "input": "⠐",
+      "expected": "",
+      "reason": "A row whose only title is the glyph shows as untitled."
+    },
+    {
+      "name": "only one glyph is removed",
+      "input": "⠐ ✳ Build app",
+      "expected": "✳ Build app",
+      "reason": "Exactly one leading glyph is stripped, so anything after it is the user's own title."
+    },
+    {
+      "name": "trailing spaces trimmed only when a glyph was stripped",
+      "input": "⠐ Build app  ",
+      "expected": "Build app",
+      "reason": "Stripping trims the remainder."
+    },
+    {
+      "name": "trailing spaces kept when there is no glyph",
+      "input": "Build app  ",
+      "expected": "Build app  ",
+      "reason": "Without a glyph the title is returned verbatim (the parser trims before calling)."
+    },
+    {
+      "name": "leading space before a glyph is not stripped",
+      "input": " ⠐ Build app",
+      "expected": " ⠐ Build app",
+      "reason": "Only a glyph in the very first position counts; the parser trims before calling."
+    },
+    {
+      "name": "glyph in the middle not stripped",
+      "input": "Build ⠐ app",
+      "expected": "Build ⠐ app",
+      "reason": "Only a leading glyph is a status mark; one inside the title is the user's text."
+    },
+    {
+      "name": "Dingbat in the middle not stripped",
+      "input": "Ship ✳ it",
+      "expected": "Ship ✳ it",
+      "reason": "Only a leading glyph is a status mark."
+    },
+    {
+      "name": "emoji rocket preserved",
+      "input": "🚀 Ship it",
+      "expected": "🚀 Ship it",
+      "reason": "A colour emoji is the user's own title decoration, not a status glyph."
+    },
+    {
+      "name": "emoji-presentation Dingbat U+2705 preserved",
+      "input": "✅ Done list",
+      "expected": "✅ Done list",
+      "reason": "U+2705 sits in the Dingbats block but has emoji presentation, so it is the user's emoji."
+    },
+    {
+      "name": "emoji-presentation Dingbat U+2728 preserved",
+      "input": "✨ Polish",
+      "expected": "✨ Polish",
+      "reason": "Sparkles is in Dingbats but renders as emoji; it must survive."
+    },
+    {
+      "name": "emoji-presentation Dingbat U+274C preserved",
+      "input": "❌ Broken build",
+      "expected": "❌ Broken build",
+      "reason": "Cross mark is in Dingbats but renders as emoji; it must survive."
+    },
+    {
+      "name": "Dingbat with variation selector 16 preserved",
+      "input": "✳\uFE0F Design",
+      "expected": "✳\uFE0F Design",
+      "reason": "With VS16 the glyph is an explicit emoji (two scalars, one character), so it is the user's."
+    },
+    {
+      "name": "leading ellipsis preserved",
+      "input": "…/git/Mose/Mose-UI",
+      "expected": "…/git/Mose/Mose-UI",
+      "reason": "cmux truncates path titles with U+2026; stripping it would show a plausible absolute path that does not exist."
+    },
+    {
+      "name": "glyph then ellipsis keeps the ellipsis",
+      "input": "✳ …/git/Mose/Mose-UI",
+      "expected": "…/git/Mose/Mose-UI",
+      "reason": "Only the glyph goes; the truncation ellipsis after it stays."
+    },
+    {
+      "name": "black star U+2605 preserved",
+      "input": "★ Favourite",
+      "expected": "★ Favourite",
+      "reason": "Miscellaneous Symbols are not cmux status marks; the broad symbol categories are deliberately not stripped."
+    },
+    {
+      "name": "bullet preserved",
+      "input": "• Notes",
+      "expected": "• Notes",
+      "reason": "General punctuation that could start a title is not a status mark."
+    },
+    {
+      "name": "quote preserved",
+      "input": "\"quoted\" title",
+      "expected": "\"quoted\" title",
+      "reason": "A title may legitimately start with a quote."
+    },
+    {
+      "name": "CJK after glyph",
+      "input": "⠋ 修复登录页面",
+      "expected": "修复登录页面",
+      "reason": "Non-Latin titles survive stripping intact."
+    }
+  ]
+}

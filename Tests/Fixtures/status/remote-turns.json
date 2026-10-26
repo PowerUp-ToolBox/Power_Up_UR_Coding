@@ -1,0 +1,86 @@
+{
+  "description": "Whether a remote turn is active, the remote-mode input to the working light (DESIGN v1.10 per-session remote turn tracking, v2.2 §B remote session focus). The turn table maps a session id (or \"unknown-session\" when a hook carried none) to the last sign of life; it is given here as ages in seconds before now. First the table is pruned: an entry survives only while it is strictly younger than the expiry (an entry exactly expirySeconds old is dropped). Then the turn is active when any surviving entry exists, or, with a focus set, only when the focused session has a surviving entry. Expected gives the surviving session ids sorted, and the active flag.",
+  "function": "AppState.liveRemoteTurns(_:now:expiry:) then AppState.remoteTurnIsActive(_:focus:) — input {turnAgesSeconds, focus, expirySeconds} in, {kept, active} out",
+  "verifiedBy": "DESIGN.md v1.10 addendum (per-session turns, 15 minute expiry) and v2.2 §B (with a focus set, 'only its turn drives remoteTurnActive'), plus characterization of the Swift implementation (spec #94, ticket #125); Tests/PowerUpTests/StatusDerivationTests.swift.",
+  "capturedAgainst": "PowerUp macOS app, branch stage-1-text-views-spikes, 2026-10-23",
+  "cases": [
+    {
+      "name": "no turns",
+      "input": { "turnAgesSeconds": {}, "focus": null, "expirySeconds": 900 },
+      "expected": { "kept": [], "active": false },
+      "reason": "No session is mid-turn: the light rests."
+    },
+    {
+      "name": "one fresh turn",
+      "input": { "turnAgesSeconds": { "s1": 5 }, "focus": null, "expirySeconds": 900 },
+      "expected": { "kept": ["s1"], "active": true },
+      "reason": "A prompt was just submitted in a hooked session: amber."
+    },
+    {
+      "name": "turn just under the expiry survives",
+      "input": { "turnAgesSeconds": { "s1": 899 }, "focus": null, "expirySeconds": 900 },
+      "expected": { "kept": ["s1"], "active": true },
+      "reason": "A long turn with a recent enough sign of life stays active."
+    },
+    {
+      "name": "turn exactly at the expiry is dropped",
+      "input": { "turnAgesSeconds": { "s1": 900 }, "focus": null, "expirySeconds": 900 },
+      "expected": { "kept": [], "active": false },
+      "reason": "The cutoff is strict (last sign of life must be newer than now minus expiry); pins the boundary so a port cannot drift by one."
+    },
+    {
+      "name": "turn past the expiry is dropped",
+      "input": { "turnAgesSeconds": { "s1": 3600 }, "focus": null, "expirySeconds": 900 },
+      "expected": { "kept": [], "active": false },
+      "reason": "The stuck-amber fix: a session killed mid-turn never sends Stop, so its entry must expire instead of pinning the light forever."
+    },
+    {
+      "name": "expired turn dropped, fresh one kept",
+      "input": { "turnAgesSeconds": { "dead": 1200, "live": 30 }, "focus": null, "expirySeconds": 900 },
+      "expected": { "kept": ["live"], "active": true },
+      "reason": "Pruning is per session: one dead session does not clear a live one, and a live one does not keep a dead one."
+    },
+    {
+      "name": "two live sessions",
+      "input": { "turnAgesSeconds": { "a": 10, "b": 20 }, "focus": null, "expirySeconds": 900 },
+      "expected": { "kept": ["a", "b"], "active": true },
+      "reason": "Concurrent sessions each keep their own entry, the reason the single global flag was replaced."
+    },
+    {
+      "name": "hook without a session id",
+      "input": { "turnAgesSeconds": { "unknown-session": 10 }, "focus": null, "expirySeconds": 900 },
+      "expected": { "kept": ["unknown-session"], "active": true },
+      "reason": "Hooks that carry no session id are tracked under the shared unknown-session key and still light the bar."
+    },
+    {
+      "name": "focused session is working",
+      "input": { "turnAgesSeconds": { "focus-me": 10, "other": 10 }, "focus": "focus-me", "expirySeconds": 900 },
+      "expected": { "kept": ["focus-me", "other"], "active": true },
+      "reason": "With a focus set, the focused session's turn drives the working light."
+    },
+    {
+      "name": "only an unfocused session is working",
+      "input": { "turnAgesSeconds": { "other": 10 }, "focus": "focus-me", "expirySeconds": 900 },
+      "expected": { "kept": ["other"], "active": false },
+      "reason": "With a focus set, other sessions still log but never turn the light amber; their entries are kept so clearing the focus shows them again."
+    },
+    {
+      "name": "focused session expired, unfocused one live",
+      "input": { "turnAgesSeconds": { "focus-me": 901, "other": 10 }, "focus": "focus-me", "expirySeconds": 900 },
+      "expected": { "kept": ["other"], "active": false },
+      "reason": "Expiry applies to the focused session too, and an unfocused live session still does not count."
+    },
+    {
+      "name": "focus set, no turns",
+      "input": { "turnAgesSeconds": {}, "focus": "focus-me", "expirySeconds": 900 },
+      "expected": { "kept": [], "active": false },
+      "reason": "A focus with nothing running rests."
+    },
+    {
+      "name": "timestamp in the future is kept",
+      "input": { "turnAgesSeconds": { "s1": -5 }, "focus": null, "expirySeconds": 900 },
+      "expected": { "kept": ["s1"], "active": true },
+      "reason": "Characterization: a last-seen time slightly ahead of now (clock adjustment) is younger than the cutoff, so it is kept rather than treated as dead."
+    }
+  ]
+}

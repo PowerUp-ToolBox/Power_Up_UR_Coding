@@ -1,0 +1,44 @@
+{
+  "formatVersion": 1,
+  "name": "remote-mode-switch-clears-every-turn",
+  "description": "A remote session is working and focused when the person switches to built-in mode. Every remote turn and the focus are cleared, so the status goes idle, and hook events heard after the switch are ignored.",
+  "reason": "Remote turns describe sessions PowerUp no longer drives once it is in built-in mode. Leaving them in place would keep the light amber for a session the person has stopped controlling.",
+  "source": "DESIGN.md v1.10 'clearRemoteTurns() … every control-mode switch'; DESIGN.md v2.2 B 'Focus clears on control-mode switch'; AppState.syncControlMode, AppState.handleRemoteEvent (remote mode only)",
+  "verifiedBy": ["swift"],
+  "config": {
+    "controlMode": "remote",
+    "controllerConnected": true
+  },
+  "script": [
+    {
+      "hookEvent": { "type": "userPromptSubmit", "sessionID": "session-alpha", "cwd": "/work/alpha", "text": "Fix the build." },
+      "reason": "Session alpha is working."
+    },
+    {
+      "intent": "cycleFocus",
+      "reason": "All → alpha.",
+      "expect": { "remoteFocus": "session-alpha", "status": "thinking" }
+    },
+    {
+      "intent": "toggleControlMode",
+      "reason": "Remote → built-in.",
+      "expect": { "status": "idle", "remoteTurnActive": false, "remoteFocus": null }
+    },
+    {
+      "hookEvent": { "type": "postToolUse", "sessionID": "session-alpha", "cwd": "/work/alpha", "text": "Bash" },
+      "reason": "Built-in mode ignores hook events, even a heartbeat that would otherwise start a turn.",
+      "expectNoChange": true
+    }
+  ],
+  "expect": {
+    "status": "idle",
+    "remoteTurnActive": false,
+    "remoteFocus": null,
+    "transcript": [
+      { "kind": "system", "text": "Focus → alpha — only this session is spoken now." },
+      { "kind": "system", "text": "Built-in session mode — PowerUp runs its own Claude session again." }
+    ],
+    "injectorCalls": [],
+    "harnessCalls": []
+  }
+}

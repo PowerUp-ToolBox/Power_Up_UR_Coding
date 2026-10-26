@@ -1,0 +1,54 @@
+{
+  "formatVersion": 1,
+  "name": "remote-status-follows-the-focused-session",
+  "description": "Two remote sessions are known; alpha is working and beta is idle. With no focus the status is thinking. Focusing alpha keeps it thinking; focusing beta shows idle even though alpha is still working, and alpha's heartbeats do not change that; cycling back to all sessions shows thinking again.",
+  "reason": "With a session focus set, only the focused session drives the working light, so the status light reflects the session the person is listening to rather than any session on the machine.",
+  "source": "DESIGN.md v2.2 B 'Remote session focus' (only the focused session's turn drives remoteTurnActive; All → each session by cwd basename → All); AppState.cycleFocus, AppState.refreshRemoteTurnActive",
+  "verifiedBy": ["swift"],
+  "config": {
+    "controlMode": "remote",
+    "controllerConnected": true
+  },
+  "script": [
+    {
+      "hookEvent": { "type": "userPromptSubmit", "sessionID": "session-alpha", "cwd": "/work/alpha", "text": "Fix the build." },
+      "reason": "Session alpha is working."
+    },
+    {
+      "hookEvent": { "type": "stop", "sessionID": "session-beta", "cwd": "/work/beta" },
+      "reason": "Session beta is seen (a Stop with no reply text), so it is known but idle.",
+      "expect": { "status": "thinking", "remoteFocus": null, "transcript": [] }
+    },
+    {
+      "intent": "cycleFocus",
+      "reason": "All → alpha (sessions are ordered by folder name).",
+      "expect": { "remoteFocus": "session-alpha", "status": "thinking", "remoteTurnActive": true }
+    },
+    {
+      "intent": "cycleFocus",
+      "reason": "alpha → beta. Beta is idle, so the status is idle although alpha still works.",
+      "expect": { "remoteFocus": "session-beta", "status": "idle", "remoteTurnActive": false }
+    },
+    {
+      "hookEvent": { "type": "postToolUse", "sessionID": "session-alpha", "cwd": "/work/alpha", "text": "Bash" },
+      "reason": "A heartbeat from the unfocused session keeps its own turn alive but does not light the status.",
+      "expectNoChange": true
+    },
+    {
+      "intent": "cycleFocus",
+      "reason": "beta → all sessions: alpha's turn shows again."
+    }
+  ],
+  "expect": {
+    "transcript": [
+      { "kind": "system", "text": "Focus → alpha — only this session is spoken now." },
+      { "kind": "system", "text": "Focus → beta — only this session is spoken now." },
+      { "kind": "system", "text": "Focus → all sessions." }
+    ],
+    "remoteFocus": null,
+    "status": "thinking",
+    "remoteTurnActive": true,
+    "injectorCalls": [],
+    "errorShown": false
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "formatVersion": 1,
+  "name": "live-model-follows-the-echo-not-the-request",
+  "description": "Cycle Model sends a live set_model for the next alias. The chip shows the requested alias at once, but the live model name stays on what the harness last reported until the harness acknowledges the change, and then follows the name its next init echoes.",
+  "reason": "The live model name is what the session is really running, reported to protocol clients as liveModel. Copying the requested alias into it would claim a switch the harness has not made, and an alias such as \"opus\" is not the model's full name.",
+  "source": "DESIGN.md v1.2 E '.cycleModel', v1.3 C (set_model ack refreshes the model at once; chip rules) and v2.0 harnessReportedModel; AppState.cycleModel / modelChipLabel, ClaudeService.apply(.controlResult)",
+  "verifiedBy": ["swift"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "builtin",
+    "project": true,
+    "model": "sonnet"
+  },
+  "script": [
+    {
+      "call": "startSessionIfNeeded",
+      "reason": "App launch with --model sonnet."
+    },
+    {
+      "harnessEvent": { "type": "sessionReady", "sessionID": "session-1", "model": "claude-sonnet-4-5" },
+      "reason": "The init echoes the full model name; the chip keeps the explicit alias.",
+      "expect": { "liveModel": "claude-sonnet-4-5", "modelChip": "sonnet" }
+    },
+    {
+      "intent": "cycleModel",
+      "reason": "Sonnet → Opus: set_model goes out live. The chip is optimistic; the live name is not.",
+      "expect": {
+        "harnessCalls": [
+          { "type": "start", "model": "sonnet" },
+          { "type": "setModel", "model": "opus" }
+        ],
+        "liveModel": "claude-sonnet-4-5",
+        "modelChip": "opus"
+      }
+    },
+    {
+      "harnessEvent": { "type": "controlResult", "action": "set_model", "ok": true, "detail": "", "value": "opus" },
+      "reason": "The harness acknowledges the switch; it now reports the acknowledged model without waiting for the next init.",
+      "expect": { "liveModel": "opus", "modelChip": "opus" }
+    },
+    {
+      "harnessEvent": { "type": "sessionReady", "sessionID": "session-1", "model": "claude-opus-4-1" },
+      "reason": "The next init echoes the full name of the model now answering."
+    }
+  ],
+  "expect": {
+    "harnessCalls": [
+      { "type": "start", "projectDir": "$project", "model": "sonnet" },
+      { "type": "setModel", "model": "opus" }
+    ],
+    "transcript": [
+      { "kind": "system", "text": "Session started (claude-sonnet-4-5)" },
+      { "kind": "system", "text": "Model → opus" }
+    ],
+    "liveModel": "claude-opus-4-1",
+    "modelChip": "opus",
+    "errorShown": false,
+    "lastSessionID": "session-1"
+  }
+}

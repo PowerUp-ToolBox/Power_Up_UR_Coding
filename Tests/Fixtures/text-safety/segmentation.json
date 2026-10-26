@@ -1,0 +1,176 @@
+{
+  "description": "Remote-mode escape-safe segmentation for `cmux send`. cmux send turns the two-character sequences backslash-n, backslash-r and backslash-t into Enter, Enter and Tab, so a prompt that contains them as text (a regex, a code snippet, a Windows path) would submit itself half-typed. A backslash that is not followed by n/r/t within the same send is delivered literally, so the text is split right after every backslash that precedes n, r or t, and each segment is sent with its own `cmux send -- <segment>`. Line breaks are flattened first (see line-breaks.json). Splitting is per user-perceived character (Swift Character / extended grapheme cluster), so surrogate pairs, emoji sequences and CJK text are never cut. At most 12 splits are made (13 segments); escapes past the cap are left to cmux rather than spawning hundreds of subprocesses. Segments always concatenate back to the flattened input and are never empty.",
+  "function": "RemoteControlService.escapeSafeSegments(_:) — input string in, ordered list of segments out (empty input gives an empty list)",
+  "verifiedBy": "Characterization of the Swift implementation (spec #93, ticket #120); Tests/PowerUpTests/TextSafetyFixtureTests.swift. The cmux escaping rule it defends against (backslash + n/r/t is interpreted, a backslash ending a send is literal) was verified live against the cmux CLI at /Applications/cmux.app/Contents/Resources/bin/cmux when remote mode was built (DESIGN.md remote-control addendum, 2026-08-25); the cmux version was not recorded at the time.",
+  "capturedAgainst": "PowerUp macOS app, branch stage-1-text-views-spikes, 2026-10-23",
+  "cases": [
+    {
+      "name": "empty input sends nothing",
+      "input": "",
+      "expected": [],
+      "reason": "Empty text must produce zero cmux send calls, not one empty send."
+    },
+    {
+      "name": "plain text is one segment",
+      "input": "run the tests, then commit",
+      "expected": ["run the tests, then commit"],
+      "reason": "Ordinary dictation (the overwhelming majority) must cost exactly one cmux send."
+    },
+    {
+      "name": "backslash-n in a regex is defused",
+      "input": "match \\n in the regex",
+      "expected": ["match \\", "n in the regex"],
+      "reason": "cmux would turn backslash-n into Enter and submit 'match ' half-typed; ending the send after the backslash keeps it literal."
+    },
+    {
+      "name": "backslash-r is defused",
+      "input": "strip the \\r characters",
+      "expected": ["strip the \\", "r characters"],
+      "reason": "backslash-r is also Enter to cmux and would submit early."
+    },
+    {
+      "name": "backslash-t is defused",
+      "input": "split on \\t please",
+      "expected": ["split on \\", "t please"],
+      "reason": "backslash-t is Tab to cmux, which in Claude Code's prompt triggers completion instead of typing the text."
+    },
+    {
+      "name": "escape at the very start",
+      "input": "\\nleading",
+      "expected": ["\\", "nleading"],
+      "reason": "An escape in column 0 is split after the lone backslash; the first send is just the backslash."
+    },
+    {
+      "name": "escape at the very end",
+      "input": "ends with \\n",
+      "expected": ["ends with \\", "n"],
+      "reason": "A trailing backslash-n must not become a premature submit before the explicit Enter."
+    },
+    {
+      "name": "only an escape gives two non-empty segments",
+      "input": "\\n",
+      "expected": ["\\", "n"],
+      "reason": "A split never produces an empty segment (an empty cmux send)."
+    },
+    {
+      "name": "lone trailing backslash is not split",
+      "input": "the path ends in \\",
+      "expected": ["the path ends in \\"],
+      "reason": "A backslash with nothing after it is already literal; splitting would add a pointless send."
+    },
+    {
+      "name": "backslash before other letters is not split",
+      "input": "C:\\Users\\david\\Documents",
+      "expected": ["C:\\Users\\david\\Documents"],
+      "reason": "Only n, r and t follow-ups are cmux escapes; other backslashes are delivered literally in one send."
+    },
+    {
+      "name": "Windows path with backslash-n and backslash-t",
+      "input": "open C:\\new\\temp\\file",
+      "expected": ["open C:\\", "new\\", "temp\\file"],
+      "reason": "A dictated Windows path would otherwise press Enter at \\new and Tab at \\temp."
+    },
+    {
+      "name": "uppercase N, R, T are not escapes",
+      "input": "\\N \\R \\T",
+      "expected": ["\\N \\R \\T"],
+      "reason": "The split is case-sensitive: only the lowercase sequences are cmux escapes, so these stay one send."
+    },
+    {
+      "name": "run of different escapes",
+      "input": "\\n\\r\\t",
+      "expected": ["\\", "n\\", "r\\", "t"],
+      "reason": "Back-to-back escapes are each defused; every backslash ends its own send."
+    },
+    {
+      "name": "run of repeated backslash-n",
+      "input": "a\\n\\nb",
+      "expected": ["a\\", "n\\", "nb"],
+      "reason": "A double escaped newline in a code snippet must not submit twice."
+    },
+    {
+      "name": "double backslash before n",
+      "input": "a\\\\nb",
+      "expected": ["a\\\\", "nb"],
+      "reason": "Only the backslash directly before n pairs with it; the split goes after the second backslash so no send ends in backslash-n."
+    },
+    {
+      "name": "real LF is flattened before splitting",
+      "input": "first line\nsecond line",
+      "expected": ["first line second line"],
+      "reason": "A raw LF handed to cmux send is Enter just like backslash-n; segmentation must be safe even if the caller forgot to flatten."
+    },
+    {
+      "name": "backslash before a real newline is not fused with the next n",
+      "input": "end with \\\nnext",
+      "expected": ["end with \\ next"],
+      "reason": "Flattening turns the newline into a space first, so the backslash is no longer adjacent to the n and stays literal."
+    },
+    {
+      "name": "backslash before a real tab character",
+      "input": "a\\\tb",
+      "expected": ["a\\\tb"],
+      "reason": "A real tab character is not the letter t, so it does not form a cmux escape with the backslash."
+    },
+    {
+      "name": "shell metacharacters are one segment",
+      "input": "echo \"$HOME\" 'x' `pwd`; a | b && c > d < e * ? ~ # ! % ^ ( ) [ ] { }",
+      "expected": ["echo \"$HOME\" 'x' `pwd`; a | b && c > d < e * ? ~ # ! % ^ ( ) [ ] { }"],
+      "reason": "cmux is spawned with an argument vector, not a shell, so quotes, dollars and backticks must arrive unchanged in a single send."
+    },
+    {
+      "name": "leading dashes are one segment",
+      "input": "--force push it",
+      "expected": ["--force push it"],
+      "reason": "Dash-leading text is protected by the `--` separator, not by splitting; segmentation must leave it whole."
+    },
+    {
+      "name": "surrogate pairs around an escape",
+      "input": "🚀\\n🎉",
+      "expected": ["🚀\\", "n🎉"],
+      "reason": "Astral-plane emoji are UTF-16 surrogate pairs; the split must fall between characters, never inside a pair."
+    },
+    {
+      "name": "ZWJ sequence and flag stay whole",
+      "input": "👩‍💻 🇯🇵 \\t done",
+      "expected": ["👩‍💻 🇯🇵 \\", "t done"],
+      "reason": "Multi-scalar emoji (zero-width-joiner sequences, regional-indicator flags) must not be cut by a split."
+    },
+    {
+      "name": "CJK text around an escape",
+      "input": "运行测试\\n然后提交",
+      "expected": ["运行测试\\", "n然后提交"],
+      "reason": "Chinese dictation containing a literal backslash-n is split only at the backslash, with every CJK character intact."
+    },
+    {
+      "name": "CJK, kana and hangul without escapes are one segment",
+      "input": "你好，世界。日本語のテキスト、한국어 텍스트",
+      "expected": ["你好，世界。日本語のテキスト、한국어 텍스트"],
+      "reason": "Non-Latin text with full-width punctuation contains no cmux escapes and must cost exactly one send."
+    },
+    {
+      "name": "full-width backslash and yen sign are not escapes",
+      "input": "＼n and ¥n",
+      "expected": ["＼n and ¥n"],
+      "reason": "Only the ASCII backslash U+005C starts a cmux escape; look-alikes common in CJK input are left alone."
+    },
+    {
+      "name": "line breaks only become a single space segment",
+      "input": "\n\r\n",
+      "expected": [" "],
+      "reason": "Break-only input flattens to one space and is sent as one non-empty segment, never as Enter."
+    },
+    {
+      "name": "twelve escapes are all defused",
+      "input": "x\\nx\\nx\\nx\\nx\\nx\\nx\\nx\\nx\\nx\\nx\\nx\\n",
+      "expected": ["x\\", "nx\\", "nx\\", "nx\\", "nx\\", "nx\\", "nx\\", "nx\\", "nx\\", "nx\\", "nx\\", "nx\\", "n"],
+      "reason": "Up to the cap of 12 splits every escape is defused, giving 13 sends."
+    },
+    {
+      "name": "thirteenth escape is past the segment cap",
+      "input": "x\\nx\\nx\\nx\\nx\\nx\\nx\\nx\\nx\\nx\\nx\\nx\\nx\\n",
+      "expected": ["x\\", "nx\\", "nx\\", "nx\\", "nx\\", "nx\\", "nx\\", "nx\\", "nx\\", "nx\\", "nx\\", "nx\\", "nx\\n"],
+      "reason": "Pathological input must not spawn hundreds of cmux processes: after 12 splits the remainder goes in one last send and cmux's interpretation is accepted (deliberate trade-off)."
+    }
+  ]
+}

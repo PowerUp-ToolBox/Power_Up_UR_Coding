@@ -4,7 +4,9 @@
 
 Voice settings live in **Settings → Voice**: text-to-speech on/off, voice
 picker, speaking rate, max spoken characters, and the speech-recognition
-language and on-device options.
+language and on-device options. The microphone and speaker themselves are
+the Input and Output slots in **Settings → Devices**
+([below](#input-and-output-your-microphone-and-speaker)).
 
 You don't need a controller to use your voice: click the **mic button** next
 to the prompt box (or press **⌘D**) to start and stop dictation, and **⇧⌘D**
@@ -92,15 +94,25 @@ reply is spoken (the rest is truncated at a sentence boundary with a spoken
 "reply truncated" note). It can be set all the way down to **0**, which means
 *no limit* — Claude's full reply is read aloud instead of being truncated.
 
-## Choosing your microphone and speaker
+## Input and Output: your microphone and speaker
 
-By default PowerUp listens on the system-default microphone and speaks
-through the system-default output. **Settings → Voice → Audio Devices** lets
-you pin either one — dictate through a USB mic while replies play through
-your headphones, or the other way around.
+PowerUp listens on one microphone, the **Input** slot, and speaks through
+one speaker, the **Output** slot. Both sit in **Settings → Devices**, next to
+the **Controller** slot (see
+[Buttons & controls](controls.md#one-controller-one-microphone-one-speaker)).
+By default Input is the system-default microphone and Output the
+system-default output. Pin either one to a specific audio device — dictate
+through a USB mic while replies play through your headphones, or the other
+way around.
 
-Devices are remembered even when unplugged: if your chosen device disappears
-mid-session, PowerUp announces it in the transcript, falls back to the system
-default, and switches back automatically the moment the device returns. A
-disconnected pick shows in the menu as "(Disconnected device)" so you always
-see what's configured.
+Your Input and Output picks are remembered even when unplugged: if a chosen
+audio device disappears mid-session, PowerUp announces it in the transcript,
+falls back to the system default, and switches back automatically the
+moment the device returns. A disconnected pick shows in the menu as
+"(Disconnected device)" so you always see what's configured.
+
+If your chosen microphone disconnects *while you are recording*, the
+recording stops right there with the error buzz, and nothing is sent or left
+in the prompt box: a half sentence never reaches the agent. Just record
+again; the new recording uses the system default until your microphone
+returns.

@@ -38,7 +38,7 @@ together if the CLI genuinely changes.
 
 ```sh
 swift build            # debug build
-swift test             # 195 unit tests, no hardware needed
+swift test             # unit tests, no hardware needed
 ./scripts/build.sh     # release build → build/PowerUp.app (assembled + signed)
 open build/PowerUp.app # ALWAYS launch as a bundle — TCC permissions track
                        # bundle identity; running the raw binary breaks them
@@ -70,6 +70,12 @@ open build/PowerUp.app # ALWAYS launch as a bundle — TCC permissions track
   takes an injectable `settingsURL` and has a `supportDirectoryOverride` test
   seam — use both (see `HookInstallerTests`), so a live PowerUp installation
   is never touched.
+- Orchestration (AppState) tests go through
+  `AppStateTestEnvironment.makeAppState(...)` in
+  `Tests/PowerUpTests/AppStateTestSupport.swift`: sandboxed config and
+  settings, a fake harness, recorded controller/TTS output, no side effects.
+  Orchestration changes ship with a test through it (CONTRIBUTING.md,
+  "Testing AppState"). Shared JSON fixtures live in `Tests/Fixtures/`.
 - Don't spawn real `claude` sessions from tests; the stream parser is
   testable via `ClaudeService.events(fromLine:)`.
 - Don't spawn real ACP agents or npx bridges (opencode, `claude-agent-acp`,
