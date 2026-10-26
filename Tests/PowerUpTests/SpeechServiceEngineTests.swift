@@ -203,6 +203,27 @@ final class SpeechServiceEngineTests: XCTestCase {
         XCTAssertEqual(engine.captureHandlers.count, 2)
     }
 
+    func testTheDrainingStopsTimeoutCannotEndTheNextCapture() async {
+        let engine = ScriptedSpeechEngine()
+        engine.finalTranscript = nil
+        let speech = SpeechService(engine: engine)
+
+        speech.startListening()
+        speech.stopListening { _ in }
+        speech.startListening()
+
+        // Resolving the drained stop cancels its 1.5 s timeout; a cancelled
+        // sleep returns at once, and the timeout must then do nothing.
+        for _ in 0..<20 { await Task.yield() }
+
+        XCTAssertTrue(speech.isListening)
+        XCTAssertTrue(engine.isCapturing)
+        engine.finalTranscript = "second words"
+        var results: [String?] = []
+        speech.stopListening { results.append($0) }
+        XCTAssertEqual(results, ["second words"])
+    }
+
     func testLateCallbacksFromAnEarlierCaptureAreDropped() {
         let engine = ScriptedSpeechEngine()
         engine.finalTranscript = "first"

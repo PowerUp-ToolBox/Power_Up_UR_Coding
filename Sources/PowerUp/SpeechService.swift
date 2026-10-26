@@ -227,7 +227,10 @@ final class SpeechService: ObservableObject {
         stopTimeoutTask?.cancel()
         stopTimeoutTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 1_500_000_000)
-            guard let self, !self.finished else { return }
+            // finishStop cancels this timeout, and a cancelled sleep returns
+            // at once — by then a new press may have reset `finished`, so
+            // without this check the timeout would end that new capture.
+            guard !Task.isCancelled, let self, !self.finished else { return }
             self.finishStop(with: self.lastPartialResult)
         }
     }
