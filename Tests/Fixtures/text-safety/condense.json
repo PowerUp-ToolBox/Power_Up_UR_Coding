@@ -1,0 +1,179 @@
+{
+  "description": "Condensing cmux command output into one short line for the friendly failure message the person sees in the transcript and in Settings → Remote. CR, LF and tab become spaces, runs of spaces collapse to one and leading/trailing spaces go; then, if the result is longer than maxChars characters (Swift Characters: extended grapheme clusters, never bytes or UTF-16 units), it is cut to max(1, maxChars - 1) characters followed by U+2026 …. Display-only: this is not the injection line-break flattener.",
+  "function": "RemoteControlService.condense(_:maxChars:) — input {text, maxChars} in, condensed string out",
+  "verifiedBy": "Characterization of the Swift implementation (spec #93, ticket #121); Tests/PowerUpTests/CmuxReportingFixtureTests.swift. Pure function, independent of any cmux version.",
+  "capturedAgainst": "PowerUp macOS app, branch stage-1-text-views-spikes, 2026-10-23",
+  "cases": [
+    {
+      "name": "empty input",
+      "input": {
+        "text": "",
+        "maxChars": 10
+      },
+      "expected": "",
+      "reason": "No output stays empty, so the caller can tell there was no detail."
+    },
+    {
+      "name": "whitespace only collapses to empty",
+      "input": {
+        "text": "  \n\t \r\n ",
+        "maxChars": 10
+      },
+      "expected": "",
+      "reason": "Output that is only blank lines is no detail at all."
+    },
+    {
+      "name": "below the limit unchanged",
+      "input": {
+        "text": "hello world",
+        "maxChars": 20
+      },
+      "expected": "hello world",
+      "reason": "Short text must not be marked as shortened."
+    },
+    {
+      "name": "exactly at the limit unchanged",
+      "input": {
+        "text": "abcde",
+        "maxChars": 5
+      },
+      "expected": "abcde",
+      "reason": "Text exactly the limit long fits; it must not lose its last character to a marker."
+    },
+    {
+      "name": "one above the limit",
+      "input": {
+        "text": "abcdef",
+        "maxChars": 5
+      },
+      "expected": "abcd…",
+      "reason": "Over the limit the result is limit-1 characters plus …, so the shortened text is exactly the limit long and visibly cut."
+    },
+    {
+      "name": "far above the limit",
+      "input": {
+        "text": "the quick brown fox jumps over the lazy dog",
+        "maxChars": 10
+      },
+      "expected": "the quick…",
+      "reason": "Long output must be cut with a clear marker."
+    },
+    {
+      "name": "real limit 200 at 201 characters",
+      "input": {
+        "text": "xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx y",
+        "maxChars": 200
+      },
+      "expected": "xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx…",
+      "reason": "failureMessage uses 200 for stderr/stdout; one character over is cut to 199 plus the marker."
+    },
+    {
+      "name": "line breaks and tabs collapse to single spaces",
+      "input": {
+        "text": "  error:\n\n  bad\tthing \r\n done ",
+        "maxChars": 50
+      },
+      "expected": "error: bad thing done",
+      "reason": "Multi-line stderr becomes one readable line; leading/trailing whitespace goes."
+    },
+    {
+      "name": "collapsing happens before measuring",
+      "input": {
+        "text": "a     b",
+        "maxChars": 3
+      },
+      "expected": "a b",
+      "reason": "The limit applies to the collapsed text, so padding never forces a cut."
+    },
+    {
+      "name": "CRLF collapses like LF",
+      "input": {
+        "text": "one\r\ntwo",
+        "maxChars": 20
+      },
+      "expected": "one two",
+      "reason": "Windows-style line endings in tool output are also flattened."
+    },
+    {
+      "name": "CJK cut at a character boundary",
+      "input": {
+        "text": "日本語のテキストです",
+        "maxChars": 5
+      },
+      "expected": "日本語の…",
+      "reason": "The limit counts characters, not bytes; a 3-byte UTF-8 character is never split."
+    },
+    {
+      "name": "emoji with skin tone counts as one character",
+      "input": {
+        "text": "👍🏽👍🏽👍🏽",
+        "maxChars": 2
+      },
+      "expected": "👍🏽…",
+      "reason": "A modifier sequence is one user-perceived character and is never cut in half."
+    },
+    {
+      "name": "flag sequence counts as one character",
+      "input": {
+        "text": "🇯🇵🇺🇸🇫🇷",
+        "maxChars": 2
+      },
+      "expected": "🇯🇵…",
+      "reason": "Regional-indicator pairs must not be split into stray letters."
+    },
+    {
+      "name": "ZWJ family counts as one character",
+      "input": {
+        "text": "👨\u200D👩\u200D👧👨\u200D👩\u200D👧👨\u200D👩\u200D👧",
+        "maxChars": 2
+      },
+      "expected": "👨\u200D👩\u200D👧…",
+      "reason": "A ZWJ sequence is one character; cutting inside it would show broken glyphs."
+    },
+    {
+      "name": "decomposed accent counts as one character",
+      "input": {
+        "text": "e\u0301e\u0301e\u0301",
+        "maxChars": 2
+      },
+      "expected": "e\u0301…",
+      "reason": "A base letter plus combining mark is one character; the mark is never orphaned."
+    },
+    {
+      "name": "limit of one still shows a character",
+      "input": {
+        "text": "abc",
+        "maxChars": 1
+      },
+      "expected": "a…",
+      "reason": "With a tiny limit at least one character is kept before the marker (the result is then 2 long)."
+    },
+    {
+      "name": "limit of zero still shows a character",
+      "input": {
+        "text": "abc",
+        "maxChars": 0
+      },
+      "expected": "a…",
+      "reason": "A zero limit never yields a bare marker."
+    },
+    {
+      "name": "non-breaking space is not collapsed",
+      "input": {
+        "text": "a\u00A0\u00A0b",
+        "maxChars": 10
+      },
+      "expected": "a\u00A0\u00A0b",
+      "reason": "Only space, tab, CR and LF are whitespace here; other spacing is the tool's own text."
+    },
+    {
+      "name": "U+2028 is not flattened by condense",
+      "input": {
+        "text": "a\u2028b",
+        "maxChars": 10
+      },
+      "expected": "a\u2028b",
+      "reason": "condense is display-only; injection safety is flattenLineBreaks' job (line-breaks.json), not this function's."
+    }
+  ]
+}

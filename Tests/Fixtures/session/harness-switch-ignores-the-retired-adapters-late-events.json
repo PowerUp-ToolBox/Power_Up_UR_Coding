@@ -1,0 +1,67 @@
+{
+  "formatVersion": 1,
+  "name": "harness-switch-ignores-the-retired-adapters-late-events",
+  "description": "The built-in Claude session is mid-turn, waiting on a permission, when the person switches to an ACP agent and sends a message. The stopped Claude process then flushes a late reply, completes its turn and exits. None of that touches the new agent's session: its pending permission, its working state and the stored Claude id stay as they were.",
+  "reason": "Stopping the Claude CLI only closes its input; the process can take up to two seconds to exit. Its late events used to land in the new session: the late turn completion cleared the agent's permission request, and the late exit was taken for the new session ending. Because the ACP launch had reset the expected-termination count, that exit ran the resume retry, which wiped the stored Claude session id and restarted the agent in the middle of its turn.",
+  "source": "DESIGN.md v2.0 AppState 'syncHarnessSelection() … stops the outgoing session'; AppState.syncHarnessSelection, AppState.handleHarnessEvent",
+  "verifiedBy": ["swift"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "builtin",
+    "project": true,
+    "controllerConnected": true
+  },
+  "script": [
+    { "call": "startSessionIfNeeded" },
+    {
+      "harnessEvent": { "type": "sessionReady", "sessionID": "session-1", "model": "claude-sonnet-4-5" }
+    },
+    { "call": "sendUserText", "text": "Clean the build folder." },
+    {
+      "harnessEvent": { "type": "permissionRequest", "id": "perm-1", "name": "Bash", "kind": "execute", "detail": "make clean" },
+      "expect": { "pendingPermission": true }
+    },
+    {
+      "settings": { "harnessKind": "acp", "acpAgent": "custom", "acpCustomCommand": "scripted-agent --acp" },
+      "reason": "The old session's permission request goes with it.",
+      "expect": { "pendingPermission": false }
+    },
+    { "call": "sendUserText", "text": "Hello agent." },
+    {
+      "harnessEvent": { "type": "permissionRequest", "id": "perm-2", "name": "Edit", "kind": "edit", "detail": "README.md" },
+      "adapter": "acp",
+      "reason": "The new agent asks for a permission of its own.",
+      "expect": { "pendingPermission": true, "status": "thinking" }
+    },
+    {
+      "harnessEvent": { "type": "reply", "text": "Late words from the old session." },
+      "adapter": "claude",
+      "reason": "The retired process flushes its last output.",
+      "expectNoChange": true
+    },
+    {
+      "harnessEvent": { "type": "turnCompleted", "resultText": "Late words from the old session.", "isError": false, "detail": "success" },
+      "adapter": "claude",
+      "expectNoChange": true
+    },
+    {
+      "harnessEvent": { "type": "ended", "exitCode": 0 },
+      "adapter": "claude",
+      "reason": "The retired process exits.",
+      "expectNoChange": true
+    }
+  ],
+  "expect": {
+    "harnessCalls": [
+      { "adapter": "claude", "type": "start" },
+      { "adapter": "claude", "type": "send", "text": "Clean the build folder." },
+      { "adapter": "claude", "type": "stop" },
+      { "adapter": "acp", "type": "start", "resumeSessionID": null },
+      { "adapter": "acp", "type": "send", "text": "Hello agent." }
+    ],
+    "pendingPermission": true,
+    "status": "thinking",
+    "lastSessionID": "session-1",
+    "errorShown": false
+  }
+}

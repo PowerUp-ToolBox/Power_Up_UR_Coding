@@ -1,0 +1,33 @@
+{
+  "formatVersion": 1,
+  "name": "remote-turn-expires-after-fifteen-silent-minutes",
+  "description": "A remote turn starts and then nothing more is heard from that session: no Stop, no SessionEnd, no tool call. Just under fifteen minutes later it still shows thinking; just past fifteen minutes the status goes idle on its own.",
+  "reason": "A session can die mid-turn without ever sending Stop (killed terminal, crashed CLI, Escape pressed in the session itself). Without the expiry the light stayed amber forever, with no event that would ever clear it.",
+  "source": "DESIGN.md v1.10 'Expiry' (15 minutes, remoteTurnExpiry); AppState.beginRemoteTurn, AppState.refreshRemoteTurnActive",
+  "verifiedBy": ["swift"],
+  "config": {
+    "controlMode": "remote",
+    "controllerConnected": true
+  },
+  "script": [
+    {
+      "hookEvent": { "type": "userPromptSubmit", "sessionID": "session-alpha", "cwd": "/work/alpha", "text": "Run the migration." },
+      "reason": "The turn starts at minute 0."
+    },
+    {
+      "advanceClock": 899,
+      "reason": "Just under fifteen silent minutes: still presumed alive.",
+      "expect": { "status": "thinking", "remoteTurnActive": true }
+    },
+    {
+      "advanceClock": 2,
+      "reason": "Just past fifteen silent minutes: presumed dead."
+    }
+  ],
+  "expect": {
+    "status": "idle",
+    "remoteTurnActive": false,
+    "transcript": [],
+    "injectorCalls": []
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "formatVersion": 1,
+  "name": "remote-notification-keeps-a-waiting-turn-alive",
+  "description": "A remote turn starts, and ten minutes in Claude sends a Notification (it is waiting on the person). Twenty minutes after the turn started it is still working, because the notification refreshed its expiry. If nothing else arrives, it goes idle fifteen minutes after the notification.",
+  "reason": "A turn waiting on the person is alive, so a notification refreshes it. But a turn whose last sign of life was a notification can still die silently (the person presses Escape in the terminal itself, which sends no Stop); it must then go idle fifteen minutes later like any other silent turn, never stay amber forever.",
+  "source": "DESIGN.md v1.10 'a notification refreshes an existing entry's timestamp' and 'Expiry: an entry with no hook activity for 15 minutes is presumed dead'; AppState.handleRemoteEvent(.notification)",
+  "verifiedBy": ["swift"],
+  "config": {
+    "controlMode": "remote",
+    "controllerConnected": true
+  },
+  "script": [
+    {
+      "hookEvent": { "type": "userPromptSubmit", "sessionID": "session-alpha", "cwd": "/work/alpha", "text": "Clean up the branch." },
+      "reason": "The turn starts at minute 0."
+    },
+    {
+      "advanceClock": 600,
+      "reason": "Ten quiet minutes."
+    },
+    {
+      "hookEvent": { "type": "notification", "sessionID": "session-alpha", "cwd": "/work/alpha", "text": "Claude needs your permission to use Bash" },
+      "reason": "At minute 10 the turn waits on the person."
+    },
+    {
+      "advanceClock": 600,
+      "reason": "Minute 20: past fifteen minutes since the turn started, but only ten since the notification.",
+      "expect": { "status": "thinking", "remoteTurnActive": true }
+    },
+    {
+      "advanceClock": 301,
+      "reason": "Past fifteen minutes since the notification with nothing else heard: the turn is presumed dead."
+    }
+  ],
+  "expect": {
+    "status": "idle",
+    "remoteTurnActive": false,
+    "transcript": [
+      { "kind": "system", "text": "Claude needs your permission to use Bash" }
+    ],
+    "injectorCalls": []
+  }
+}

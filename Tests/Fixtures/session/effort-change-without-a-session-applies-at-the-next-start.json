@@ -1,0 +1,34 @@
+{
+  "formatVersion": 1,
+  "name": "effort-change-without-a-session-applies-at-the-next-start",
+  "description": "Cycle Effort pressed while no session is running starts nothing; the new effort goes in on the command line of the next start.",
+  "reason": "There is no process to restart, and a settings press must never spawn a session on its own.",
+  "source": "DESIGN.md v1.2 E '.cycleEffort' and 'Session spawn passes effort: config.effort through'; AppState.cycleEffort (stopped branch) / startSession",
+  "verifiedBy": ["swift"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "builtin",
+    "project": true,
+    "effort": "xhigh"
+  },
+  "script": [
+    {
+      "intent": "cycleEffort",
+      "reason": "Extra High → Ultra with nothing running: noted, nothing started.",
+      "expect": { "harnessCalls": [] }
+    },
+    {
+      "call": "startSessionIfNeeded",
+      "reason": "The next start carries the new effort."
+    }
+  ],
+  "expect": {
+    "harnessCalls": [
+      { "type": "start", "projectDir": "$project", "effort": "max", "resumeSessionID": null }
+    ],
+    "transcript": [
+      { "kind": "system", "text": "Effort → Ultra (applies when the session starts)" }
+    ],
+    "errorShown": false
+  }
+}

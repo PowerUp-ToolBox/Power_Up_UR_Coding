@@ -1,0 +1,44 @@
+{
+  "formatVersion": 1,
+  "name": "ultracode-prefix-only-for-built-in-claude-at-max-effort",
+  "description": "On the built-in Claude harness at Ultra effort (\"max\"), every outgoing prompt is sent with the \"ultracode\" keyword and a blank line in front of it. The transcript keeps the person's own words.",
+  "reason": "The claude CLI has no flag for dynamic multi-agent workflows; the documented opt-in is the \"ultracode\" prompt keyword. Ultra effort means the person wants those workflows, so PowerUp adds the keyword on the wire without putting words in their mouth on screen.",
+  "source": "DESIGN.md v2.1 A 'Wire behavior'; AppState.outgoingText(for:)",
+  "verifiedBy": ["swift"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "builtin",
+    "effort": "max",
+    "project": true
+  },
+  "script": [
+    {
+      "intent": "sendPrompt",
+      "text": "Refactor the parser.",
+      "reason": "The first prompt launches the session and is sent with the keyword."
+    },
+    {
+      "harnessEvent": { "type": "sessionReady", "sessionID": "session-1", "model": "claude-opus-4-1" }
+    },
+    {
+      "harnessEvent": { "type": "turnCompleted", "resultText": "Done.", "isError": false, "detail": "success" }
+    },
+    {
+      "call": "sendUserText",
+      "text": "Now add tests.",
+      "reason": "Every prompt is prefixed, not only the first."
+    }
+  ],
+  "expect": {
+    "harnessCalls": [
+      { "adapter": "claude", "type": "start", "effort": "max", "resumeSessionID": null },
+      { "adapter": "claude", "type": "send", "text": "ultracode\n\nRefactor the parser." },
+      { "adapter": "claude", "type": "send", "text": "ultracode\n\nNow add tests." }
+    ],
+    "transcript": [
+      { "kind": "user", "text": "Refactor the parser." },
+      { "kind": "system", "text": "Session started (claude-opus-4-1)" },
+      { "kind": "user", "text": "Now add tests." }
+    ]
+  }
+}

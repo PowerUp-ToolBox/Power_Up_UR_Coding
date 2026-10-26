@@ -1,0 +1,47 @@
+{
+  "formatVersion": 1,
+  "name": "destructive-second-approve-sends",
+  "description": "A destructive request is approved with two presses in a row: the first arms it, the second sends exactly one allow answer for that request and clears it.",
+  "reason": "Two deliberate presses are the confirmation. The second press must answer the request the first one armed, once, and leave nothing pending.",
+  "source": "DESIGN.md v2.2 §C (destructive-action confirmation); docs/harnesses.md 'Destructive requests take two presses'; AppState.approve",
+  "verifiedBy": ["swift"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "builtin",
+    "project": true
+  },
+  "script": [
+    {
+      "call": "sendUserText",
+      "text": "Throw away my last three commits"
+    },
+    {
+      "harnessEvent": { "type": "permissionRequest", "id": "perm-1", "name": "Bash", "kind": "execute", "detail": "git reset --hard HEAD~3" }
+    },
+    {
+      "intent": "approve",
+      "reason": "First press arms."
+    },
+    {
+      "intent": "approve",
+      "reason": "Second press, with the request still pending and armed, allows it."
+    }
+  ],
+  "expect": {
+    "harnessCalls": [
+      { "type": "start", "resumeSessionID": null },
+      { "type": "send", "text": "Throw away my last three commits" },
+      { "type": "respondToPermission", "id": "perm-1", "allow": true }
+    ],
+    "transcript": [
+      { "kind": "user", "text": "Throw away my last three commits" },
+      { "kind": "system", "text": "⚠️ The agent wants to: Bash — git reset --hard HEAD~3. Destructive — ✕ twice to allow, ○ to deny." },
+      { "kind": "system", "text": "⚠️ Destructive action — press ✕ again to confirm, or ○ to deny." },
+      { "kind": "system", "text": "Approved." }
+    ],
+    "errorShown": false,
+    "pendingPermission": false,
+    "pendingPermissionArmed": false,
+    "status": "thinking"
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "formatVersion": 1,
+  "name": "destructive-reject-denies-an-armed-request",
+  "description": "A destructive request that one Approve has armed is denied by Reject: one deny answer is sent for that request and nothing stays pending.",
+  "reason": "Reject denies at any point. Arming is a step towards allowing, never a lock that makes the request harder to refuse.",
+  "source": "DESIGN.md v2.2 §C ('○ denies at any point'); docs/harnesses.md; AppState.reject",
+  "verifiedBy": ["swift"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "builtin",
+    "project": true
+  },
+  "script": [
+    {
+      "call": "sendUserText",
+      "text": "Throw away my last three commits"
+    },
+    {
+      "harnessEvent": { "type": "permissionRequest", "id": "perm-1", "name": "Bash", "kind": "execute", "detail": "git reset --hard HEAD~3" }
+    },
+    {
+      "intent": "approve",
+      "reason": "First press arms."
+    },
+    {
+      "intent": "reject",
+      "reason": "The person changes their mind: deny."
+    }
+  ],
+  "expect": {
+    "harnessCalls": [
+      { "type": "start", "resumeSessionID": null },
+      { "type": "send", "text": "Throw away my last three commits" },
+      { "type": "respondToPermission", "id": "perm-1", "allow": false }
+    ],
+    "transcript": [
+      { "kind": "user", "text": "Throw away my last three commits" },
+      { "kind": "system", "text": "⚠️ The agent wants to: Bash — git reset --hard HEAD~3. Destructive — ✕ twice to allow, ○ to deny." },
+      { "kind": "system", "text": "⚠️ Destructive action — press ✕ again to confirm, or ○ to deny." },
+      { "kind": "system", "text": "Denied." }
+    ],
+    "errorShown": false,
+    "pendingPermission": false,
+    "pendingPermissionArmed": false,
+    "status": "thinking"
+  }
+}

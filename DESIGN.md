@@ -1351,6 +1351,14 @@ nonsense.
   crashed CLI, Escape pressed directly in the session). A legitimate longer
   turn may go idle early and self-corrects on its next hook event; the
   reverse tradeoff (amber forever) has no recovery.
+  *Amended by #118:* every sign of life that refreshes an entry (a
+  `userPromptSubmit`, a v2.2 `postToolUse` heartbeat, or a `notification`
+  for a turn already tracked) also re-arms the expiry check, so an entry
+  clears 15 minutes after its LAST sign of life whatever that sign was. A
+  notification used to refresh the timestamp without re-arming, which left
+  a turn that went silent after a notification amber until an unrelated
+  hook pruned it. Pinned by the `remote-*` scenarios in
+  `Tests/Fixtures/session/`.
 - `sessionEnd` for a session we believed was working appends a `.system`
   entry "Claude session ended before replying." (label-prefixed by cwd);
   sessions we weren't tracking end silently.
@@ -1544,6 +1552,11 @@ var acpCustomCommand: String  // space-split command line for "custom"
   new harness starts lazily on next send. `startSession` resolves
   `agentCommand` for ACP (friendly error when the binary is missing) and
   passes `resumeSessionID: nil` for ACP.
+  *Amended by #119:* an ACP launch is never a resume, so the resume retry
+  never fires for it and an agent's exit never clears the stored Claude
+  session id. Events from an adapter that is no longer the active harness
+  are ignored: a stopped claude process can flush output and exit up to 2 s
+  after a switch, and none of that may touch the new session.
 - Permission flow (issue #10): `.permissionRequest` stores
   `pendingPermissionID`, transcript entry "The agent wants to: … Press ✕ to
   allow or ○ to deny.", haptic + announce "Approval needed". While one is
@@ -1612,6 +1625,11 @@ toolCall kind). `AppState.pendingPermission` becomes a published struct
 `PendingPermission {id, name, detail, isDestructive, armed}`. Approve on a
 destructive request first ARMS it (transcript ⚠️ + "Destructive. Press again
 to confirm" + error haptic); the second ✕ approves; ○ denies at any point.
+*Amended by #116:* the two presses must be consecutive. Any other intent
+between them disarms the request (it stays pending, unanswered), so the next
+✕ arms again instead of approving. Interrupt (built-in mode) clears
+`pendingPermission` at once, without a `respondToPermission`: the adapter
+already cancels the agent's side of it on interrupt.
 `PermissionRequestBanner` (MainView) shows every pending request under the
 top bar — amber normally, red for destructive, with the ✕/○ legend.
 
@@ -1877,6 +1895,18 @@ engine down. `isSpeaking`/`onFinished` semantics are unchanged for callers.
   (keyed on the two UIDs, run from the derived-update path) whenever the
   selection changes — without that, the first transition after launch or
   after a pick would be swallowed as a rebaseline.
+- **Chosen microphone lost mid-capture (#123).** When a capture is
+  recording from the chosen microphone (snapshotted as `captureInputUID`
+  when the recognizer starts — nil when it records from the system
+  default) and a device-list change shows that UID gone, AppState ends the
+  capture at once, whoever started it: `isPTTActive`/`isDraftDictation`
+  cleared, the hold tracker is reset (v2.7 §C; the still-held trigger's
+  release is a no-op), a local draft hold restores the prompt box, the recognizer is
+  stopped with its result discarded (nothing is sent or typed), one error
+  transcript entry, the error haptic. The came/went announcement still
+  follows, and the next capture falls back to the system default through
+  the usual per-press resolution. A capture on the system default is left
+  alone. The persisted `audioInputUID` is never touched.
 - Settings → Voice gains an **Audio Devices** section: Microphone and
   Speech Output pickers ("System Default" + live device lists, with a
   "(Disconnected device)" placeholder entry so an unplugged pick stays
@@ -2014,14 +2044,13 @@ before. Pinned by `StatusDerivationTests`.
 
 ---
 
-# v2.7 addendum — vocabulary, device slots, and hold semantics (contract only)
+# v2.7 addendum — vocabulary, device slots, and hold semantics
 
 Supersedes anything above where it conflicts. Recorded on 2026-09-17 from a
 design session; the vocabulary is fixed in `CONTEXT.md`, the decisions in
 ADR 0012 (core library, per-OS UI) and ADR 0013 (three device slots). This
-addendum is the contract for the next code change; **no code has moved yet.**
-Implement it as step 5 of plan stage 1, with tests, before any logic
-migrates into the Rust core.
+addendum is implemented by #130–#132 (step 5 of plan stage 1), with tests,
+before any logic migrates into the Rust core.
 
 ## A. Renames (Models.swift, Intent.swift)
 
@@ -2076,6 +2105,31 @@ struct ConnectedController: Identifiable, Equatable {
 - `AppState` continues to resolve through
   `config.action(onProfile: active.profileID, control: id)`; no new
   dispatch path.
+- Implemented (#130). GameController exposes no serial number, so the id
+  is `"<productCategory>/<vendorName>"`, with `#2`, `#3`, … when an
+  identical pad is already connected. It is assigned at connect and never
+  renumbered. A pad that reconnects alone gets its old id back, so a pin
+  finds it again. Two identical pads are told apart only by connection
+  order. `AppState` copies `controllerDeviceID` into the service's
+  internal `pinnedControllerID`. When the slot changes, the outgoing pad's
+  held buttons are released, then `onDisconnect` fires, and that drives
+  `forceReleaseHold()` (§C). A connected pad outside the slot gets its
+  light switched off. The low-battery latch resets whenever the slot
+  changes (v2.3 A's "fallback swap").
+- Settings, implemented (#132). A new **Devices** tab, placed after General,
+  holds one "Devices" section with three pickers in the order Controller,
+  Input, Output. Input and Output are v2.5's Microphone and Speech Output
+  pickers, moved here from Settings → Voice unchanged apart from their
+  labels and caption, which now use the slot words; a new intro caption
+  explains the three slots. The Controller picker binds `controllerDeviceID`. Its rows come
+  from the pure, internal `ControllerPicker.rows(connected:active:pinnedID:)`
+  (ControllerPicker.swift): first Automatic (nil), then every entry of
+  `connected` by `displayName`, with the active one suffixed "— in use",
+  then, when the pin is not connected, a "<name> — not connected" row so
+  the selection stays visible. The name comes from the internal
+  `ControllerService.displayName(forID:)`, which inverts
+  `connectionIdentity`. `ControllerPicker.note(...)` is the caption under
+  the picker. Neither the picker nor the tab adds a menu key equivalent.
 - The host keyboard and mouse are outside the slot model: the v2.6 local
   NSEvent monitor and mic button keep working regardless of the slot's
   contents.
@@ -2083,8 +2137,8 @@ struct ConnectedController: Identifiable, Equatable {
 ## C. Hold semantics (replaces v2.4 §D and the v2.6 "reverse direction" note)
 
 - **No cross-device arbitration.** Only the active controller can start a
-  hold, so ownership is the control that started it, as today
-  (`pttHoldButton`).
+  hold, so ownership is the control that started it, recorded as the
+  owner in `AppState`'s `HoldTracker` (#131; it replaced `pttHoldButton`).
 - **Two holds on the active controller cancel both.** If a second
   hold-mapped control is pressed while a hold capture is active, the
   capture ends **without sending or drafting** (partial transcript
@@ -2099,6 +2153,19 @@ struct ConnectedController: Identifiable, Equatable {
   only) and also fires when the active controller changes slot.
 - Pinned by new tests: cancel-both discards and pulses; toggle-started
   capture survives a hold press; slot change releases a controller hold.
+- Implemented (#131). `AppState`'s private `holdTracker: HoldTracker`
+  replaces `pttHoldButton`. Both button handlers pass every press and
+  release to the tracker, with `toggleCaptureActive = isPTTActive &&
+  owner == nil`, and apply the effect it returns. `beginCapture` and
+  `endCapture` go through `handle(.beginVoiceCapture)` and
+  `handle(.endVoiceCapture)`. `deliver` goes through `handle(intent)`.
+  `cancelCapture` goes to a private discard path: it clears the capture
+  state, restores the prompt box for a local draft hold, calls
+  `speech.stopListening { _ in }` (the transcript is never read), plays the
+  error haptic and adds no transcript entry. `forceReleaseHold()` is
+  `releaseAll()` applied. The tracker is replaced with a fresh
+  `HoldTracker()` on a toggle stop, a denied speech permission and a
+  vanished microphone (v2.5 E).
 
 ## D. Profiles (ADR 0006, amended)
 
@@ -2116,3 +2183,18 @@ Unchanged. Its role is the **local plugin API** for scripts and plugins on
 the same machine; remote clients (phones) are deferred with ADR 0010. The
 `intent` vocabulary, the loopback bind, the token and the Origin policy are
 not touched by this addendum.
+
+## F. Pure view rules (ViewLogic.swift)
+
+- `enum ViewLogic` (#126) holds the product rules the main window shows as
+  pure, Foundation-only functions (state in, text out): the push-to-talk
+  hint, the empty-transcript prompt, the controller chip name and help, the
+  permission banner labels and the cost chip. Internal to the module, like
+  `AppState.derivedStatus` (v2.6); colors, symbols and layout stay in the
+  views.
+- `ViewLogic.pinnedControllerAwayNote(connected:active:pinnedID:)`: when
+  the Controller slot is empty only because it is pinned to a controller
+  that is away while another controller is connected, the controller chip's
+  help and the sidebar say "<pinned name> isn't connected — choose
+  Automatic in Settings → Devices to use another controller" instead of
+  the pairing steps. With nothing connected at all, the pairing steps stay.

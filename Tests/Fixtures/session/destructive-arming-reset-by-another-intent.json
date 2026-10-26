@@ -1,0 +1,50 @@
+{
+  "formatVersion": 1,
+  "name": "destructive-arming-reset-by-another-intent",
+  "description": "A destructive request is armed by one Approve, then the person does something else (any other intent). That disarms it, so the next Approve arms the request again instead of allowing it.",
+  "reason": "Two presses only confirm when they belong together. If anything happens between them, a later stray Approve (minutes later, or a misheard word) must not complete a confirmation the person has moved on from.",
+  "source": "Epic #92 rule 'the armed state resets on any other intent'; ticket #116; DESIGN.md v2.2 §C (as amended by #116); AppState.handle",
+  "verifiedBy": ["swift"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "builtin",
+    "project": true
+  },
+  "script": [
+    {
+      "call": "sendUserText",
+      "text": "Throw away my last three commits"
+    },
+    {
+      "harnessEvent": { "type": "permissionRequest", "id": "perm-1", "name": "Bash", "kind": "execute", "detail": "git reset --hard HEAD~3" }
+    },
+    {
+      "intent": "approve",
+      "reason": "First press arms."
+    },
+    {
+      "intent": "stopSpeaking",
+      "reason": "Any other intent in between disarms; the request itself stays pending and unanswered."
+    },
+    {
+      "intent": "approve",
+      "reason": "This press counts as a first press again: it re-arms, it does not allow."
+    }
+  ],
+  "expect": {
+    "harnessCalls": [
+      { "type": "start", "resumeSessionID": null },
+      { "type": "send", "text": "Throw away my last three commits" }
+    ],
+    "transcript": [
+      { "kind": "user", "text": "Throw away my last three commits" },
+      { "kind": "system", "text": "⚠️ The agent wants to: Bash — git reset --hard HEAD~3. Destructive — ✕ twice to allow, ○ to deny." },
+      { "kind": "system", "text": "⚠️ Destructive action — press ✕ again to confirm, or ○ to deny." },
+      { "kind": "system", "text": "⚠️ Destructive action — press ✕ again to confirm, or ○ to deny." }
+    ],
+    "errorShown": false,
+    "pendingPermission": true,
+    "pendingPermissionArmed": true,
+    "status": "thinking"
+  }
+}

@@ -73,9 +73,9 @@ struct HoldTracker: Equatable {
     /// The control id that started the running hold, or `nil` when the active
     /// controller owns no capture. Cleared by the owner's release and by a
     /// cancel. When a capture ends anywhere else (a toggle, a denied speech
-    /// permission — everywhere `pttHoldButton = nil` is set today), the
-    /// adapter must replace the tracker with a fresh `HoldTracker()`, or a
-    /// stale owner would cancel the next capture.
+    /// permission, a vanished microphone), the adapter must replace the
+    /// tracker with a fresh `HoldTracker()`, or a stale owner would cancel the
+    /// next capture.
     private(set) var owner: String?
 
     /// The effect of one input from the active controller.
@@ -95,7 +95,7 @@ struct HoldTracker: Equatable {
             // Only the control that started the hold can end it; every other
             // release — including both releases after a cancel — does nothing.
             // Ownership alone decides, not the action mapped now: a mapping
-            // edit mid-hold must not strand the recorder (as `pttHoldButton`).
+            // edit mid-hold must not strand the recorder.
             guard owner == control else { return .ignore }
             owner = nil
             return .endCapture

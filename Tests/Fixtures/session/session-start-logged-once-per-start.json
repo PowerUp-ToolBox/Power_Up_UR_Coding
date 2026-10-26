@@ -1,0 +1,65 @@
+{
+  "formatVersion": 1,
+  "name": "session-start-logged-once-per-start",
+  "description": "\"Session started\" is logged once for each launch of the harness. A later init in the same launch (the CLI sends one after a live model switch) only refreshes the model; a new session or a relaunch after a crash logs it again.",
+  "reason": "The CLI emits further system/init events mid-session. Logging each one faked a new session start in the transcript, while a real restart must still be visible.",
+  "source": "DESIGN.md 'ready → … .system entry \"Session started (model)\"'; AppState.didLogSessionStart (re-armed in startSession)",
+  "verifiedBy": ["swift"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "builtin",
+    "project": true
+  },
+  "script": [
+    { "call": "startSessionIfNeeded" },
+    {
+      "harnessEvent": { "type": "sessionReady", "sessionID": "session-1", "model": "claude-sonnet-4-5" },
+      "expect": { "transcript": [ { "kind": "system", "text": "Session started (claude-sonnet-4-5)" } ] }
+    },
+    {
+      "harnessEvent": { "type": "sessionReady", "sessionID": "session-1", "model": "claude-opus-4-1" },
+      "reason": "A second init from the same launch.",
+      "expect": {
+        "liveModel": "claude-opus-4-1",
+        "transcript": [ { "kind": "system", "text": "Session started (claude-sonnet-4-5)" } ]
+      }
+    },
+    {
+      "call": "newSession",
+      "reason": "A new launch: its init is logged again."
+    },
+    {
+      "harnessEvent": { "type": "sessionReady", "sessionID": "session-2", "model": "claude-sonnet-4-5" }
+    },
+    {
+      "harnessEvent": { "type": "sessionReady", "sessionID": "session-2", "model": "claude-sonnet-4-5" },
+      "reason": "A repeated init changes nothing at all.",
+      "expectNoChange": true
+    },
+    {
+      "harnessEvent": { "type": "ended", "exitCode": 1 },
+      "reason": "The process crashes."
+    },
+    {
+      "call": "startSessionIfNeeded",
+      "reason": "Relaunching resumes the conversation; its init is a new start."
+    },
+    {
+      "harnessEvent": { "type": "sessionReady", "sessionID": "session-2", "model": "claude-sonnet-4-5" }
+    }
+  ],
+  "expect": {
+    "harnessCalls": [
+      { "adapter": "claude", "type": "start", "resumeSessionID": null },
+      { "adapter": "claude", "type": "start", "resumeSessionID": null },
+      { "adapter": "claude", "type": "start", "resumeSessionID": "session-2" }
+    ],
+    "transcript": [
+      { "kind": "system", "text": "Session started (claude-sonnet-4-5)" },
+      { "kind": "system", "text": "Starting a new Claude session." },
+      { "kind": "system", "text": "Session started (claude-sonnet-4-5)" },
+      { "kind": "error", "text": "Claude session ended unexpectedly (exit code 1)." },
+      { "kind": "system", "text": "Session started (claude-sonnet-4-5)" }
+    ]
+  }
+}

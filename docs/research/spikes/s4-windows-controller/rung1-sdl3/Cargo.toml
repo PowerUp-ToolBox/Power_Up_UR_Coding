@@ -1,0 +1,12 @@
+[package]
+name = "rung1-sdl3"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+sdl3 = "=0.20.0"
+
+[features]
+# Builds SDL 3 from the bundled source and links it statically (needs CMake and MSVC on Windows).
+build-sdl = ["sdl3/build-from-source-static"]

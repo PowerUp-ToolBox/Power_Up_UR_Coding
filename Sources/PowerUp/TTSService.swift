@@ -24,7 +24,7 @@ final class TTSService: NSObject, ObservableObject {
     private let synthesizer = AVSpeechSynthesizer()
 
     /// The utterance currently being spoken. Delegate callbacks for anything
-    /// else are stale — e.g. the asynchronous didCancel produced by the stop()
+    /// else are stale — e.g. the asynchronous didCancel produced by the halt()
     /// inside speak() must not clear the *new* utterance's isSpeaking.
     private var currentUtterance: AVSpeechUtterance?
 
@@ -64,9 +64,16 @@ final class TTSService: NSObject, ObservableObject {
     /// localized phrases, AppState's English announcements — pass it so an
     /// injected phrase or a too-short string can never flip the voice.
     func speak(_ text: String, voiceID: String?, rate: Float, language: String? = nil) {
-        stop()
+        record(.speak(text))
+        halt()
 
         guard !text.isEmpty else { return }
+
+        if recordsOutput {
+            // Test hook: counts as speaking, but never reaches a synthesizer.
+            isSpeaking = true
+            return
+        }
 
         let utterance = AVSpeechUtterance(string: text)
         utterance.rate = rate
@@ -85,6 +92,13 @@ final class TTSService: NSObject, ObservableObject {
     }
 
     func stop() {
+        record(.stop)
+        halt()
+    }
+
+    /// Silences whatever is playing. `stop()` is this plus the recorded call;
+    /// `speak()` begins with it too.
+    private func halt() {
         currentUtterance = nil
         if synthesizer.isSpeaking {
             synthesizer.stopSpeaking(at: .immediate)
@@ -101,6 +115,38 @@ final class TTSService: NSObject, ObservableObject {
         routedPlayer = nil
         routedEngine = nil
         isSpeaking = false
+    }
+
+    // MARK: - Test hooks (internal; production never calls these)
+
+    /// When true, every `speak` and `stop` call is appended to
+    /// `recordedOutput` and NOTHING is ever spoken: a recorded `speak` marks
+    /// `isSpeaking` true without touching a synthesizer or an output device,
+    /// until `stop()` or `finishRecordedSpeech()`. Unlike
+    /// `ControllerService.recordsOutput`, this replaces the output rather
+    /// than passing it on, so a test can turn spoken replies on and stay
+    /// silent. Off in production; set it before anything speaks.
+    var recordsOutput = false
+
+    /// The `speak`/`stop` calls made while `recordsOutput` was on, oldest first.
+    private(set) var recordedOutput: [TTSOutput] = []
+
+    func clearRecordedOutput() {
+        recordedOutput.removeAll()
+    }
+
+    /// Ends a recorded utterance the way the synthesizer finishing does:
+    /// `isSpeaking` goes false and `onFinished` fires. No-op when nothing is
+    /// being (recorded as) spoken.
+    func finishRecordedSpeech() {
+        guard recordsOutput, isSpeaking else { return }
+        isSpeaking = false
+        onFinished?()
+    }
+
+    private func record(_ output: TTSOutput) {
+        guard recordsOutput else { return }
+        recordedOutput.append(output)
     }
 
     // MARK: - Routed rendering (write → buffers → engine on a chosen device)
@@ -652,6 +698,13 @@ final class TTSService: NSObject, ObservableObject {
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
         return regex.stringByReplacingMatches(in: text, range: range, withTemplate: template)
     }
+}
+
+/// One call to the speech output, as recorded by
+/// `TTSService.recordedOutput` (tests only).
+enum TTSOutput: Equatable {
+    case speak(String)
+    case stop
 }
 
 // MARK: - AVSpeechSynthesizerDelegate

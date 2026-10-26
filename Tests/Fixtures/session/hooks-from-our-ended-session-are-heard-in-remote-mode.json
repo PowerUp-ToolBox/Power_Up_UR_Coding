@@ -1,0 +1,56 @@
+{
+  "formatVersion": 1,
+  "name": "hooks-from-our-ended-session-are-heard-in-remote-mode",
+  "description": "PowerUp's own session is running when the person switches to remote mode. While that process is still shutting down, hooks carrying its session id are its own echo and are ignored. Once it has terminated its id is cleared, so a terminal session resumed with the same id is heard like any other.",
+  "reason": "The echo guard compares hook session ids with the harness's live id. If termination left the id set, a person who resumed the conversation in a terminal (claude --resume) would get no read-back and no status light for it, with no hint why.",
+  "source": "DESIGN.md v1.4 remote mode 'events whose sessionID == claude.sessionID' are dropped; ClaudeService termination clears sessionID; AppState.handleRemoteEvent, AppState.syncControlMode",
+  "verifiedBy": ["swift"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "builtin",
+    "project": true,
+    "controllerConnected": true
+  },
+  "script": [
+    { "call": "startSessionIfNeeded" },
+    {
+      "harnessEvent": { "type": "sessionReady", "sessionID": "session-1", "model": "claude-sonnet-4-5" }
+    },
+    {
+      "intent": "toggleControlMode",
+      "reason": "Built-in → remote stops our own session. Stopping closes its input; the process has not exited yet.",
+      "expect": {
+        "harnessCalls": [
+          { "adapter": "claude", "type": "start" },
+          { "adapter": "claude", "type": "stop" }
+        ],
+        "liveSessionID": "session-1"
+      }
+    },
+    {
+      "hookEvent": { "type": "userPromptSubmit", "sessionID": "session-1", "cwd": "/work/app", "text": "Echo." },
+      "reason": "Our own exiting session's hook: dropped.",
+      "expectNoChange": true
+    },
+    {
+      "harnessEvent": { "type": "ended", "exitCode": 0 },
+      "reason": "The stopped process exits. The termination was expected, so nothing is logged.",
+      "expect": { "liveSessionID": null, "status": "idle" }
+    },
+    {
+      "hookEvent": { "type": "userPromptSubmit", "sessionID": "session-1", "cwd": "/work/app", "text": "Carry on." },
+      "reason": "The person resumed the conversation in a terminal. That session is somebody else's now, and it is heard."
+    }
+  ],
+  "expect": {
+    "liveSessionID": null,
+    "lastSessionID": "session-1",
+    "remoteTurnActive": true,
+    "status": "thinking",
+    "errorShown": false,
+    "harnessCalls": [
+      { "adapter": "claude", "type": "start" },
+      { "adapter": "claude", "type": "stop" }
+    ]
+  }
+}

@@ -81,6 +81,9 @@ contract change.
 | `TTSService.swift` | Text-to-speech with language-aware voice selection |
 | `SummaryService.swift` | Lightweight claude process that summarizes replies for TTS |
 | `DestructiveActionClassifier.swift` | Pure classifier for actions needing confirmation |
+| `ControllerSlot.swift` | Pure Controller slot rule (`ControllerSlotSelector`) and hold rule (`HoldTracker`) |
+| `ControllerPicker.swift` | Pure rows and caption for the Settings → Devices Controller picker |
+| `ViewLogic.swift` | Pure view rules extracted from MainView/ComponentViews (#126; DESIGN v2.7 §F) |
 | `RemoteControlService.swift` | Routes text/keys to cmux or keyboard injection |
 | `RemoteListener.swift` | Localhost HTTP listener for Claude Code hook events |
 | `HookInstaller.swift` | Installs/manages hooks in `~/.claude/settings.json` |
@@ -97,10 +100,17 @@ contract change.
   fine. If a live round-trip must be verified, use a disposable workspace
   (`cmux new-workspace --name powerup-test --command cat --focus false`) and
   always close it afterwards.
-- **Never** modify the real `~/.claude/settings.json` in tests. HookInstaller
-  takes an injectable `settingsURL` and has a `supportDirectoryOverride` test
-  seam — use both (see `HookInstallerTests`), so a live PowerUp installation
-  is never touched.
+- **Never** modify the real `~/.claude/settings.json`, PowerUp's real
+  `config.json` or `~/Library/Application Support/PowerUp/` in tests. Use the
+  seams: `ConfigStore(fileURL:)`; HookInstaller's injectable `settingsURL`
+  plus `settingsURLOverride` and `supportDirectoryOverride` (see
+  `HookInstallerTests`); `TranscriptStore.supportDirectoryOverride`. In
+  tearDown call `TestSandbox.parkOverrides()` (or
+  `parkHookInstallerOverrides()` off the main actor), never `= nil`, so a
+  late write cannot fall through to the real folders. `HermeticStorageTests`
+  enforces this: it fails on `ConfigStore()`, `AppState()`, `= nil` resets
+  or a `HookInstaller` call without `settingsURL:` anywhere in
+  `Tests/PowerUpTests/`.
 - Don't spawn real `claude` sessions from tests; the stream parser is
   testable via `ClaudeService.events(fromLine:)`.
 - Don't spawn real ACP agents or npx bridges (opencode, `claude-agent-acp`,
@@ -111,12 +121,93 @@ contract change.
 - The tests pin many wire-protocol details; update tests and DESIGN.md
   together only if the CLI genuinely changes.
 
+## Testing AppState
+
+AppState's orchestration rules are tested through one seam. Don't invent
+another one.
+
+- **Construct:** in a `@MainActor` XCTestCase, call
+  `env = try AppStateTestEnvironment(config:)` in setUp, where `config` is
+  written to a sandboxed `config.json` and nil means first launch. Then
+  `let app = env.makeAppState(configStore:controller:speech:tts:claude:harness:acpHarness:remote:listener:audioDevices:transcriptStore:clock:)`,
+  where every argument is optional. Call `env.tearDown()` in tearDown. The
+  environment is `Tests/PowerUpTests/AppStateTestSupport.swift`. It calls the
+  internal `AppState.init(configStore:…, sideEffects: [])`, so nothing
+  starts: no controller, audio devices, listener port, keyboard monitor,
+  terminate observer or cmux probe. The config file, the support folder and
+  the Claude settings file all resolve into its temp directory.
+- **Fakes:**
+  - `FakeHarnessAdapter` (`harness:`). It records `calls` and emits queued
+    `HarnessEvent`s synchronously via `emitNext()`, `emitAll()` and
+    `emit(_:)`. Without `harness:` the environment supplies a fresh one, so
+    no test can spawn a real `claude` or ACP agent. Alone it is the harness for every harness kind; with a second fake as
+    `acpHarness:`, the two stand in for the Claude and ACP adapters and the
+    harness kind picks between them (harness-switch tests).
+  - `ScriptedSpeechEngine` (`speech: SpeechService(engine:)`). It scripts
+    authorization, partials and the final transcript, and records its own
+    `calls`. `holdsPermissionPrompt = true` keeps the permission prompt up
+    until `answerPermissionPrompt(_:)`. `onCall` sees each call as it is
+    recorded.
+  - Spoken replies: pass `TTSService()` as `tts:` with
+    `recordsOutput = true` set first. `speak`/`stop` go to
+    `recordedOutput` and nothing is heard; a recorded `speak` sets
+    `isSpeaking` until `stop()` or `finishRecordedSpeech()`.
+  - Controller input needs no fake. Pass `ControllerService()` and drive
+    its test hooks: `simulateConnect()`, `simulateButton(_:pressed:)` and
+    `simulateDisconnect()` (a drop releases held buttons, then fires
+    `onDisconnect`), or invoke `onButtonDown`, `onButtonUp`, `onDisconnect`
+    and `onLowBattery` directly. With `recordsOutput = true`, light and
+    haptic writes are recorded in `recordedOutput`. For two pads, connect
+    twice (`simulateConnect` returns the `ConnectedController`; the newest
+    is active unless `pinnedControllerID` / `config.controllerDeviceID`
+    pins one), then pass `on: id` to `simulateButton`, `simulateDisconnect`
+    and `simulateBattery(level:state:on:)`. `recordedWrites` names the pad
+    each write went to.
+  - `RecordingInjector` (`env.injector`). The environment's default
+    `remote` delivers into it, so remote mode records text and keys instead
+    of typing into cmux or the frontmost app. Never construct
+    `RemoteControlService()` in a test (the source scan rejects it); pass
+    `RemoteControlService(injector:)`. Deliver hooks through your own
+    `RemoteListener()` (`listener:`) by calling `onEvent`.
+  - `ManualRemoteTurnClock` (`clock:`). `advance(by:)` runs remote-turn
+    expiry checks and the error haptic's second buzz (140 ms) as they fall
+    due; never wait. Without `clock:` the environment supplies one that
+    nobody advances.
+  - Audio devices need no fake either. Pass `AudioDeviceStore()` as
+    `audioDevices:`; `simulateDevices(_:)` sets the launch enumeration
+    (no callback) and `simulateHotPlug(_:)` runs the hot-plug path (lists,
+    then `onDevicesChanged`). See `AppStateAudioDeviceScenarioTests`.
+- **Conventions:**
+  - Set `config.ttsEnabled = false`, because TTS is real and would speak,
+    unless the suite passes a TTS service with `recordsOutput = true`
+    (then also keep `speakSummaries = false`: a summary runs a real
+    `claude`).
+  - Pin the mapping a test presses.
+  - Set `config.projectDir` to a temp folder for any send path.
+  - Keep `app` alive while driving callbacks, because they capture it
+    weakly.
+  - Never sleep. Wait on main-actor Tasks with the bounded `settle(until:)`
+    from `AppStateTestSupport.swift`.
+  - Assert on published state and on what the fakes recorded. Never assert
+    on private fields or on the order of internal calls.
+- **Session rules are fixtures.** These are the rules for resume, restarts,
+  permissions, effort, turns and remote-mode turn tracking. Pin one by adding a JSON scenario to
+  `Tests/Fixtures/session/`, named `<name>.json`, rather than writing a
+  bespoke test. The format is documented in `Tests/Fixtures/README.md`.
+  `SessionScenarioTests` runs every scenario through the seam. The parser is
+  strict, so an unknown key is a load error. The Rust core will read the
+  same files, so keep them plain JSON with the header and a `reason`.
+- **Rule: orchestration changes ship with a seam test.** Any change to an
+  AppState rule, including a bug fix, comes with a test through
+  `AppStateTestEnvironment` that fails without the change.
+
 ## Commits and PRs
 
 - Sign off every commit (`git commit -s`) — DCO is CI-enforced.
 - Keep PRs focused on one logical change; describe *why*, not just what.
 - Add or update tests for anything in the pure-logic modules (parser, config,
-  speech text, hook installer, protocol framing).
+  speech text, hook installer, protocol framing), and a seam test (see
+  "Testing AppState") for any change to AppState's orchestration.
 - Deviating from DESIGN.md must be stated explicitly in the PR along with the
   proposed contract change. Architecture-level decisions (new dependency, new
   module, protocol changes) need a short ADR in `docs/adr/` — copy the format
