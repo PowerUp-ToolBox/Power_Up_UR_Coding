@@ -1518,10 +1518,16 @@ final class AppState: ObservableObject {
 
         appendEntry(.system, "Project folder: \((path as NSString).lastPathComponent)")
 
-        // In remote mode PowerUp runs no session of its own — the folder is then
-        // only used to label read-back from other directories.
+        // In remote mode PowerUp runs no session of its own — the folder then
+        // decides which sessions are heard (v2.8 A). The old folder's hooks
+        // are filtered out from here on, including the Stop that would end
+        // its turns, so those turns and that focus end with the switch.
         if !isRemoteMode {
             startSession(resumeSessionID: savedSessionID(for: path))
+        } else if changedProject {
+            clearRemoteTurns()
+            knownRemoteSessions.removeAll()
+            remoteFocusSessionID = nil
         }
         updateStatus()
     }
@@ -1890,6 +1896,9 @@ final class AppState: ObservableObject {
     private func handleRemoteEvent(_ event: RemoteHookEvent) {
         guard isRemoteMode else { return }
         if let sessionID = event.sessionID, let ours = harness.sessionID, sessionID == ours { return }
+        // Hooks fire for every Claude session on the machine; only the ones
+        // working in the chosen project folder are PowerUp's (v2.8 A).
+        guard isInProjectFolder(event.cwd) else { return }
 
         let turnKey = event.sessionID ?? "unknown-session"
 
@@ -2010,6 +2019,21 @@ final class AppState: ObservableObject {
     private func clearRemoteTurns() {
         remoteActiveTurns.removeAll()
         if remoteTurnActive { remoteTurnActive = false }
+    }
+
+    /// Whether a hook from a session working in `cwd` belongs to the chosen
+    /// project folder: the folder itself or any folder below it. With no
+    /// folder chosen every session counts; a hook without a `cwd` then counts
+    /// too, and otherwise it cannot be placed, so it does not.
+    private func isInProjectFolder(_ cwd: String?) -> Bool {
+        guard let project = configStore.config.projectDir, !project.isEmpty else { return true }
+        guard let cwd, !cwd.isEmpty else { return false }
+        // Whole path components, so "/work/app-old" is not inside "/work/app".
+        let components = { (path: String) in
+            URL(fileURLWithPath: path, isDirectory: true)
+                .standardizedFileURL.resolvingSymlinksInPath().pathComponents
+        }
+        return components(cwd).starts(with: components(project))
     }
 
     /// Labels read-back that came from a different folder than the configured

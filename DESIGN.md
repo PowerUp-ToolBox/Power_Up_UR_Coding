@@ -2198,3 +2198,35 @@ not touched by this addendum.
   help and the sidebar say "<pinned name> isn't connected — choose
   Automatic in Settings → Devices to use another controller" instead of
   the pairing steps. With nothing connected at all, the pairing steps stay.
+
+---
+
+# v2.8 addendum — remote read-back is scoped to the project folder
+
+Supersedes anything above where it conflicts (v1.4 "events from every claude
+session", v1.10 per-session tracking, the Cycle Session Focus note that the
+unfocused sessions "still log"). Recorded on 2026-10-26 after running
+several agents in other repositories flooded PowerUp's transcript and
+read-back.
+
+## A. AppState — which hooks remote mode hears
+
+- `handleRemoteEvent` drops a hook, before any other handling (no
+  transcript line, no turn, no session-registry entry, no status change),
+  unless `isInProjectFolder(event.cwd)`:
+  - no project folder chosen (`projectDir` nil or empty): every hook counts,
+    as before;
+  - otherwise the hook's `cwd` must be the project folder or a folder below
+    it, compared by whole path components after standardizing and resolving
+    symlinks (`/work/app-old` is not inside `/work/app`);
+  - a hook without a `cwd` cannot be placed, so it is dropped while a folder
+    is chosen.
+- The existing echo guard (our own `harness.sessionID`) still runs first.
+- `adoptProject` in remote mode, when the folder actually changes, clears
+  the remote turns, the known-session registry and the session focus: the
+  old folder's hooks, including the Stop that would end its turns, are
+  filtered out from then on.
+- Labels are unchanged: the folder itself reads back unprefixed, a subfolder
+  as `[<name>] `.
+- Pinned by `Tests/Fixtures/session/remote-hooks-outside-the-project-folder-are-ignored.json`
+  and `remote-project-switch-clears-the-old-folders-turns.json`.

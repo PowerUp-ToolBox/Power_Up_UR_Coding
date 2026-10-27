@@ -1,0 +1,59 @@
+{
+  "formatVersion": 1,
+  "name": "remote-hooks-outside-the-project-folder-are-ignored",
+  "description": "In remote mode with a project folder chosen, only Claude sessions working in that folder or below it are heard. Sessions in other folders, a sibling folder whose name merely starts the same, and hooks with no working directory are dropped entirely: no transcript line, no turn, no status change.",
+  "reason": "Hooks fire for every Claude session on the machine. With several agents running in other repositories, all of their replies were logged and read aloud in PowerUp even though the person had picked one folder.",
+  "source": "DESIGN.md v2.8 addendum A (remote read-back is scoped to the project folder); AppState.handleRemoteEvent",
+  "verifiedBy": ["swift"],
+  "config": {
+    "controlMode": "remote",
+    "project": true,
+    "controllerConnected": true
+  },
+  "script": [
+    {
+      "hookEvent": { "type": "userPromptSubmit", "sessionID": "session-elsewhere", "cwd": "/work/elsewhere", "text": "Plan the sprint." },
+      "reason": "A session in another repository starts a turn: not this folder's business.",
+      "expectNoChange": true
+    },
+    {
+      "hookEvent": { "type": "stop", "sessionID": "session-elsewhere", "cwd": "/work/elsewhere", "text": "Sprint planned." },
+      "reason": "Its reply is neither logged nor spoken.",
+      "expectNoChange": true
+    },
+    {
+      "hookEvent": { "type": "stop", "sessionID": "session-sibling", "cwd": "$project-old", "text": "Old copy updated." },
+      "reason": "A sibling folder whose path starts with the project's path is still another folder.",
+      "expectNoChange": true
+    },
+    {
+      "hookEvent": { "type": "notification", "sessionID": "session-unknown", "text": "Claude is waiting for your input" },
+      "reason": "A hook without a working directory cannot be placed in the folder, so it is dropped.",
+      "expectNoChange": true
+    },
+    {
+      "hookEvent": { "type": "userPromptSubmit", "sessionID": "session-here", "cwd": "$project", "text": "Fix the build." },
+      "reason": "A session in the project folder itself starts a turn.",
+      "expect": { "status": "thinking", "remoteTurnActive": true }
+    },
+    {
+      "hookEvent": { "type": "stop", "sessionID": "session-here", "cwd": "$project", "text": "Build fixed." },
+      "reason": "Its reply is logged without a folder label."
+    },
+    {
+      "hookEvent": { "type": "stop", "sessionID": "session-api", "cwd": "$project/api", "text": "API docs written." },
+      "reason": "A session in a subfolder of the project is heard too, labelled with its folder."
+    }
+  ],
+  "expect": {
+    "transcript": [
+      { "kind": "assistant", "text": "Build fixed." },
+      { "kind": "assistant", "text": "[api] API docs written." }
+    ],
+    "status": "idle",
+    "remoteTurnActive": false,
+    "injectorCalls": [],
+    "harnessCalls": [],
+    "errorShown": false
+  }
+}

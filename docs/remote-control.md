@@ -70,7 +70,9 @@ etc.) all work the same way.
    - Add hook definitions for the `Stop`, `UserPromptSubmit`, and
      `Notification` events — these fire for **every Claude Code session** you
      run (including sessions in cmux, Terminal, VS Code, or anything else),
-     not just PowerUp.
+     not just PowerUp. PowerUp only listens to the sessions working in your
+     chosen project folder (or a folder inside it) and ignores the rest; with
+     no folder chosen it hears every session.
    - **Automatically start a local listener** on your machine (port 48738 by
      default, token-authenticated) that receives those hooks and feeds replies
      back to PowerUp for text-to-speech and transcript display.
@@ -176,7 +178,11 @@ closes mid-turn. Three layers of recovery:
    then go idle early and self-corrects on the session's next event.)
 
 Also worth knowing: the hooks fire for **every** Claude session on your
-machine, so any session mid-turn — including a background one — shows as
+machine. PowerUp keeps only the sessions working in your project folder or a
+folder inside it; sessions in other folders never reach the transcript, the
+read-back or the light. Switching the project folder drops the old folder's
+sessions at once. (With no folder chosen, every session counts.) Within the
+folder, any session mid-turn — including a background one — shows as
 "working" (map **Cycle Session Focus** to a button to pick ONE session for
 read-back and the light; the rest still log into the transcript). Tool calls
 act as a heartbeat (`PostToolUse`), so a long busy turn stays visibly alive —
