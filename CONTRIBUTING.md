@@ -43,6 +43,22 @@ open build/PowerUp.app   # ALWAYS launch as a bundle — macOS permissions (TCC)
 CI runs `swift build`, `swift test`, and the full bundle pipeline on every PR —
 green CI is a merge requirement.
 
+### The Rust core (`rust/`)
+
+Stage 2 of `PLAN-any-device-any-os.md` moves platform-independent logic into
+`powerup-core`, a Rust library every OS app links (ADR 0012). It lives in the
+cargo workspace `rust/`; the toolchain is pinned in `rust/rust-toolchain.toml`,
+so [rustup](https://rustup.rs) installs the right compiler on first use.
+
+```sh
+cd rust
+cargo test                                  # core tests
+cargo clippy --all-targets -- -D warnings   # lints; unwrap/expect are denied in library code
+```
+
+Every public core function returns a `Result`; never `unwrap`, `expect` or
+panic in library code.
+
 ### Testing rules (please read — these protect real user machines)
 
 - **Never** touch the real `~/.claude/settings.json`, PowerUp's real

@@ -11,3 +11,6 @@ DerivedData/
 # Local agent-workflow scratch (doublecheck, agent teams)
 doublecheck-*.md
 .agent-teams/
+
+# Rust workspace build output
+rust/target/
