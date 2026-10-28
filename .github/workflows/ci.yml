@@ -81,6 +81,16 @@ jobs:
       - name: Format
         run: cargo fmt --check
 
+      # The bridge turns a core panic into CoreBridgeError.Panicked with
+      # catch_unwind, which an aborting panic would bypass (DESIGN v2.10).
+      - name: No profile aborts on panic
+        shell: bash
+        run: |
+          if grep -rn --include=Cargo.toml --include=config.toml -E 'panic *= *"abort"' . ; then
+            echo "::error::panic = \"abort\" defeats the bridge's panic containment"
+            exit 1
+          fi
+
       - name: Lint (unwrap/expect denied in library code)
         run: cargo clippy --all-targets --locked -- -D warnings
 
