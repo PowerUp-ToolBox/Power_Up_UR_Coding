@@ -59,6 +59,21 @@ cargo clippy --all-targets -- -D warnings   # lints; unwrap/expect are denied in
 Every public core function returns a `Result`; never `unwrap`, `expect` or
 panic in library code.
 
+The macOS app reaches the core through `powerup-core-ffi`, a uniffi bridge.
+`./scripts/build-core.sh` builds it into `rust/build/` (an xcframework plus
+the generated Swift); the app links it when `POWERUP_CORE=1` is set:
+
+```sh
+./scripts/build-core.sh debug   # or release; scripts/build.sh runs it for you
+POWERUP_CORE=1 swift build      # the app with the core
+POWERUP_CORE=1 swift test       # also runs Tests/PowerUpCoreTests (the bridge)
+```
+
+Plain `swift build` / `swift test` still build the app without the core until
+slice 2.2 makes it mandatory. `scripts/build.sh` always links it, and the app
+logs `Rust core linked and answering` (subsystem `com.powerup.claudepad`,
+category `core`) at launch.
+
 ### Testing rules (please read — these protect real user machines)
 
 - **Never** touch the real `~/.claude/settings.json`, PowerUp's real

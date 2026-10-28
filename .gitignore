@@ -14,3 +14,4 @@ doublecheck-*.md
 
 # Rust workspace build output
 rust/target/
+rust/build/

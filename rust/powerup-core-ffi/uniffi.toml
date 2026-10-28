@@ -1,0 +1,5 @@
+[bindings.swift]
+module_name = "PowerUpCore"
+ffi_module_name = "PowerUpCoreFFI"
+ffi_module_filename = "PowerUpCoreFFI"
+generate_immutable_records = true

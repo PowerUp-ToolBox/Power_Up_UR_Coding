@@ -14,8 +14,11 @@ CONTENTS_DIR="$APP_BUNDLE/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 
-echo "==> Building $APP_NAME (release, arm64)…"
-swift build -c release --arch arm64
+# The Rust core bridge first: Package.swift links it when it exists.
+"$ROOT_DIR/scripts/build-core.sh" release
+
+echo "==> Building $APP_NAME (release, arm64, with the Rust core)…"
+POWERUP_CORE=1 swift build -c release --arch arm64
 
 ICON_PATH="$BUILD_DIR/AppIcon.icns"
 mkdir -p "$BUILD_DIR"

@@ -2,7 +2,7 @@
 # The macOS app links it through the uniffi bridge crate (added in 2.1.2).
 [workspace]
 resolver = "2"
-members = ["powerup-core"]
+members = ["powerup-core", "powerup-core-ffi", "uniffi-bindgen"]
 
 [workspace.package]
 edition = "2021"

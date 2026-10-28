@@ -5,6 +5,10 @@ struct PowerUpApp: App {
 
     @StateObject private var appState = AppState()
 
+    init() {
+        CoreBridge.logStatus()
+    }
+
     var body: some Scene {
         WindowGroup("PowerUp") {
             MainView()

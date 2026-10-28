@@ -1,0 +1,20 @@
+[package]
+name = "powerup-core-ffi"
+version = "0.1.0"
+description = "The uniffi bridge that exposes powerup-core to the macOS app."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[lib]
+# staticlib is what the macOS app links; cdylib is what uniffi-bindgen reads
+# the interface from; lib lets Rust tests call the bridge directly.
+crate-type = ["staticlib", "cdylib", "lib"]
+
+[dependencies]
+powerup-core = { path = "../powerup-core" }
+uniffi = "=0.32.2"
+
+[lints]
+workspace = true
