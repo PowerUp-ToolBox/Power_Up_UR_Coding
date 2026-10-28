@@ -168,6 +168,11 @@ the core module by module, each move gated on the shared fixtures. The
 protocol stays as the local plugin API. Vocabulary lives in `CONTEXT.md`;
 the staged plan lives in `PLAN-any-device-any-os.md`.
 
+The workspace exists since stage 2.1 (`rust/`): how to build and test it,
+the bridge, the panic, fixture and ledger rules are in CONTRIBUTING.md,
+"The Rust core"; the hidden knowledge the port must keep is tracked row by
+row in `PORTING-LEDGER.md`.
+
 ### 3.3 Per-OS reality check (from the research)
 
 | Capability | macOS | Windows | Linux X11 | Linux Wayland |

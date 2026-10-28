@@ -107,3 +107,18 @@ jobs:
           python3 scripts/third-party-licenses.py
           git diff --exit-code rust/THIRD-PARTY-LICENSES.md \
             || { echo "::error::run scripts/third-party-licenses.py and commit rust/THIRD-PARTY-LICENSES.md"; exit 1; }
+
+  # PORTING-LEDGER.md tracks the hidden knowledge the Rust port must keep;
+  # a row left as todo blocks the merge (plan stage 2 step 7).
+  porting-ledger:
+    name: Porting ledger
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: No row is left todo
+        run: |
+          test -f PORTING-LEDGER.md || { echo "::error::PORTING-LEDGER.md is missing"; exit 1; }
+          if grep -n -i -w 'todo' PORTING-LEDGER.md; then
+            echo "::error::PORTING-LEDGER.md still has todo rows (lines above)"
+            exit 1
+          fi

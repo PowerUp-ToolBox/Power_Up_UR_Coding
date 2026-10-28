@@ -56,8 +56,25 @@ cargo test                                  # core tests
 cargo clippy --all-targets -- -D warnings   # lints; unwrap/expect are denied in library code
 ```
 
-Every public core function returns a `Result`; never `unwrap`, `expect` or
-panic in library code.
+The rules for core work:
+
+- **Workspace.** `rust/` holds `powerup-core` (the logic), `powerup-core-ffi`
+  (the uniffi bridge the macOS app links) and `uniffi-bindgen` (generates the
+  Swift side). The compiler is pinned in `rust/rust-toolchain.toml`.
+- **Panic rule.** Every public core function returns a `Result`; library code
+  never calls `unwrap`, `expect` or `panic!` (clippy denies the first two).
+  The bridge still runs every call inside `catch_unwind`, so a core panic
+  reaches Swift as `CoreBridgeError.Panicked`, never as a crash.
+- **Fixture rule.** Core tests read the shared `Tests/Fixtures/` in place
+  (`rust/powerup-core/tests/support`), never a copy. A slice ports a rule by
+  making its fixtures pass in Rust and adding `"rust"` to their `verifiedBy`.
+- **Ledger rule.** `PORTING-LEDGER.md` lists the hidden knowledge the port
+  must keep. A slice's PR updates the rows it owns; CI fails if any row says
+  todo.
+- **Licenses.** `rust/deny.toml` allows permissive licenses only (MPL-2.0 for
+  the uniffi crates alone). After changing dependencies, run
+  `python3 scripts/third-party-licenses.py` and commit
+  `rust/THIRD-PARTY-LICENSES.md`; CI fails when it is stale.
 
 The macOS app reaches the core through `powerup-core-ffi`, a uniffi bridge.
 `./scripts/build-core.sh` builds it into `rust/build/` (an xcframework plus
