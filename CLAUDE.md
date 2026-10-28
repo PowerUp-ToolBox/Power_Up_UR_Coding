@@ -44,7 +44,7 @@ open build/PowerUp.app # ALWAYS launch as a bundle — TCC permissions track
                        # bundle identity; running the raw binary breaks them
 ```
 
-The Rust core (stage 2, `rust/`): `cd rust && cargo test`;
+The Rust core (stage 2, `rust/`): `(cd rust && cargo test)`;
 `./scripts/build-core.sh debug && POWERUP_CORE=1 swift test` runs the bridge
 tests. Rules (panic, fixtures, ledger, licenses) are in AGENTS.md, "The Rust
 core".

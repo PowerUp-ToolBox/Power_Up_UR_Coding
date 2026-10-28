@@ -2,8 +2,9 @@
 # Builds the Rust core bridge for the macOS app (stage 2.1, ADR 0012):
 #   rust/build/PowerUpCoreFFI.xcframework   static library + C header/modulemap
 #   rust/build/swift/PowerUpCore.swift       generated Swift bindings
-# Package.swift links both into the app when they exist; scripts/build.sh runs
-# this first. Usage: ./scripts/build-core.sh [debug|release]   (default release)
+# Package.swift links them only when the build runs with POWERUP_CORE=1
+# (scripts/build.sh does). Needs Rust (rustup) and a full Xcode (xcodebuild).
+# Usage: ./scripts/build-core.sh [debug|release]   (default release)
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

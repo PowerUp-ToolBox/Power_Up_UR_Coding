@@ -1,6 +1,8 @@
 # cargo-deny policy for the Rust workspace (#141). CI runs
-# `cargo deny check` from rust/. The core is Apache-2.0 (ADR 0002): only
-# permissive licenses may enter it; the GPL family is rejected outright.
+# `check licenses bans sources` as a gate and `check advisories` as an
+# informational step (.github/workflows/ci.yml). The core is Apache-2.0
+# (ADR 0002): only permissive licenses may enter it; the GPL family is
+# rejected outright.
 
 [graph]
 all-features = true
@@ -37,10 +39,6 @@ exceptions = [
     { allow = ["MPL-2.0"], crate = "uniffi_udl" },
 ]
 
-[licenses.private]
-# Our own crates are publish = false and carry the workspace license.
-ignore = true
-
 [bans]
 multiple-versions = "allow"
 wildcards = "deny"
@@ -53,6 +51,7 @@ unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 
 [advisories]
-# Advisories change daily; they warn in CI logs but never block a merge.
+# CI runs these in a continue-on-error step: they show in the log, never
+# block a merge.
 unmaintained = "workspace"
 yanked = "warn"

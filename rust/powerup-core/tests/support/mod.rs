@@ -1,9 +1,9 @@
 //! Loader for the shared fixtures in `Tests/Fixtures/` (stage 2.1, #140):
 //! the same files the Swift suites run, read from the repository root so the
 //! two implementations can never drift onto separate copies. The formats are
-//! described in `Tests/Fixtures/README.md`; the checks below mirror the Swift
-//! loaders (`SessionScenario.swift`, `TextSafetyFixtures`), so a malformed
-//! file fails on both sides.
+//! described in `Tests/Fixtures/README.md`. The top-level keys match the Swift
+//! loaders (`SessionScenario.swift`, `TextSafetyFixtures`) and the header
+//! checks are slightly stricter, so a file that loads here loads there.
 
 // Each test binary uses part of this module. And this is test support, not
 // library code: a broken fixture should stop the test with the file named,
@@ -57,8 +57,6 @@ pub struct SessionScenario {
     pub source: String,
     pub verified_by: Vec<String>,
     pub config: Value,
-    #[serde(default)]
-    pub projects: Option<Value>,
     pub script: Vec<Value>,
     pub expect: Value,
 }

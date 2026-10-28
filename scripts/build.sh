@@ -14,11 +14,29 @@ CONTENTS_DIR="$APP_BUNDLE/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 
-# The Rust core bridge first: Package.swift links it when it exists.
-"$ROOT_DIR/scripts/build-core.sh" release
-
-echo "==> Building $APP_NAME (release, arm64, with the Rust core)…"
-POWERUP_CORE=1 swift build -c release --arch arm64
+# The Rust core bridge (stage 2.1) needs Rust (rustup) and a full Xcode for
+# xcodebuild. Until slice 2.2 makes the core mandatory, a machine without them
+# still gets a working app, built without the core. CI and releases set
+# POWERUP_REQUIRE_CORE=1, so they fail instead of shipping without it.
+CORE=1
+if ! command -v cargo >/dev/null 2>&1 && [ ! -f "$HOME/.cargo/env" ]; then
+    CORE=0; CORE_MISSING="Rust (https://rustup.rs)"
+elif ! xcodebuild -version >/dev/null 2>&1; then
+    CORE=0; CORE_MISSING="a full Xcode install (xcodebuild)"
+fi
+if [ "$CORE" = "0" ]; then
+    if [ "${POWERUP_REQUIRE_CORE:-0}" = "1" ]; then
+        echo "error: the Rust core needs $CORE_MISSING (POWERUP_REQUIRE_CORE=1)" >&2
+        exit 1
+    fi
+    echo "warning: building without the Rust core — it needs $CORE_MISSING" >&2
+    echo "==> Building $APP_NAME (release, arm64, without the Rust core)…"
+    swift build -c release --arch arm64
+else
+    "$ROOT_DIR/scripts/build-core.sh" release
+    echo "==> Building $APP_NAME (release, arm64, with the Rust core)…"
+    POWERUP_CORE=1 swift build -c release --arch arm64
+fi
 
 ICON_PATH="$BUILD_DIR/AppIcon.icns"
 mkdir -p "$BUILD_DIR"

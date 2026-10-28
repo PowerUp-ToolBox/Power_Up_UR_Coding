@@ -38,6 +38,9 @@ jobs:
           sessions=$(find Tests/Fixtures/session -type f -name '*.json' 2>/dev/null | wc -l | tr -d ' ')
           test "$sessions" -gt 0 || { echo "::error::Tests/Fixtures/session holds no scenarios"; exit 1; }
 
+      - name: Test (without the Rust core)
+        run: swift test
+
       - name: Test (with the Rust core)
         run: POWERUP_CORE=1 swift test
 
@@ -45,7 +48,7 @@ jobs:
       # assembly, ad-hoc signing. Catches build.sh regressions and release-only
       # compile errors.
       - name: Bundle app
-        run: ./scripts/build.sh
+        run: POWERUP_REQUIRE_CORE=1 ./scripts/build.sh
 
       - name: Verify bundle
         run: |
@@ -97,6 +100,14 @@ jobs:
         with:
           manifest-path: rust/Cargo.toml
           command: check licenses bans sources
+
+      # Advisories change daily: reported in the log, never a merge blocker.
+      - name: Security advisories (informational)
+        continue-on-error: true
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: rust/Cargo.toml
+          command: check advisories
 
       - name: Toolchain
         working-directory: rust
