@@ -2388,7 +2388,7 @@ final class AppState: ObservableObject {
         if configStore.config.lightEnabled {
             switch status {
             case .noController: color = (0.0, 0.0, 0.0)
-            case .idle:         color = (0.0, 0.25, 1.0)
+            case .idle:         color = (0.0, 1.0, 0.2)
             case .listening:    color = (1.0, 0.0, 0.0)
             case .thinking:     color = (1.0, 0.45, 0.0)
             case .speaking:     color = (0.55, 0.0, 1.0)

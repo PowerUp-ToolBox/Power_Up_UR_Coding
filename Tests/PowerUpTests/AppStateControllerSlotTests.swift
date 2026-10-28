@@ -14,7 +14,7 @@ final class AppStateControllerSlotTests: XCTestCase {
     private var env: AppStateTestEnvironment!
     private var projectDir: URL!
 
-    private static let idleBlue = ControllerOutput.light(r: 0.0, g: 0.25, b: 1.0)
+    private static let idleGreen = ControllerOutput.light(r: 0.0, g: 1.0, b: 0.2)
     private static let off = ControllerOutput.light(r: 0.0, g: 0.0, b: 0.0)
     private static let buzz = ControllerOutput.rumble(intensity: 0.9, duration: 0.06)
 
@@ -112,8 +112,8 @@ final class AppStateControllerSlotTests: XCTestCase {
         XCTAssertFalse(colored.isEmpty)
         XCTAssertTrue(colored.allSatisfy { $0.controllerID == rig.couch.id },
                       "only the active pad gets a color: \(rig.controller.recordedWrites)")
-        XCTAssertEqual(lastLight(rig, on: rig.couch.id), Self.idleBlue)
-        XCTAssertNotEqual(lastLight(rig, on: rig.desk.id), Self.idleBlue, "the other pad is never lit")
+        XCTAssertEqual(lastLight(rig, on: rig.couch.id), Self.idleGreen)
+        XCTAssertNotEqual(lastLight(rig, on: rig.desk.id), Self.idleGreen, "the other pad is never lit")
         withExtendedLifetime(rig.app) {}
     }
 
@@ -123,7 +123,7 @@ final class AppStateControllerSlotTests: XCTestCase {
 
         rig.app.configStore.config.controllerDeviceID = rig.desk.id
         await settle(until: rig.controller.active == rig.desk)
-        await settle(until: self.lastLight(rig, on: rig.desk.id) == Self.idleBlue)
+        await settle(until: self.lastLight(rig, on: rig.desk.id) == Self.idleGreen)
 
         XCTAssertEqual(lastLight(rig, on: rig.couch.id), Self.off, "the pad that left the slot goes dark")
         XCTAssertTrue(rig.controller.recordedWrites

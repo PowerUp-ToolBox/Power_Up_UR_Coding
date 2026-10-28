@@ -572,7 +572,7 @@ private struct TolerantDeviceMapping: Decodable {
 
 enum AppStatus: Equatable {
     case noController      // light: off (0,0,0) — or dim white
-    case idle              // light: blue   (0.0, 0.25, 1.0)
+    case idle              // light: green  (0.0, 1.0, 0.2)
     case listening         // light: red    (1.0, 0.0, 0.0)
     case thinking          // light: amber  (1.0, 0.45, 0.0)
     case speaking          // light: purple (0.55, 0.0, 1.0)

@@ -50,7 +50,7 @@ enum Theme {
     static func color(for status: AppStatus) -> Color {
         switch status {
         case .noController: return Color.white.opacity(0.35)
-        case .idle: return accent
+        case .idle: return success
         case .listening: return danger
         case .thinking: return amber
         case .speaking: return violet
