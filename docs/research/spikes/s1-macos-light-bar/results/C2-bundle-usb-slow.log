@@ -1,0 +1,8 @@
+connected: DualSense Wireless Controller light=present before=Optional(0.5019608),Optional(0.1254902),Optional(0.019607844)
+set red
+set green
+set blue
+set white
+set off
+set green
+done

@@ -111,7 +111,7 @@ flowchart TB
 6. **把 view 里的产品逻辑挪到可测的地方**（`pushToTalkButtonName`、状态文案、chip 派生），UI 观感不变。
 7. **修 bug。** 补测试过程中发现的每个问题都在这个阶段修掉。
 8. **并行跑 spike（不改 Mac 代码）：**
-   - S1（0.5 天）macOS 26 光条 / 自适应扳机是否还写得进去。**2026-10-28 结果：macOS 27.2 蓝牙 + bundle 下光条 NO-GO**（见 `docs/research/spikes/s1-macos-light-bar.md`）。
+   - S1（0.5 天）macOS 26 光条 / 自适应扳机是否还写得进去。**2026-10-28 结果：macOS 27.2 bundle 下光条 NO-GO（蓝牙和 USB 都不行）**（见 `docs/research/spikes/s1-macos-light-bar.md`）。
    - S6（1 天）原生 Windows 上的 Claude Code：SendInput `KEYEVENTF_UNICODE` 打 "hello 世界"；在 `%USERPROFILE%\.claude\settings.json` 注册五个 hook，用 `curl.exe` 验证——**header 是 `X-PowerUp-Token`，不是 `Authorization: Bearer`**；`claude -p --verbose --input-format stream-json --output-format stream-json --include-partial-messages` 的 `system/init` 到达且嵌套 `control_request` 有效。NO-GO(hooks) → WSL2；NO-GO(stream-json) → 阶段 3 先走 ACP。
    - S4（1.5 天）Rust `sdl3` 在 Windows 上收 DualSense 按键、设 LED、震动；init 前 `SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS="1"`；先 USB 后蓝牙。阶梯 sdl3 → sdl3-sys → gilrs + hidapi 裸报文（只读格式，不抄 GPL 代码）。
    - S5（1 天）Windows 语音识别对比：10 条中英混杂 + 代码标识符的录音，`whisper-cli small` vs `base` vs `Windows.Media.SpeechRecognition`。GO：small 延迟 < 2.5 s。
