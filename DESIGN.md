@@ -126,7 +126,7 @@ Default mapping (chosen from prior-art research — VibePad/ClaudeGamepad conven
 ```swift
 enum AppStatus: Equatable {
     case noController      // light: off (0,0,0) — or dim white
-    case idle              // light: blue   (0.0, 0.25, 1.0)
+    case idle              // light: green  (0.0, 1.0, 0.2)
     case listening         // light: red    (1.0, 0.0, 0.0)
     case thinking          // light: amber  (1.0, 0.45, 0.0)
     case speaking          // light: purple (0.55, 0.0, 1.0)
@@ -2230,3 +2230,13 @@ read-back.
   as `[<name>] `.
 - Pinned by `Tests/Fixtures/session/remote-hooks-outside-the-project-folder-are-ignored.json`
   and `remote-project-switch-clears-the-old-folders-turns.json`.
+
+# v2.9 addendum — the idle light is green
+
+Supersedes the `AppStatus.idle` light color above. Recorded on 2026-10-28 at
+the maintainer's request: a green bar reads as "ready, nothing running".
+
+- `.idle` lights the bar `(0.0, 1.0, 0.2)`; the sidebar status dot for idle
+  uses `Theme.success` so it still matches the bar.
+- Every other status color is unchanged: listening red, thinking amber,
+  speaking purple, no controller off.

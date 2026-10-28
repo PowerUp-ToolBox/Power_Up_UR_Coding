@@ -1,8 +1,9 @@
 # S1: DualSense light bar, adaptive triggers and haptics on current macOS
 
 - **Spike:** S1 of `PLAN-any-device-any-os.md` stage 1, step 8; ticket #136, epic #95.
-- **Status:** PENDING (needs the maintainer's Mac and a DualSense; nothing below the
-  "Results" heading has been observed yet).
+- **Status:** light bar **NO-GO** on macOS 27.2 from a bundle, over Bluetooth and
+  over USB, observed 2026-10-28. Raw-binary runs not done; haptics and adaptive
+  triggers not verdicted (see below).
 - **Time box:** 0.5 day.
 - **OS under test:** the plan and #136 were written for macOS 26. The maintainer's Mac
   now runs **macOS 27.2 (build 26B118)**, so this record answers the question for 27.2.
@@ -107,11 +108,13 @@ the log. One row per run.
 |---|---|---|---|---|---|---|---|---|---|---|
 | A raw, USB | | | | | | | | | | |
 | B raw, BT | | | | | | | | | | |
-| C bundle, USB | | | | | | | | | | |
-| D bundle, BT | | | | | | | | | | |
+| C bundle, USB | not run (see C2) | | | | | | | | | |
+| C2 bundle, USB, slow (6 s per color, spoken) | **no** (bar stayed dim red for red, green, blue, white, off, green) | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | none |
+| D bundle, BT | no (bar stayed dim red throughout) | yes (readback echoes every set color) | not tried | 0 | not tried | 0 | not observed | not observed | none pressed (seen=0) | none |
+| D2 bundle, BT, slow (6 s per color, spoken) | **no** (bar stayed dim red for red, green, blue, white, off, green) | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | none |
 | E raw, no AppKit (optional) | | | | | | | | | | |
 | F bundle, stable identity (optional) | | | | | | | | | | |
-| G real PowerUp: blue idle, red listening, orange thinking (control) | | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | |
+| G real PowerUp (control) | **no**: idle showed dim red with blue and with green set; the pad's buttons, triggers and voice holds all worked in the same session | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | |
 
 Raw logs: commit `results/*.log` next to this record (they hold no personal data
 beyond the OS build and the controller's vendor name).
@@ -130,14 +133,30 @@ beyond the OS build and the controller's vendor name).
   adaptive triggers yet. A haptics NO-GO in the bundle runs is a regression worth its
   own issue.
 
-## Verdict (fill in)
+Notes on runs C2, D, D2 and G (2026-10-28, macOS 27.2 build 26B118; DualSense over
+Bluetooth for D, D2 and G, plugged in by USB for C2, where the USB host listing showed
+the pad; PowerUp quit for C2, D and D2):
+
+- Before any write, a fresh process reads `light.color` as `(0.502, 0.125, 0.020)`
+  (`D-bundle-bt.log` `L1 before`, `D2-bundle-bt-slow.log`): a dim red-orange, which is
+  the color the bar actually shows. Every later readback echoes what the process set,
+  so the readback proves nothing about the hardware.
+- D2 is a slower re-run for the maintainer to watch: [`results/D2-slowlight-main.swift`](s1-macos-light-bar/results/D2-slowlight-main.swift),
+  an ad-hoc signed bundle (`com.powerup.spike.slowlight`, `LSUIElement`,
+  `GCSupportsControllerUserInteraction`) that holds each color 6 s and speaks its name.
+- `I1` saw no buttons in run D only because none were pressed; the pad's input was
+  working in PowerUp in the same session (G), so the NO-GO is not an input problem.
+- `T1`/`T2` read mode 0 right after setting feedback/weapon, but nobody squeezed the
+  triggers, so adaptive triggers stay unverdicted.
+
+## Verdict
 
 | Check | GO / NO-GO / INCONCLUSIVE | Evidence (run + log line) |
 |---|---|---|
-| Light bar (bundle) | | |
-| Light bar (raw) | | |
-| Adaptive triggers | | |
-| Haptics | | |
+| Light bar (bundle) | **NO-GO** on 27.2, Bluetooth and USB | C2, D, D2, G: bar stayed dim red; `L1 before=(r 0.502, g 0.125, b 0.020)` |
+| Light bar (raw) | not run | |
+| Adaptive triggers | INCONCLUSIVE | D: `T1`/`T2` mode 0 after set; not squeezed |
+| Haptics | INCONCLUSIVE | D: `H1`/`H2` played without error; not felt-checked |
 
 ## Consequence
 

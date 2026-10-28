@@ -1,0 +1,58 @@
+[   0.05s] ENV os=Version 27.2 (Build 26B118)
+[   0.05s] ENV bundleIdentifier=com.powerup.spike.s1lightbar
+[   0.05s] ENV bundlePath=~/Desktop/Tech Projects/git/PowerUP/Power_Up_UR_Coding/docs/research/spikes/s1-macos-light-bar/build/S1LightBar.app
+[   0.05s] ENV executable=~/Desktop/Tech Projects/git/PowerUP/Power_Up_UR_Coding/docs/research/spikes/s1-macos-light-bar/build/S1LightBar.app/Contents/MacOS/s1-light-bar
+[   0.05s] ENV runLoop=NSApplication (.accessory)
+[   0.05s] ENV shouldMonitorBackgroundEvents=false
+[   0.05s] ENV shouldMonitorBackgroundEvents(after set)=true
+[   0.05s] WAIT: connect the DualSense (USB or Bluetooth) within 20 seconds
+[   0.06s] N1 GCControllerDidConnect DualSense Wireless Controller
+[   0.06s] C0 connected after 0.1s
+[   0.06s] C1 vendorName=DualSense Wireless Controller productCategory=DualSense
+[   0.06s] C2 isDualSense=true attached=false
+[   0.06s] C3 light=present haptics=present
+[   0.06s] C4 haptics.supportedLocalities=["All", "Default", "Handles", "Left Handle", "Right Handle"]
+[   0.06s] C5 battery.level=0.55 battery.state=0 (0 unknown, 1 discharging, 2 charging, 3 full)
+[   0.58s] L1 before=(r 0.502, g 0.125, b 0.020)
+[   0.58s] L1 set RED readback+0.0s=(r 1.000, g 0.000, b 0.000)
+[   0.58s] LOOK: the light bar should now be RED
+[   1.10s] L1 readback+0.5s=(r 1.000, g 0.000, b 0.000)
+[   2.68s] L1 readback+2.0s=(r 1.000, g 0.000, b 0.000)
+[   4.25s] L2 before=(r 1.000, g 0.000, b 0.000)
+[   4.25s] L2 set GREEN readback+0.0s=(r 0.000, g 1.000, b 0.000)
+[   4.25s] LOOK: the light bar should now be GREEN
+[   4.77s] L2 readback+0.5s=(r 0.000, g 1.000, b 0.000)
+[   6.34s] L2 readback+2.0s=(r 0.000, g 1.000, b 0.000)
+[   7.92s] L3 before=(r 0.000, g 1.000, b 0.000)
+[   7.92s] L3 set BLUE readback+0.0s=(r 0.000, g 0.000, b 1.000)
+[   7.92s] LOOK: the light bar should now be BLUE
+[   8.44s] L3 readback+0.5s=(r 0.000, g 0.000, b 1.000)
+[  10.02s] L3 readback+2.0s=(r 0.000, g 0.000, b 1.000)
+[  11.59s] L4 before=(r 0.000, g 0.000, b 1.000)
+[  11.59s] L4 set ORANGE (PowerUp thinking) readback+0.0s=(r 1.000, g 0.450, b 0.000)
+[  11.59s] LOOK: the light bar should now be ORANGE (PowerUp thinking)
+[  12.12s] L4 readback+0.5s=(r 1.000, g 0.450, b 0.000)
+[  13.69s] L4 readback+2.0s=(r 1.000, g 0.450, b 0.000)
+[  14.74s] T1 R2 before mode=0 status=0 arm=0.000 value=0.000
+[  14.74s] T1 R2 setModeFeedback(start 0.2, strength 0.9) readback+0.0s mode=0 status=0 arm=0.000 value=0.000
+[  14.74s] T2 L2 before mode=0 status=0 arm=0.000 value=0.000
+[  14.74s] T2 L2 setModeWeapon(start 0.3, end 0.6, strength 0.9) readback+0.0s mode=0 status=0 arm=0.000 value=0.000
+[  14.74s] PRESS: squeeze R2 slowly (resistance from about 20%) and L2 (a click between 30% and 60%) during the next 8 seconds
+[  15.26s] T1 R2 readback+0.5s mode=0 status=0 arm=0.000 value=0.000
+[  15.26s] T2 L2 readback+0.5s mode=0 status=0 arm=0.000 value=0.000
+[  17.36s] T3 +2s R2 mode=0 status=0 arm=0.000 value=0.000 | L2 mode=0 status=0 arm=0.000 value=0.000
+[  19.46s] T3 +4s R2 mode=0 status=0 arm=0.000 value=0.000 | L2 mode=0 status=0 arm=0.000 value=0.000
+[  21.56s] T3 +6s R2 mode=0 status=0 arm=0.000 value=0.000 | L2 mode=0 status=0 arm=0.000 value=0.000
+[  23.65s] T3 +8s R2 mode=0 status=0 arm=0.000 value=0.000 | L2 mode=0 status=0 arm=0.000 value=0.000
+[  24.18s] T4 both triggers setModeOff readback R2 mode=0 status=0 arm=0.000 value=0.000 | L2 mode=0 status=0 arm=0.000 value=0.000
+[  25.23s] H1 engine started
+[  25.24s] H1 played transient without error
+[  25.24s] FEEL: the pad should have tapped once
+[  27.33s] H2 played continuous 0.4s without error
+[  27.33s] FEEL: the pad should have buzzed briefly
+[  29.43s] H3 engine stopped by the spike
+[  29.43s] H* engine stopped reason=5
+[  29.96s] PRESS: press a few face buttons, the touchpad and the PS button during the next 10 seconds
+[  40.45s] I2 input window closed; distinct elements seen=0
+[  40.98s] R1 light reset to blue
+[  40.98s] DONE exit=0

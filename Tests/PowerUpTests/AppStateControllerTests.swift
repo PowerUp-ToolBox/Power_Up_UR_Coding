@@ -14,7 +14,7 @@ final class AppStateControllerTests: XCTestCase {
     private var env: AppStateTestEnvironment!
     private var projectDir: URL!
 
-    private static let idleBlue = ControllerOutput.light(r: 0.0, g: 0.25, b: 1.0)
+    private static let idleGreen = ControllerOutput.light(r: 0.0, g: 1.0, b: 0.2)
     private static let listeningRed = ControllerOutput.light(r: 1.0, g: 0.0, b: 0.0)
     private static let off = ControllerOutput.light(r: 0.0, g: 0.0, b: 0.0)
     private static let tick = ControllerOutput.rumble(intensity: 0.5, duration: 0.05)
@@ -208,7 +208,7 @@ final class AppStateControllerTests: XCTestCase {
         controller.clearRecordedOutput()
         controller.simulateConnect()
         await settle(until: app.status == .idle)
-        XCTAssertEqual(controller.recordedOutput, [Self.idleBlue], "a fresh pad gets the idle color")
+        XCTAssertEqual(controller.recordedOutput, [Self.idleGreen], "a fresh pad gets the idle color")
 
         controller.clearRecordedOutput()
         controller.simulateButton(.r2, pressed: true)
@@ -220,7 +220,7 @@ final class AppStateControllerTests: XCTestCase {
         controller.clearRecordedOutput()
         controller.simulateButton(.r2, pressed: false)
         XCTAssertEqual(app.status, .idle)
-        XCTAssertEqual(controller.recordedOutput, [Self.buzz, Self.idleBlue],
+        XCTAssertEqual(controller.recordedOutput, [Self.buzz, Self.idleGreen],
                        "nothing heard: the first error buzz, then back to the idle color")
 
         controller.clearRecordedOutput()
