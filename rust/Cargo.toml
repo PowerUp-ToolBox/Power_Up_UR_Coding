@@ -1,0 +1,18 @@
+# The Rust core of PowerUp (ADR 0012): a library compiled into every OS app.
+# The macOS app links it through the uniffi bridge crate (added in 2.1.2).
+[workspace]
+resolver = "2"
+members = ["powerup-core", "powerup-core-ffi", "uniffi-bindgen"]
+
+[workspace.package]
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+repository = "https://github.com/PowerUp-ToolBox/Power_Up_UR_Coding"
+
+# Library code must not unwrap or expect: every public core function is total
+# and reports failure as an error the bridge maps to a Swift error. Tests may
+# unwrap (clippy.toml).
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

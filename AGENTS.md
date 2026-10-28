@@ -45,6 +45,46 @@ CI (`.github/workflows/ci.yml`) runs build, tests, the bundle pipeline, and
 bundle verification on every PR; green CI is a merge requirement. `dco.yml`
 enforces DCO sign-offs.
 
+## The Rust core (stage 2)
+
+Stage 2 of `PLAN-any-device-any-os.md` moves platform-independent logic into
+the Rust library `powerup-core` (ADR 0012); Swift keeps the UI and every
+Apple-framework adapter.
+
+```sh
+(cd rust && cargo test && cargo clippy --all-targets -- -D warnings)
+./scripts/build-core.sh debug     # bridge → rust/build/ (xcframework + Swift)
+POWERUP_CORE=1 swift test         # app tests plus Tests/PowerUpCoreTests
+```
+
+Plain `swift build` builds the app without the core until slice 2.2;
+`scripts/build.sh` links it when Rust and a full Xcode are installed (CI and
+releases require it with `POWERUP_REQUIRE_CORE=1`). CI runs the cargo job on macOS, Windows
+and Linux.
+
+- **Workspace.** `rust/` holds `powerup-core` (the logic), `powerup-core-ffi`
+  (the uniffi bridge the macOS app links) and `uniffi-bindgen` (generates the
+  Swift side). The compiler is pinned in `rust/rust-toolchain.toml`.
+- **Panic rule.** Every public core function returns a `Result`; library code
+  never calls `unwrap`, `expect` or `panic!` (clippy denies the first two).
+  The one exception is the bridge probe `probe::panic_with`, which exists to
+  test the boundary. The bridge runs every call inside `catch_unwind`, so a
+  core panic reaches Swift as `CoreBridgeError.Panicked`, never as a crash;
+  this needs the default `panic = "unwind"`, so no Cargo profile may set
+  `panic = "abort"`.
+- **Fixture rule.** Core tests read the shared `Tests/Fixtures/` in place
+  (`rust/powerup-core/tests/support`), never a copy. A slice ports a rule by
+  making its fixtures pass in Rust and recording that in `verifiedBy`: add
+  `"rust"` to a session scenario's list, or name the Rust test in a case
+  table's `verifiedBy` sentence.
+- **Ledger rule.** `PORTING-LEDGER.md` lists the hidden knowledge the port
+  must keep. A slice's PR updates the rows it owns; CI fails if any row says
+  todo.
+- **Licenses.** `rust/deny.toml` allows permissive licenses only (MPL-2.0 for
+  the uniffi crates alone). After changing dependencies, run
+  `python3 scripts/third-party-licenses.py` and commit
+  `rust/THIRD-PARTY-LICENSES.md`; CI fails when it is stale.
+
 ## Hard constraints
 
 - Swift 5.9 only; macOS 14.2 SDK APIs at most. `ObservableObject` +
@@ -92,6 +132,10 @@ contract change.
 | `ConfigStore.swift` | Persistent config (JSON, debounced, repairs corruption) |
 | `TranscriptStore.swift` | Per-project transcript persistence (JSON Lines) |
 | `MainView.swift` / `ComponentViews.swift` / `SettingsView.swift` / `MappingView.swift` | SwiftUI views |
+| `CoreBridge.swift` | Launch check of the Rust core bridge (DESIGN v2.10) |
+
+The Rust core lives in `rust/` (see "The Rust core" above); its bridge tests
+are in `Tests/PowerUpCoreTests/`.
 
 ## Safety rails for testing and verification
 

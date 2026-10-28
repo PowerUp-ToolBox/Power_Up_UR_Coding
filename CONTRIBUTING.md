@@ -29,6 +29,8 @@ amendment in the PR description.
 ## Building and testing
 
 Requirements: macOS 14+, Xcode Command Line Tools (`swift build` must work).
+For the Rust core (below) also Rust via rustup and a full Xcode install;
+without them `scripts/build.sh` warns and builds the app without the core.
 A DualSense controller and the `claude` CLI are needed to *use* the app, but
 **not** to build it or run the tests.
 
@@ -40,8 +42,64 @@ open build/PowerUp.app   # ALWAYS launch as a bundle — macOS permissions (TCC)
                          # track bundle identity; the raw binary breaks them
 ```
 
-CI runs `swift build`, `swift test`, and the full bundle pipeline on every PR —
+CI runs `swift build` and `swift test` with and without the Rust core, the
+cargo tests on macOS, Windows and Linux, and the full bundle pipeline on every PR —
 green CI is a merge requirement.
+
+### The Rust core (`rust/`)
+
+Stage 2 of `PLAN-any-device-any-os.md` moves platform-independent logic into
+`powerup-core`, a Rust library every OS app links (ADR 0012). It lives in the
+cargo workspace `rust/`; the toolchain is pinned in `rust/rust-toolchain.toml`,
+so [rustup](https://rustup.rs) installs the right compiler on first use.
+
+```sh
+cd rust
+cargo test                                  # core tests
+cargo clippy --all-targets -- -D warnings   # lints; unwrap/expect are denied in library code
+```
+
+The rules for core work:
+
+- **Workspace.** `rust/` holds `powerup-core` (the logic), `powerup-core-ffi`
+  (the uniffi bridge the macOS app links) and `uniffi-bindgen` (generates the
+  Swift side). The compiler is pinned in `rust/rust-toolchain.toml`.
+- **Panic rule.** Every public core function returns a `Result`; library code
+  never calls `unwrap`, `expect` or `panic!` (clippy denies the first two).
+  The one exception is the bridge probe `probe::panic_with`, which exists to
+  test the boundary. The bridge runs every call inside `catch_unwind`, so a
+  core panic reaches Swift as `CoreBridgeError.Panicked`, never as a crash;
+  this needs the default `panic = "unwind"`, so no Cargo profile may set
+  `panic = "abort"`.
+- **Fixture rule.** Core tests read the shared `Tests/Fixtures/` in place
+  (`rust/powerup-core/tests/support`), never a copy. A slice ports a rule by
+  making its fixtures pass in Rust and recording that in `verifiedBy`: add
+  `"rust"` to a session scenario's list, or name the Rust test in a case
+  table's `verifiedBy` sentence.
+- **Ledger rule.** `PORTING-LEDGER.md` lists the hidden knowledge the port
+  must keep. A slice's PR updates the rows it owns; CI fails if any row says
+  todo.
+- **Licenses.** `rust/deny.toml` allows permissive licenses only (MPL-2.0 for
+  the uniffi crates alone). After changing dependencies, run
+  `python3 scripts/third-party-licenses.py` and commit
+  `rust/THIRD-PARTY-LICENSES.md`; CI fails when it is stale.
+
+The macOS app reaches the core through `powerup-core-ffi`, a uniffi bridge.
+`./scripts/build-core.sh` builds it into `rust/build/` (an xcframework plus
+the generated Swift); the app links it when `POWERUP_CORE=1` is set:
+
+```sh
+./scripts/build-core.sh debug   # or release; scripts/build.sh runs it for you
+POWERUP_CORE=1 swift build      # the app with the core
+POWERUP_CORE=1 swift test       # also runs Tests/PowerUpCoreTests (the bridge)
+```
+
+Plain `swift build` / `swift test` still build the app without the core until
+slice 2.2 makes it mandatory. `scripts/build.sh` links it when Rust and a full
+Xcode are installed (`POWERUP_REQUIRE_CORE=1` turns a missing one into an
+error, as in CI and releases), and the app
+logs `Rust core linked and answering` (subsystem `com.powerup.claudepad`,
+category `core`) at launch.
 
 ### Testing rules (please read — these protect real user machines)
 

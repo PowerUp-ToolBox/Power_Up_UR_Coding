@@ -15,6 +15,10 @@
   other control also work from the
   [keyboard and mouse](controls.md#no-controller-keyboard-and-mouse-cover-everything).
 - Xcode Command Line Tools (for `swift build`), or a full Xcode install.
+- Optional while PowerUp moves its logic into a Rust core: [Rust](https://rustup.rs)
+  and a full Xcode install. With both, `./scripts/build.sh` links the core;
+  without them it prints a warning and builds the app without it, which works
+  the same today.
 
 ## Building
 
@@ -24,7 +28,8 @@ From the repository root:
 ./scripts/build.sh
 ```
 
-This runs `swift build -c release`, assembles `build/PowerUp.app`, writes its
+This builds the Rust core when it can (see Requirements), runs
+`swift build -c release`, assembles `build/PowerUp.app`, writes its
 `Info.plist`, and ad-hoc code-signs the bundle. It also renders the app icon:
 `scripts/IconGen.swift` is compiled with `swiftc` and produces
 `build/AppIcon.icns`, which is copied into the bundle's `Resources`. The

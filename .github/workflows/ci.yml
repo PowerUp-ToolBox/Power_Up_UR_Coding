@@ -17,8 +17,14 @@ jobs:
       - name: Swift version
         run: swift --version
 
-      - name: Build
+      # Until slice 2.2 makes the Rust core mandatory, the app must still
+      # build without it.
+      - name: Build (without the Rust core)
         run: swift build
+
+      # rust/rust-toolchain.toml pins the compiler; rustup installs it.
+      - name: Build the Rust core bridge
+        run: ./scripts/build-core.sh debug
 
       # The shared fixtures (Swift now, the Rust core later) are discovered
       # at run time, so an empty or missing directory would let the scenario
@@ -32,14 +38,17 @@ jobs:
           sessions=$(find Tests/Fixtures/session -type f -name '*.json' 2>/dev/null | wc -l | tr -d ' ')
           test "$sessions" -gt 0 || { echo "::error::Tests/Fixtures/session holds no scenarios"; exit 1; }
 
-      - name: Test
+      - name: Test (without the Rust core)
         run: swift test
+
+      - name: Test (with the Rust core)
+        run: POWERUP_CORE=1 swift test
 
       # Full release pipeline: SPM release build, icon generation, .app
       # assembly, ad-hoc signing. Catches build.sh regressions and release-only
       # compile errors.
       - name: Bundle app
-        run: ./scripts/build.sh
+        run: POWERUP_REQUIRE_CORE=1 ./scripts/build.sh
 
       - name: Verify bundle
         run: |
@@ -47,3 +56,90 @@ jobs:
           test -f build/PowerUp.app/Contents/Resources/AppIcon.icns
           plutil -lint build/PowerUp.app/Contents/Info.plist
           codesign --verify build/PowerUp.app
+          nm build/PowerUp.app/Contents/MacOS/PowerUp | grep -q uniffi_powerup_core_ffi_fn_func_probe_echo \
+            || { echo "::error::the app bundle does not link the Rust core"; exit 1; }
+
+  # The Rust core (stage 2, ADR 0012) is tested on every OS it will ship on.
+  # Runner images are pinned for the same reason as the macOS job above.
+  rust:
+    name: Rust core (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-2025, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v4
+
+      # Installs the compiler pinned in rust/rust-toolchain.toml.
+      - name: Toolchain
+        run: rustup toolchain install
+
+      - name: Format
+        run: cargo fmt --check
+
+      # The bridge turns a core panic into CoreBridgeError.Panicked with
+      # catch_unwind, which an aborting panic would bypass (DESIGN v2.10).
+      - name: No profile aborts on panic
+        shell: bash
+        run: |
+          if grep -rn --include=Cargo.toml --include=config.toml -E 'panic *= *"abort"' . ; then
+            echo "::error::panic = \"abort\" defeats the bridge's panic containment"
+            exit 1
+          fi
+
+      - name: Lint (unwrap/expect denied in library code)
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      # Includes the shared-fixtures checks: an empty Tests/Fixtures fails.
+      - name: Test
+        run: cargo test --locked
+
+  rust-licenses:
+    name: Rust licenses
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # Allowlist in rust/deny.toml: permissive licenses only, GPL rejected.
+      - name: License audit
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: rust/Cargo.toml
+          command: check licenses bans sources
+
+      # Advisories change daily: reported in the log, never a merge blocker.
+      - name: Security advisories (informational)
+        continue-on-error: true
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: rust/Cargo.toml
+          command: check advisories
+
+      - name: Toolchain
+        working-directory: rust
+        run: rustup toolchain install
+
+      - name: Third-party license list is current
+        run: |
+          python3 scripts/third-party-licenses.py
+          git diff --exit-code rust/THIRD-PARTY-LICENSES.md \
+            || { echo "::error::run scripts/third-party-licenses.py and commit rust/THIRD-PARTY-LICENSES.md"; exit 1; }
+
+  # PORTING-LEDGER.md tracks the hidden knowledge the Rust port must keep;
+  # a row left as todo blocks the merge (plan stage 2 step 7).
+  porting-ledger:
+    name: Porting ledger
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: No row is left todo
+        run: |
+          test -f PORTING-LEDGER.md || { echo "::error::PORTING-LEDGER.md is missing"; exit 1; }
+          if grep -n -i -w 'todo' PORTING-LEDGER.md; then
+            echo "::error::PORTING-LEDGER.md still has todo rows (lines above)"
+            exit 1
+          fi
