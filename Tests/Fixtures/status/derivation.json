@@ -8,7 +8,7 @@
       "name": "resting with a pad connected",
       "input": { "controllerConnected": true, "isPTTActive": false, "isSpeaking": false, "isWorking": false },
       "expected": "idle",
-      "reason": "Nothing is happening and a pad is there: the blue Ready state."
+      "reason": "Nothing is happening and a pad is there: the green Ready state."
     },
     {
       "name": "resting with no pad",

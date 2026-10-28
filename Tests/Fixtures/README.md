@@ -7,7 +7,13 @@ loads these files from its own source location. Swift resolves them relative
 to `#filePath`, because SwiftPM accepts no resources outside a target. Do not
 copy them into a target.
 
-CI fails if this directory holds no JSON fixtures.
+CI fails if this directory holds no JSON fixtures, from both sides: a CI
+step for the Swift suites, and `the_shared_fixtures_directory_is_not_empty`
+in `rust/powerup-core/tests/fixtures.rs` for the Rust core. The Rust loader
+(`rust/powerup-core/tests/support/mod.rs`) applies the same header checks as
+the Swift loaders and rejects unknown keys, so a new key or a new area has to
+be taught to both. Add `"rust"` to a file's `verifiedBy` only when a core
+slice actually plays it.
 
 ## Conventions
 
