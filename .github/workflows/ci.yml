@@ -55,3 +55,55 @@ jobs:
           codesign --verify build/PowerUp.app
           nm build/PowerUp.app/Contents/MacOS/PowerUp | grep -q uniffi_powerup_core_ffi_fn_func_probe_echo \
             || { echo "::error::the app bundle does not link the Rust core"; exit 1; }
+
+  # The Rust core (stage 2, ADR 0012) is tested on every OS it will ship on.
+  # Runner images are pinned for the same reason as the macOS job above.
+  rust:
+    name: Rust core (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-2025, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v4
+
+      # Installs the compiler pinned in rust/rust-toolchain.toml.
+      - name: Toolchain
+        run: rustup toolchain install
+
+      - name: Format
+        run: cargo fmt --check
+
+      - name: Lint (unwrap/expect denied in library code)
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      # Includes the shared-fixtures checks: an empty Tests/Fixtures fails.
+      - name: Test
+        run: cargo test --locked
+
+  rust-licenses:
+    name: Rust licenses
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # Allowlist in rust/deny.toml: permissive licenses only, GPL rejected.
+      - name: License audit
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: rust/Cargo.toml
+          command: check licenses bans sources
+
+      - name: Toolchain
+        working-directory: rust
+        run: rustup toolchain install
+
+      - name: Third-party license list is current
+        run: |
+          python3 scripts/third-party-licenses.py
+          git diff --exit-code rust/THIRD-PARTY-LICENSES.md \
+            || { echo "::error::run scripts/third-party-licenses.py and commit rust/THIRD-PARTY-LICENSES.md"; exit 1; }

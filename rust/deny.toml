@@ -1,0 +1,58 @@
+# cargo-deny policy for the Rust workspace (#141). CI runs
+# `cargo deny check` from rust/. The core is Apache-2.0 (ADR 0002): only
+# permissive licenses may enter it; the GPL family is rejected outright.
+
+[graph]
+all-features = true
+
+[licenses]
+confidence-threshold = 0.9
+# The allowlist is policy, not inventory: licenses no crate uses yet stay.
+unused-allowed-license = "allow"
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "Unlicense",
+    "CC0-1.0",
+]
+
+# uniffi, the bridge ADR 0012 chose, is MPL-2.0: file-level copyleft, which
+# allows linking it unmodified into the Apache-2.0 app. It is allowed for the
+# uniffi crates only, never as a general license.
+exceptions = [
+    { allow = ["MPL-2.0"], crate = "uniffi" },
+    { allow = ["MPL-2.0"], crate = "uniffi_bindgen" },
+    { allow = ["MPL-2.0"], crate = "uniffi_core" },
+    { allow = ["MPL-2.0"], crate = "uniffi_internal_macros" },
+    { allow = ["MPL-2.0"], crate = "uniffi_macros" },
+    { allow = ["MPL-2.0"], crate = "uniffi_meta" },
+    { allow = ["MPL-2.0"], crate = "uniffi_pipeline" },
+    { allow = ["MPL-2.0"], crate = "uniffi_udl" },
+]
+
+[licenses.private]
+# Our own crates are publish = false and carry the workspace license.
+ignore = true
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+# Workspace crates depend on each other by path; they are not published.
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+
+[advisories]
+# Advisories change daily; they warn in CI logs but never block a merge.
+unmaintained = "workspace"
+yanked = "warn"
