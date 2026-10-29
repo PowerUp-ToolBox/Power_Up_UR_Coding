@@ -58,8 +58,9 @@ final class SpeechFixtureTests: XCTestCase {
     }
 
     /// An accepted difference is a real one, and of the two kinds the
-    /// ledger accepts: the core undecided (spoken in English), or Han-only
-    /// text the Swift app read as Japanese read as Chinese.
+    /// ledger accepts: the core undecided (spoken in English; HK-421,
+    /// HK-422), or Han-only text the Swift app read as Japanese read as
+    /// Chinese (HK-420).
     func testAgreementDifferencesAreRealAndOfAnAcceptedKind() throws {
         let file = try SpeechFixtures.load("language-agreement.json")
         var differences = 0
@@ -144,7 +145,7 @@ final class SpeechFixtureTests: XCTestCase {
         let file = try SpeechFixtures.load("language-agreement.json")
         XCTAssertGreaterThanOrEqual(file.cases.count, 80)
         let kinds = ["en", "de", "fr", "es", "it", "pt", "nl", "zh-Hans", "zh-Hant", "ja", "ko",
-                     "mixed", "short", "code", "han", "gate"]
+                     "mixed", "short", "code", "han", "gate", "unlisted"]
         for kind in kinds {
             let count = file.cases.filter { $0.name.hasPrefix("\(kind): ") }.count
             XCTAssertGreaterThanOrEqual(count, 4, "language-agreement.json has \(count) \(kind) sentences")

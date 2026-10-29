@@ -116,7 +116,19 @@ The rules for core work:
   `CoreBridgeTextSafety.swift`; RemoteControlService keeps the injector:
   the route and target choice, running cmux (the `--` separator, the
   pauses, the deadlines, the socket password) and the Accessibility
-  typing, and sends nothing when the core cannot make text safe.
+  typing, and sends nothing when the core cannot make text safe. It also holds the speech text rules (`speech`: a
+  markdown reply's spoken text, with fenced code becoming a placeholder
+  before the language decision, the fixed stripping order and the cut at
+  a sentence ender; the language decision with its gates, a pure-Rust
+  detector, whatlang, standing in for NLLanguageRecognizer; the language
+  a voice is routed for; and the pure rules of spoken summaries), played
+  against `Tests/Fixtures/speech/` and reached through
+  `CoreBridgeSpeech.swift`; TTSService keeps the voices (resolution,
+  ranking, the simplified or traditional Chinese region), the synthesizer
+  and audio routing, SummaryService the summarizer process, and AppState
+  the generation counter and the fallbacks to the full reply. A text the
+  two detectors decide differently is recorded in
+  `language-agreement.json` and the ledger (HK-420 to HK-422).
 - **Panic rule.** Every public core function is total: it returns its
   value, or a `Result` when it can fail, and never panics. Library code
   never calls `unwrap`, `expect` or `panic!` (clippy denies the first two).

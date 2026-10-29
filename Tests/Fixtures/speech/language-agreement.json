@@ -1,5 +1,5 @@
 {
-  "description": "Agreement between the Swift app's language decision (NLLanguageRecognizer under the gates of language.json) and the Rust core's (whatlang, restricted to the languages NLLanguageRecognizer can answer, under the same gates with the confidence gate re-tuned to above 0.59 for whatlang's scale, HK-421), on natural sentences of the kind replies hold (spec #100 slice 2.5, ticket #160; ADR 0011: the speech text rules are shared, the engines and voices are per OS). expected.swift is the decision the Swift app made (a language code, or null for undecided, read as English). A Rust decision that differs is either resolved toward the Swift one or recorded as an accepted difference: expected gains \"core\" with the core's decision, the reason says why the difference is accepted, and the ledger names it. Two kinds are accepted: the core undecided, so the reply reads in English (HK-421), and Han-only text the Swift app read as Japanese reading as Chinese (HK-420). The corpus covers en, de, fr, es, it, pt, nl, simplified and traditional Chinese, ja, ko, mixed CJK and Latin, short strings, Han-only text, text that is no language, and code-heavy prose.",
+  "description": "Agreement between the Swift app's language decision (NLLanguageRecognizer under the gates of language.json) and the Rust core's (whatlang, restricted to the languages NLLanguageRecognizer can answer, under the same gates with the confidence gate re-tuned to above 0.59 for whatlang's scale, HK-421), on natural sentences of the kind replies hold (spec #100 slice 2.5, ticket #160; ADR 0011: the speech text rules are shared, the engines and voices are per OS). expected.swift is the decision the Swift app made (a language code, or null for undecided, read as English). A Rust decision that differs is either resolved toward the Swift one or recorded as an accepted difference: expected gains \"core\" with the core's decision, the reason says why the difference is accepted, and the ledger names it. Two kinds are accepted: the core undecided, so the reply reads in English (HK-421, HK-422), and Han-only text the Swift app read as Japanese reading as Chinese (HK-420). The corpus covers en, de, fr, es, it, pt, nl, simplified and traditional Chinese, ja, ko, mixed CJK and Latin, short strings, Han-only text, text that is no language, code-heavy prose, and languages only one of the two detectors can name (unlisted: the core answers only the languages both whatlang and NLLanguageRecognizer know, HK-422).",
   "function": "speech::dominant_language (Swift: CoreBridge.dominantLanguage(of:); until slice 2.5 TTSService.dominantLanguageCode(of:)) — input the text, expected {swift} (plus core for an accepted difference), each a language code or null",
   "verifiedBy": "DESIGN.md v1.2 A, v2.14; Tests/PowerUpTests/SpeechFixtureTests.swift testLanguageAgreementTable plays it through CoreBridge.dominantLanguage(of:) and compares expected.core where the table records an accepted difference, expected.swift everywhere else. Rust: rust/powerup-core/tests/speech.rs language_agreement_cases runs speech::dominant_language and compares expected.core where the table records an accepted difference, expected.swift everywhere else.",
   "capturedAgainst": "Swift 5.9.2 Foundation and NaturalLanguage (Xcode 15.2) on macOS 27.2, PowerUp at 67659a4",
@@ -904,6 +904,59 @@
         "core": null
       },
       "reason": "Moved from language.json, where it showed a non-Latin, non-CJK language passing the same gates (HK-213). Swift: NLLanguageRecognizer says Russian at 1.00 with 46 letters; the gates admit it: ru. Accepted difference (HK-421): the core's whatlang says Bulgarian at 0.01, not above its 0.59 gate, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "unlisted: Ég lagaði villuna og nú standast öll prófin án nokkurra vandamála.",
+      "input": "Ég lagaði villuna og nú standast öll prófin án nokkurra vandamála.",
+      "expected": {
+        "swift": "is",
+        "core": null
+      },
+      "reason": "A language only one of the two detectors can name (HK-422). Swift: NLLanguageRecognizer says Icelandic at 1.00 with 55 letters; the gates admit it: is. Accepted difference (HK-422): whatlang knows no Icelandic; among the languages the core may answer it says Hungarian at 0.00, not above its 0.59 gate, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "unlisted: Қате түзетілді және енді барлық тесттер ешқандай қиындықсыз өтеді.",
+      "input": "Қате түзетілді және енді барлық тесттер ешқандай қиындықсыз өтеді.",
+      "expected": {
+        "swift": "kk",
+        "core": null
+      },
+      "reason": "A language only one of the two detectors can name (HK-422). Swift: NLLanguageRecognizer says Kazakh at 1.00 with 57 letters; the gates admit it: kk. Accepted difference (HK-422): whatlang knows no Kazakh (unrestricted it says Belarusian); among the languages the core may answer it says Russian at 0.21, not above its 0.59 gate, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "unlisted: ຂ\u0EC9ອຍໄດ\u0EC9ແກ\u0EC9ໄຂບ\u0EB1ນຫາແລ\u0EC9ວ ແລະ ຕອນນ\u0EB5\u0EC9ການທ\u0EBBດສອບທ\u0EB1ງໝ\u0EBBດຜ\u0EC8ານແລ\u0EC9ວ.",
+      "input": "ຂ\u0EC9ອຍໄດ\u0EC9ແກ\u0EC9ໄຂບ\u0EB1ນຫາແລ\u0EC9ວ ແລະ ຕອນນ\u0EB5\u0EC9ການທ\u0EBBດສອບທ\u0EB1ງໝ\u0EBBດຜ\u0EC8ານແລ\u0EC9ວ.",
+      "expected": {
+        "swift": "lo",
+        "core": null
+      },
+      "reason": "A language only one of the two detectors can name (HK-422). Swift: NLLanguageRecognizer says Lao at 1.00 with 46 letters; the gates admit it: lo. Accepted difference (HK-422): whatlang knows no Lao script and gives no answer, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "unlisted: ང་ཚ\u0F7Cས་དཀའ་ངལ་ས\u0F7Aལ་ཟ\u0F72ན། ད་ལ\u0F9F་ཚ\u0F7Cད་ལ\u0F9F་ཚང་མ་ལ\u0F7Aགས་པར་འག\u0FB2\u0F74བ་ས\u0F7Cང་།",
+      "input": "ང་ཚ\u0F7Cས་དཀའ་ངལ་ས\u0F7Aལ་ཟ\u0F72ན། ད་ལ\u0F9F་ཚ\u0F7Cད་ལ\u0F9F་ཚང་མ་ལ\u0F7Aགས་པར་འག\u0FB2\u0F74བ་ས\u0F7Cང་།",
+      "expected": {
+        "swift": "bo",
+        "core": null
+      },
+      "reason": "A language only one of the two detectors can name (HK-422). Swift: NLLanguageRecognizer says Tibetan at 1.00 with 40 letters; the gates admit it: bo. Accepted difference (HK-422): whatlang knows no Tibetan script and gives no answer, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "unlisted: ᏣᎳᎩ ᎦᏬᏂᎯᏍᏗ ᎠᏍᎦᏯ ᎤᏬᏪᎳᏅ ᏣᎳᎩ ᎦᏬᏂᎯᏍᏗ ᎠᏍᎦᏯ ᎤᏬᏪᎳᏅ",
+      "input": "ᏣᎳᎩ ᎦᏬᏂᎯᏍᏗ ᎠᏍᎦᏯ ᎤᏬᏪᎳᏅ ᏣᎳᎩ ᎦᏬᏂᎯᏍᏗ ᎠᏍᎦᏯ ᎤᏬᏪᎳᏅ",
+      "expected": {
+        "swift": "chr",
+        "core": null
+      },
+      "reason": "A language only one of the two detectors can name (HK-422). Swift: NLLanguageRecognizer says Cherokee at 1.00 with 36 letters; the gates admit it: chr. Accepted difference (HK-422): whatlang knows no Cherokee script and gives no answer, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "unlisted: ስህተቱን አስተካክዬዋለሁ እና አሁን ሁሉም ፈተናዎች ያለምንም ችግር ያልፋሉ።",
+      "input": "ስህተቱን አስተካክዬዋለሁ እና አሁን ሁሉም ፈተናዎች ያለምንም ችግር ያልፋሉ።",
+      "expected": {
+        "swift": null
+      },
+      "reason": "A language only one of the two detectors can name (HK-422). Swift: NLLanguageRecognizer has no answer for Amharic, so it is undecided. The core agrees: whatlang says Amharic at 1.00 whatever its allowlist, a language the recognizer cannot answer and so outside the core's list, so the core is undecided too."
     }
   ]
 }

@@ -45,6 +45,30 @@ you pick in **Settings → Voice** is used whenever the reply is in *that*
 voice's language; when the reply is in a different language, PowerUp routes
 around your pick rather than staying silent.
 
+How the language is decided, honestly stated:
+
+- **Code doesn't count.** A fenced code block is left out before the
+  language is decided, so a Chinese reply full of English identifiers in
+  code is still read by a Chinese voice. The block itself is read as "code
+  omitted" (in a Chinese reply, "代码已省略").
+- **Chinese, Japanese and Korean are recognized by their script**, even in
+  short or mixed text: any kana means Japanese, hangul means Korean, and
+  Chinese characters alone mean Chinese. So a Japanese phrase written only
+  in kanji, with no kana at all, reads as Chinese; an ordinary Japanese
+  reply has kana and reads as Japanese.
+- **When PowerUp isn't sure, it reads in English.** Very short replies
+  ("OK", "Done."), lists of names or paths, and the occasional short
+  sentence in another language that the detector can't call confidently
+  are read by an English voice rather than risk a wrong one. A few
+  languages macOS can name but PowerUp's detector can't (Icelandic, Kazakh,
+  Lao, Tibetan and Cherokee among them) are always read in English.
+- PowerUp's own spoken confirmations (such as "Model: Sonnet") are always
+  English.
+
+These text rules are the same on every operating system PowerUp runs on, so
+a reply is read the same way and in the same language everywhere; the
+voices themselves are each system's own.
+
 If a language sounds robotic (or a reply is still silent), it usually just
 means no good voice for that language is installed yet. You can download one
 per language: **Settings → Voice → Open Voice Settings** jumps to **System
@@ -93,6 +117,12 @@ The "Max spoken characters" stepper in the Voice tab caps how much of a long
 reply is spoken (the rest is truncated at a sentence boundary with a spoken
 "reply truncated" note). It can be set all the way down to **0**, which means
 *no limit* — Claude's full reply is read aloud instead of being truncated.
+The limit counts characters as you see them (an emoji or an accented letter
+is one), after markdown is removed, and a cut is never made inside one. A
+sentence may end with `.`, `!`, `?`, `…` or the full-width `。`, `！` and
+`？`; with none in range the reply is cut at the limit. A Chinese reply ends
+with "……回复已截断。" instead of the English note. Spoken summaries are never
+cut.
 
 ## Input and Output: your microphone and speaker
 

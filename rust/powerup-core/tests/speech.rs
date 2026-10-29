@@ -172,9 +172,9 @@ fn language_cases() {
 /// accepted difference and `expected.swift` everywhere else. A recorded
 /// difference must really differ, so a stale record cannot linger, and it
 /// must be one of the two kinds the ledger accepts: the core undecided,
-/// so the reply reads in English (HK-421), or Han-only text the Swift app
-/// read as Japanese reading as Chinese (HK-420). The core never names a
-/// language the Swift app did not.
+/// so the reply reads in English (HK-421, HK-422), or Han-only text the
+/// Swift app read as Japanese reading as Chinese (HK-420). The core never
+/// names a language the Swift app did not.
 #[test]
 fn language_agreement_cases() {
     let file = "language-agreement.json";

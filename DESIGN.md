@@ -3009,7 +3009,9 @@ here and stays open until a maintainer runs it before #155 closes.
 Recorded 2026-10-29 for spec #100 (tickets #156–#160, ADR 0011, ADR 0012,
 plan stage 2 step 5), built up ticket by ticket; this text covers #156,
 the configuration schema, #157, the transcript's JSON Lines, #158, the
-hooks merge, and #159, the remote text safety rules. It supersedes
+hooks merge, #159, the remote text safety rules, and #160, the speech
+text rules, the stage's last ticket: with it stage 2.5 is complete, and
+no ledger row the slice owns is pending. It supersedes
 v2.11 C's "`Action`'s synthesized
 `Encodable` and the config writer (until slice 2.5)": the core reads and
 writes config.json since this slice and `Action` is a plain value. The
@@ -3041,6 +3043,25 @@ tested: `Route`, `route(for:)`, `trimmedOrNil(_:)`,
 `autoTargetWorkspace(in:)` and `targetArguments(workspace:surface:)`. What
 reaches the target and every message are unchanged, apart from what a
 failed core call does (B).
+For #160 it supersedes the TTSService contract's `speechText(fromMarkdown:
+maxChars:)` with its rules, v1.2 A's `dominantLanguageCode(of:)`, its
+localized phrases and step 1 of its resolution order, v1.12's
+`SummaryService.prompt(for:)` with its rejection rule, the
+`summaryMinimumReplyLength` and `TTSService.spokenReply` of v1.12's
+AppState behavior, and the `TTSService.speechText` call in the first
+behavior spec's `turnCompleted`: these and
+`TTSService.spokenReply(fromMarkdown:maxChars:)` are deleted for the
+`CoreBridge` wrappers of B, as are the internal
+`TTSService.voiceLanguage(for:language:)`,
+`SummaryService.usableSummary(_:for:)` and
+`AppState.wantsSummary(of:speakSummaries:)` that the ticket's first commit
+extracted so the tables could play them. `TTSService.speak(_:voiceID:rate:
+language:)`, `rankedVoices`, `isExcludedVoiceIdentifier`,
+`availableVoices` and SummaryService's `arguments(model:)`, `summarize`
+and `cancel` keep their shape. What a reply sounds like, when it is
+summarized and which voice reads it are unchanged, apart from the accepted
+language differences of D (HK-420 to HK-422) and what a failed core call
+does (B).
 
 The core gains `config` (`AppConfig`, `load_config`, `encode_config`,
 `seed_project_bookkeeping`, the defaults and the fixed vocabularies) and,
@@ -3067,6 +3088,17 @@ and `failure_message` for a `CommandResult`), and `text` gains
 `ends_with_clusters` (`hasSuffix`) and `split_once_on_space` (`split`
 with one split). The slice 2.3 `text::condense` is the cut for limits of 0
 or more.
+With #160 it gains `speech` (`spoken_reply` with its `SpokenReply`,
+`speech_text`, `dominant_language` and `cjk_script_language` with their
+gates `MINIMUM_LETTERS`, `CJK_SHARE` and `CONFIDENCE_GATE`,
+`voice_language`, the phrases and `SENTENCE_ENDERS`, and the summary rules
+`wants_summary`, `usable_summary`, `summary_prompt` and
+`SUMMARY_MINIMUM_REPLY_LENGTH`), whose private `markdown` module holds one
+hand-written pass per NSRegularExpression the app ran, and the core's
+first dependency beyond serde and unicode-segmentation: whatlang
+`=0.18.0`, a pure-Rust trigram language detector (MIT, with no threads
+and no I/O; its dependencies are permissive, `rust/deny.toml` admits
+them, and `rust/THIRD-PARTY-LICENSES.md` lists them).
 
 ## A. Bridge surface
 
@@ -3134,6 +3166,22 @@ Functions: `flattenLineBreaks(text:) -> String`,
 `condense(text:maxChars: Int64) -> String` and
 `failureMessage(action:result: CoreCommandResult) -> String`. They take and
 return strings and values only: none runs cmux or posts a keystroke.
+
+From `rust/powerup-core-ffi/src/speech.rs` (#160):
+
+| Generated Swift | Shape |
+| --- | --- |
+| `struct CoreSpokenReply` | `text: String` (empty when nothing speakable is left), `language: String` (the lowercased primary subtag the phrases were chosen for, `"en"` when undecided) |
+
+Functions: `spokenReply(markdown:maxChars: Int64) -> CoreSpokenReply`,
+`speechText(markdown:maxChars: Int64) -> String`,
+`dominantLanguage(text:) -> String?` (nil: undecided),
+`voiceLanguage(text:language: String?) -> String`,
+`wantsSummary(reply:speakSummaries: Bool) -> Bool`,
+`usableSummary(summary: String?, reply:) -> String?` (a nil summary: the
+summarizer gave none) and `summaryPrompt(reply:) -> String`. A `maxChars`
+of 0 or less never cuts. They take and return strings and decisions only:
+none picks a voice, speaks or runs the summarizer.
 
 ## B. Swift wrappers and the failure policy
 
@@ -3257,6 +3305,44 @@ Remote.", and the status refresh shows no workspaces. A failed
 `failureMessage` reads "<action> failed.", so the failure is still
 reported; a failed `stripStatusGlyph` or `condense` is nil.
 
+`Sources/PowerUp/CoreBridgeSpeech.swift` (#160) speaks the services' own
+shapes (a tuple for the spoken reply, `Int` limits):
+
+```swift
+static func spokenReply(fromMarkdown markdown: String, maxChars: Int) -> (text: String, language: String)?
+static func speechText(fromMarkdown markdown: String, maxChars: Int) -> String?
+static func dominantLanguage(of text: String) -> String?
+static func voiceLanguage(for text: String, language: String?) -> String
+static func wantsSummary(of reply: String, speakSummaries: Bool) -> Bool
+static func usableSummary(_ summary: String?, for reply: String) -> String?
+static func summaryPrompt(for reply: String) -> String?
+```
+
+AppState's `speakReply` asks `wantsSummary` whether a completed reply goes
+to the summarizer, and speaks the full reply (`speakFullReply`), the
+summary (with a `maxChars` of 0) and Replay (`speakLastReply`) through
+`spokenReply`, handing its language to `TTSService.speak`; announcements
+keep passing `"en"`. `TTSService.resolveVoice` takes its language from
+`voiceLanguage` and keeps everything after it. SummaryService's detached
+task writes the stdin through `summaryPrompt`, runs the process and checks
+the answer with `usableSummary`. `speechText` and `dominantLanguage` serve
+the tests and the fixture runner. The reply rules run on the main actor,
+the prompt and the check on the detached task; `CoreBridge` is safe from
+either.
+
+Failure policy for speech: a failed call never speaks raw markdown or
+fenced code. A spoken reply the core could not make, for the full reply or
+Replay, speaks "Sorry, I couldn't read that reply aloud." in English
+(`AppState.unreadableReplyPhrase`, private) instead; a reply that is only
+markup still speaks nothing, and its Replay still buzzes. A summary whose
+spoken text fails falls back to the full reply, like an empty one; a
+failed `summaryPrompt` runs no process and the completion comes with nil;
+a failed `usableSummary` is nil and a failed `wantsSummary` false, so the
+full reply is spoken (with no model call for the latter); a failed
+`dominantLanguage` reads as undecided (English); a failed `voiceLanguage`
+is the caller's language, else `"en"`. No test can make the core fail, so
+these paths are pinned by their doc comments.
+
 ## C. What moved and what stayed
 
 Moved into `powerup-core`, unchanged in behaviour: the schema and its
@@ -3323,6 +3409,29 @@ them. The one change in order: the cmux route asks for the segments before
 it lists the workspaces, so no `list-workspaces` runs for text that would
 not be sent; segmentation being pure, a working core sends exactly as
 before.
+
+Speech (#160). Moved, unchanged in behaviour: the code placeholder before
+the language decision (HK-214), the decision made once with only Chinese
+getting localized phrases (HK-211), the fixed stripping order (HK-215),
+the cut at the last sentence ender with its localized note (HK-216, the
+speech part of HK-173), the language decision's order and gates (HK-212,
+HK-213, with whatlang in place of NLLanguageRecognizer and the accepted
+differences of D), the caller's language winning over detection (HK-210),
+and the summary rules: the 350-Character threshold, the prompt and which
+answer is spoken (HK-169, HK-170, HK-172). Stayed in Swift: voice
+resolution and ranking with the explicit voice, the exclusions and the
+fallback chain (HK-336, HK-337), the simplified or traditional Chinese
+region, which a recognizer constrained to the two scripts picks within the
+best quality tier (HK-335: it chooses a voice, not a language, so
+`TTSService` keeps it and `import NaturalLanguage`), the voice list
+(HK-338), the synthesizer, the routed render and audio routing (HK-329 to
+HK-334, HK-340), the recorder (HK-339), the summarizer process with its
+arguments, timeout and latest-wins (HK-280 to HK-285), and in AppState the
+English announcements (HK-210), the generation counter that drops a
+summary arriving after its moment, the "Summary: …" entry and the
+fallbacks to the full reply (HK-169, HK-171). The engines and voices are
+each OS's own (ADR 0011); the text rules are shared, so every OS reads a
+reply the same and routes it to the same language.
 
 ## D. Recorded rules
 
@@ -3437,6 +3546,71 @@ before.
   Swift code (196 cases in the six tables). A scratch differential then
   compared the Swift functions, copied pure, with the core over 300,000
   generated inputs in five seeds and found no difference.
+- Speech text follows NSRegularExpression (ICU) as the app used it (#160,
+  HK-215): `\s` is the White_Space property, line breaks included, so a
+  heading or quote marker swallows the blank lines after it; `(?m)^`
+  matches at the start and after U+000A to U+000D, U+0085, U+2028 and
+  U+2029, but not between a CR and its LF (measured with
+  NSRegularExpression on macOS 27.2), and is looked up in the text each
+  pass was given; no regex crate matches those line starts, so each
+  pattern is a hand-written pass. Star bullets pair as italic markers
+  before the bullet rule runs (`* a\n* b\n* c` reads "a b c"), as in
+  Swift. The placeholder becomes the phrase wherever a U+FFFC stands, the
+  input's own ones too, except one a combining scalar extends
+  (`replacingOccurrences`; HK-214); U+200B survives the whitespace
+  collapse but not the final trim; the cut counts Characters and compares
+  each ender as a whole Character, so an ender a combining mark extends
+  is no ender (HK-216, HK-173).
+- The language decision keeps Swift's order and gates (HK-212, HK-213):
+  empty text is undecided; a statistical zh, ja or ko is trusted; CJK
+  script decides from a 20% share of the Alphabetic scalars (any kana ja,
+  else any hangul ko, else zh, with the ranges of `language.json`); else
+  a statistical answer needs 25 Alphabetic scalars and a confidence above
+  the gate, and undecided reads as English. The statistical answer is
+  whatlang's, restricted to the 47 languages it shares with
+  NLLanguageRecognizer (listed from the recognizer's hypotheses for every
+  script on macOS 27.2), so the core never names a language the app could
+  not have chosen. whatlang's confidence is its margin over the runner-up,
+  not a probability, so its gate is above 0.59 where the recognizer's was
+  above 0.7: on the agreement corpus 0.59 lies between the most confident
+  wrong answer (a German sentence read as French at 0.58) and the least
+  confident right one (English code prose at 0.60), and the core never
+  names a language outside CJK that the app did not (HK-421).
+- Accepted differences, each a case of
+  `Tests/Fixtures/speech/language-agreement.json` with `expected.core`
+  (117 sentences, 18 of them differences), and of only two kinds, which
+  both runners enforce. Han-only text with no kana is zh in the core,
+  where the recognizer knew Japanese words written in kanji (東京駅, 日本語,
+  新幹線 read ja in the app; 大丈夫 agrees; HK-420); a Japanese reply holds
+  kana, which decide ja in both. Ten sentences are undecided in the core
+  where whatlang is less sure than the recognizer was (HK-421): five the
+  app read as English anyway, and five German, Spanish, Dutch and Russian
+  ones that now read in English instead of their language. Five languages
+  only the recognizer names (Icelandic, Kazakh, Lao, Tibetan, Cherokee)
+  are undecided in the core, and Amharic, which only whatlang names, is
+  undecided in both (HK-422).
+- The summary rules count Characters (HK-169, HK-170, HK-173): a reply is
+  summarized from 350 Characters, untrimmed; an answer is spoken when,
+  trimmed of `whitespacesAndNewlines`, it is not empty and shorter than
+  max(200, reply Characters / 2, rounding down), the reply counted
+  untrimmed; the prompt is fixed English text with the reply appended as
+  it is (`summary-prompt.json` pins it whole, where the Swift test checked
+  four substrings).
+- Before the Swift speech code was deleted, `Tests/Fixtures/speech/` was
+  captured from it (eight tables), and a scratch differential compared the
+  Swift code, copied pure into an optimized binary, with the core: each of
+  the 13 markdown passes on 70,000 random markdown inputs (it found the
+  CR-LF line-start rule; after the fix no difference), the whole spoken
+  text on 120,000 inputs wherever both chose the same zh or other phrases
+  (no difference), and a debug build of the core on 80,000 inputs (same
+  output, no panic). On 20,000 natural single-language replies built from
+  corpus sentences the decisions differed 548 times: 517 times undecided
+  in the core, all from the accepted sentences, and 31 times German read
+  as French, all from one sentence ("Bitte prüfe…") repeated until
+  whatlang passes the gate; recorded with HK-421. On random text mixing
+  kana, Han and hangul the decisions differ far more, driven by the
+  recognizer's lexical CJK answers; not trusting whatlang's CJK answer
+  was tried and agreed less.
 
 ## E. Left for the maintainer
 
@@ -3468,3 +3642,17 @@ bridge, play all six tables. The second, that dictated multi-line text
 injects as one line in remote mode, is the manual check on a real machine
 (cmux and a terminal target); agents may not run `cmux send` or
 `send-key` against real workspaces (CLAUDE.md), so no agent runs it.
+
+Ticket #160's first acceptance criterion, the speech text fixtures passing
+in Rust (and in Swift), is met: `rust/powerup-core/tests/speech.rs` and
+`SpeechFixtureTests`, through the bridge, play all eight tables. The
+second, that the agreement fixture lists any accepted differences, is met
+by `language-agreement.json`'s `expected.core` cases with HK-420 to
+HK-422. The third, that a mixed-language reply reads in the expected
+voices, is the manual check with the app launched as a bundle and speech
+on: a Chinese reply with English identifiers and a fenced code block reads
+in a Chinese voice and says 代码已省略 for the code, an English reply quoting
+a Chinese character or two stays in an English voice, and a Japanese reply
+with kana reads in a Japanese voice. Agents do not play audio (their tests
+record speech instead of speaking, AGENTS.md), so no agent runs it. With
+#160 every ticket of stage 2.5 has landed.

@@ -13,7 +13,8 @@ import XCTest
 /// `claude`: `config.claudePath` points at it and
 /// `ClaudeService.resolveClaudeBinary` takes a runnable override before any
 /// other lookup (a test refuses to start when the script is not runnable).
-/// It logs its argv and stdin and prints the summary the test gave it.
+/// It logs its argv and stdin and prints the summary the test gave it,
+/// held back while a `hold` file exists.
 /// Nothing is heard: `recordsOutput` replaces the synthesizer.
 @MainActor
 final class AppStateSpokenReplyTests: XCTestCase {
@@ -41,7 +42,10 @@ final class AppStateSpokenReplyTests: XCTestCase {
     : > "$LOG/argv-$n.txt"
     for arg in "$@"; do printf '%s\n' "$arg" >> "$LOG/argv-$n.txt"; done
     cat > "$LOG/stdin-$n.txt"
+    # A test that needs the summary late holds it back until it is released.
+    while [ -e "$LOG/hold" ]; do sleep 0.05; done
     cat "$LOG/summary.txt"
+    : > "$LOG/done-$n"
     """#
 
     private var env: AppStateTestEnvironment!
@@ -133,6 +137,18 @@ final class AppStateSpokenReplyTests: XCTestCase {
         }
         guard !rig.tts.recordedOutput.isEmpty else {
             throw Timeout(description: "nothing was spoken; transcript: \(rig.app.transcript.map(\.text))")
+        }
+    }
+
+    /// Polls for a file the fake summarizer writes, like `waitForSpeech`.
+    private func waitForFile(_ name: String, timeout: TimeInterval = 10) async throws {
+        var elapsed: TimeInterval = 0
+        while file(name) == nil, elapsed < timeout {
+            try await Task.sleep(nanoseconds: 100_000_000)
+            elapsed += 0.1
+        }
+        guard file(name) != nil else {
+            throw Timeout(description: "the summarizer never wrote \(name)")
         }
     }
 
@@ -235,6 +251,30 @@ final class AppStateSpokenReplyTests: XCTestCase {
                        "an unusable summary is never logged")
     }
 
+    /// HK-169: a summary that arrives after its moment (here a new turn,
+    /// which cancels the pending summary) is dropped, with no fallback to the
+    /// full reply either: that turn is over.
+    func testASummaryArrivingAfterTheNextTurnStartedIsDropped() async throws {
+        let rig = try await makeRig(speakSummaries: true, summary: "A summary.")
+        let hold = logDirectory.appendingPathComponent("hold")
+        try Data().write(to: hold)
+        completeATurn(rig, replying: Self.longReply)
+        try await waitForFile("stdin-1.txt")
+
+        rig.app.sendUserText("And the tests?")
+        try FileManager.default.removeItem(at: hold)
+        try await waitForFile("done-1")
+
+        // Give a late completion every chance to land before checking.
+        for _ in 0..<10 where !rig.tts.recordedOutput.contains(where: \.isSpeak) {
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+        XCTAssertEqual(rig.tts.recordedOutput.filter(\.isSpeak), [], "a late summary is never spoken")
+        XCTAssertFalse(rig.app.transcript.contains { $0.text.hasPrefix("Summary:") },
+                       "a late summary is never logged")
+        XCTAssertEqual(launches, 1)
+    }
+
     func testASummaryOfOnlyMarkupFallsBackToTheFullReply() async throws {
         let rig = try await makeRig(speakSummaries: true, maxSpokenChars: 100, summary: "***")
         completeATurn(rig, replying: Self.longReply)
@@ -243,6 +283,13 @@ final class AppStateSpokenReplyTests: XCTestCase {
 
         XCTAssertEqual(rig.tts.recordedOutput, [.speak(try spokenText(of: Self.longReply, maxChars: 100))])
         XCTAssertEqual(rig.app.transcript.filter { $0.kind == .system }.map(\.text).last, "Summary: ***")
+    }
+}
+
+private extension TTSOutput {
+    var isSpeak: Bool {
+        if case .speak = self { return true }
+        return false
     }
 }
 

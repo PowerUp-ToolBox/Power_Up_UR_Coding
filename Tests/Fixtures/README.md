@@ -438,7 +438,8 @@ Strings are compared scalar for scalar.
 
 `language-agreement.json` is a corpus of natural sentences, each named
 after its kind (`en: …`, `zh-Hant: …`, `mixed: …`, `short: …`, `code: …`,
-`han: …`, `gate: …`). The language decision is the one rule two
+`han: …`, `gate: …`, and `unlisted: …` for a language only one of the
+two detectors can name). The language decision is the one rule two
 libraries can legitimately disagree on (ADR 0011): the Swift app asks
 NLLanguageRecognizer, the Rust core its own detector, both under the gates
 of `language.json`. Its input is a string and its expected value is
@@ -456,9 +457,11 @@ NLLanguageRecognizer can answer, with its own confidence gate (above
 texts on which the two decide alike, so it pins the gates themselves; a
 text on which they cannot agree belongs in `language-agreement.json` with
 its difference recorded. An accepted difference is of one of two kinds:
-the core undecided, so the reply reads in English (HK-421), or Han-only
-text the Swift app read as Japanese reading as Chinese (HK-420); the Rust
-runner rejects any other.
+the core undecided, so the reply reads in English (HK-421, and HK-422
+for a language whatlang or the recognizer cannot name), or Han-only text
+the Swift app read as Japanese reading as Chinese (HK-420); both runners
+reject any other. The corpus holds 117 sentences, 18 of them accepted
+differences (3 of HK-420, 10 of HK-421, 5 of HK-422).
 
 The Swift runner is `Tests/PowerUpTests/SpeechFixtureTests.swift`, which
 plays every table through the bridge (`CoreBridgeSpeech.swift`), compares
@@ -470,7 +473,8 @@ every kind represented, and that each recorded difference is real and of
 an accepted kind. The Rust runner
 is `rust/powerup-core/tests/speech.rs`, one test per table; it compares
 `expected.core` where an agreement case records one and `expected.swift`
-everywhere else, and checks that a recorded difference still differs.
+everywhere else, and checks that a recorded difference still differs and is of an
+accepted kind.
 
 ## `session/`: session scenarios (format 1)
 

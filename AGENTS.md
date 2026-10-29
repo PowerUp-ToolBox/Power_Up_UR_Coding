@@ -117,7 +117,19 @@ clearly without them. CI runs the cargo job on macOS, Windows and Linux.
   `CoreBridgeTextSafety.swift`; RemoteControlService keeps the injector:
   the route and target choice, running cmux (the `--` separator, the
   pauses, the deadlines, the socket password) and the Accessibility
-  typing, and sends nothing when the core cannot make text safe.
+  typing, and sends nothing when the core cannot make text safe. It also holds the speech text rules (`speech`: a
+  markdown reply's spoken text, with fenced code becoming a placeholder
+  before the language decision, the fixed stripping order and the cut at
+  a sentence ender; the language decision with its gates, a pure-Rust
+  detector, whatlang, standing in for NLLanguageRecognizer; the language
+  a voice is routed for; and the pure rules of spoken summaries), played
+  against `Tests/Fixtures/speech/` and reached through
+  `CoreBridgeSpeech.swift`; TTSService keeps the voices (resolution,
+  ranking, the simplified or traditional Chinese region), the synthesizer
+  and audio routing, SummaryService the summarizer process, and AppState
+  the generation counter and the fallbacks to the full reply. A text the
+  two detectors decide differently is recorded in
+  `language-agreement.json` and the ledger (HK-420 to HK-422).
 - **Panic rule.** Every public core function is total: it returns its
   value, or a `Result` when it can fail, and never panics. Library code
   never calls `unwrap`, `expect` or `panic!` (clippy denies the first two).
@@ -172,8 +184,8 @@ contract change.
 | `ACPAdapter.swift` | ACP agent subprocess adapter for external harnesses (opencode, Codex, …): spawn, pipes, kill grace, install paths, PATH; its rules run in the core |
 | `ControllerService.swift` | DualSense input, light bar, haptics, battery |
 | `SpeechService.swift` | Push-to-talk STT (AVAudioEngine + SFSpeechRecognizer) |
-| `TTSService.swift` | Text-to-speech with language-aware voice selection |
-| `SummaryService.swift` | Lightweight claude process that summarizes replies for TTS |
+| `TTSService.swift` | Text-to-speech: voice resolution and ranking, the Chinese region, the synthesizer, audio routing; the spoken text and the language decision are the core's |
+| `SummaryService.swift` | Lightweight claude process that summarizes replies for TTS: its arguments, the timeout, latest-wins; the prompt and which answer is spoken are the core's |
 | `DestructiveActionClassifier.swift` | Thin wrapper; the destructive-action rule and pattern list live in the core |
 | `ControllerSlot.swift` | Controller slot (`ControllerSlotSelector`) and hold (`HoldTracker`) value types; the rules run in the Rust core |
 | `ControllerPicker.swift` | Pure rows and caption for the Settings → Devices Controller picker |
@@ -194,6 +206,7 @@ contract change.
 | `CoreBridgeTranscript.swift` | Bridge wrappers for the transcript: the line an entry is written as, loading a file, the file name, the limits (DESIGN v2.14) |
 | `CoreBridgeHooks.swift` | Bridge wrappers for the Claude Code hooks: the install and uninstall edits, the command, the script text, the install state (DESIGN v2.14) |
 | `CoreBridgeTextSafety.swift` | Bridge wrappers for remote mode's text safety: flattening line breaks, the escape-safe cmux segments, the workspace list and its glyphs, condensing, the failure message (DESIGN v2.14) |
+| `CoreBridgeSpeech.swift` | Bridge wrappers for the speech text rules: the spoken reply and its language, the language decision, the voice language, the summary threshold, prompt and check (DESIGN v2.14) |
 
 The Rust core lives in `rust/` (see "The Rust core" above); its bridge tests
 are in `Tests/PowerUpCoreTests/`.
