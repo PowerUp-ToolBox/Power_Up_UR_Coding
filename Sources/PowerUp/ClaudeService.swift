@@ -359,18 +359,7 @@ final class ClaudeService: ObservableObject {
 
     /// Sends a user turn: one JSON envelope + newline on stdin.
     func send(_ text: String) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-
-        let envelope: [String: Any] = [
-            "type": "user",
-            "message": [
-                "role": "user",
-                "content": [["type": "text", "text": trimmed]]
-            ],
-            "parent_tool_use_id": NSNull()
-        ]
-        guard let payload = ClaudeService.encodeLine(envelope) else { return }
+        guard let payload = ClaudeService.userTurnLine(text) else { return }
 
         // The spawn may still be resolving the binary off-main — queue the
         // turn; it is flushed, in order, the moment the process is up.
@@ -398,35 +387,22 @@ final class ClaudeService: ObservableObject {
 
     /// Switches the model mid-session (applies live, no restart).
     func setModel(_ model: String) {
-        let trimmed = model.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        sendControlRequest(subtype: "set_model", extra: ["model": trimmed], value: trimmed)
+        sendControlRequest(subtype: "set_model", value: model)
     }
 
     /// Switches the permission mode mid-session (applies live, no restart).
     func setPermissionMode(_ mode: String) {
-        let trimmed = mode.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        sendControlRequest(subtype: "set_permission_mode", extra: ["mode": trimmed], value: trimmed)
+        sendControlRequest(subtype: "set_permission_mode", value: mode)
     }
 
-    /// Writes one control request in the nested envelope the CLI requires.
-    ///
-    /// The flat shape `{"type":"control_request","subtype":"…"}` is FATAL — the
-    /// CLI exits with code 1 and "Missing request on control_request", killing the
-    /// session. The payload below is the verified shape:
-    /// `{"type":"control_request","request_id":"…","request":{"subtype":"…", …}}`.
-    private func sendControlRequest(subtype: String, extra: [String: Any] = [:], value: String? = nil) {
-        var request: [String: Any] = ["subtype": subtype]
-        for (key, fieldValue) in extra { request[key] = fieldValue }
-
+    /// Writes one control request (see `controlRequestLine`) and records it as
+    /// in flight with the trimmed value it asked for.
+    private func sendControlRequest(subtype: String, value: String? = nil) {
         let requestID = UUID().uuidString
-        let envelope: [String: Any] = [
-            "type": "control_request",
-            "request_id": requestID,
-            "request": request
-        ]
-        guard let payload = ClaudeService.encodeLine(envelope) else { return }
+        guard let payload = ClaudeService.controlRequestLine(requestID: requestID,
+                                                             subtype: subtype,
+                                                             value: value) else { return }
+        let value = value?.trimmingCharacters(in: .whitespacesAndNewlines)
 
         // Queue during the off-main binary resolution, same as `send`.
         if process == nil, state == .starting || state == .working {
@@ -550,7 +526,61 @@ final class ClaudeService: ObservableObject {
         }
     }
 
-    private static func encodeLine(_ object: [String: Any]) -> Data? {
+    // MARK: - stdin lines
+
+    /// The line a user turn writes on stdin, newline included:
+    /// `{"type":"user","message":{"role":"user","content":[{"type":"text","text":…}]},"parent_tool_use_id":null}`.
+    /// The text is trimmed; nil when nothing is left, so nothing is sent.
+    /// Internal so `HarnessFixtureTests` can play `harness/claude-stdin.json`.
+    nonisolated static func userTurnLine(_ text: String) -> Data? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let envelope: [String: Any] = [
+            "type": "user",
+            "message": [
+                "role": "user",
+                "content": [["type": "text", "text": trimmed]]
+            ],
+            "parent_tool_use_id": NSNull()
+        ]
+        return encodeLine(envelope)
+    }
+
+    /// The line one control request writes on stdin, newline included, in
+    /// the nested envelope the CLI requires.
+    ///
+    /// The flat shape `{"type":"control_request","subtype":"…"}` is FATAL — the
+    /// CLI exits with code 1 and "Missing request on control_request", killing the
+    /// session. The payload below is the verified shape:
+    /// `{"type":"control_request","request_id":"…","request":{"subtype":"…", …}}`.
+    /// `interrupt` carries no value; `set_model` carries it as `model` and
+    /// `set_permission_mode` as `mode`, trimmed, and a value that trims to
+    /// nothing sends nothing (nil). Internal for `HarnessFixtureTests`.
+    nonisolated static func controlRequestLine(requestID: String, subtype: String, value: String?) -> Data? {
+        var request: [String: Any] = ["subtype": subtype]
+        if let valueKey = controlRequestValueKey(subtype: subtype) {
+            let trimmed = (value ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return nil }
+            request[valueKey] = trimmed
+        }
+        let envelope: [String: Any] = [
+            "type": "control_request",
+            "request_id": requestID,
+            "request": request
+        ]
+        return encodeLine(envelope)
+    }
+
+    /// The key a control request carries its value under (DESIGN v1.1 A).
+    private nonisolated static func controlRequestValueKey(subtype: String) -> String? {
+        switch subtype {
+        case "set_model": return "model"
+        case "set_permission_mode": return "mode"
+        default: return nil
+        }
+    }
+
+    private nonisolated static func encodeLine(_ object: [String: Any]) -> Data? {
         guard JSONSerialization.isValidJSONObject(object),
               var data = try? JSONSerialization.data(withJSONObject: object, options: []) else { return nil }
         data.append(0x0A)
