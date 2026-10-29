@@ -164,3 +164,32 @@ extension ControlPhase {
         }
     }
 }
+
+extension FixtureJSON {
+    /// The JSON an `Encodable` value writes, read back as a fixture value so
+    /// it compares with a table's expected object regardless of key order.
+    init<T: Encodable>(encoding value: T) throws {
+        self = try JSONDecoder().decode(FixtureJSON.self, from: JSONEncoder().encode(value))
+    }
+}
+
+/// Mappings descriptors: `{profileID: {controlID: <action descriptor>}}`, or
+/// the string `"defaults"` for the shipped default mappings.
+enum FixtureMappings {
+    static func deviceMappings(_ descriptor: FixtureJSON) throws -> [String: DeviceMapping] {
+        if descriptor == .string("defaults") { return AppConfig.defaultDeviceMappings() }
+        guard case .object(let profiles) = descriptor else {
+            throw FixtureValueError(description: "not a mappings descriptor: \(descriptor)")
+        }
+        return try profiles.mapValues { profile in
+            guard case .object(let controls) = profile else {
+                throw FixtureValueError(description: "not a profile mapping: \(profile)")
+            }
+            return try controls.mapValues { try Action(fixture: $0) }
+        }
+    }
+
+    static func descriptor(_ mappings: [String: DeviceMapping]) -> FixtureJSON {
+        .object(mappings.mapValues { .object($0.mapValues(\.fixtureDescriptor)) })
+    }
+}

@@ -1,0 +1,127 @@
+{
+  "description": "The built-in DualSense profile (ADR 0006, HK-006): id dualsense, display name DualSense, and one button control per DualSense button in ControllerButton.allCases order, each carrying the button's id, display name and SF Symbol name. Input is {}; expected is the profile object as it serializes.",
+  "function": "DeviceProfile.dualSense — input {}, expected the profile object",
+  "verifiedBy": "ADR 0006; Tests/PowerUpTests/DeviceFixtureTests.swift testDualSenseProfileTable encodes DeviceProfile.dualSense and compares the JSON, and checks the controls against ControllerButton.allCases.",
+  "capturedAgainst": "Swift 5.9.2 synthesized Codable (Xcode 15.2), PowerUp at 106773b",
+  "cases": [
+    {
+      "name": "the built-in DualSense",
+      "input": {},
+      "expected": {
+        "id": "dualsense",
+        "displayName": "DualSense",
+        "controls": [
+          {
+            "id": "cross",
+            "kind": "button",
+            "displayName": "Cross (✕)",
+            "symbolName": "xmark.circle"
+          },
+          {
+            "id": "circle",
+            "kind": "button",
+            "displayName": "Circle (○)",
+            "symbolName": "circle.circle"
+          },
+          {
+            "id": "square",
+            "kind": "button",
+            "displayName": "Square (□)",
+            "symbolName": "square.circle"
+          },
+          {
+            "id": "triangle",
+            "kind": "button",
+            "displayName": "Triangle (△)",
+            "symbolName": "triangle.circle"
+          },
+          {
+            "id": "dpadUp",
+            "kind": "button",
+            "displayName": "D-Pad Up",
+            "symbolName": "dpad.up.filled"
+          },
+          {
+            "id": "dpadDown",
+            "kind": "button",
+            "displayName": "D-Pad Down",
+            "symbolName": "dpad.down.filled"
+          },
+          {
+            "id": "dpadLeft",
+            "kind": "button",
+            "displayName": "D-Pad Left",
+            "symbolName": "dpad.left.filled"
+          },
+          {
+            "id": "dpadRight",
+            "kind": "button",
+            "displayName": "D-Pad Right",
+            "symbolName": "dpad.right.filled"
+          },
+          {
+            "id": "l1",
+            "kind": "button",
+            "displayName": "L1 Bumper",
+            "symbolName": "l1.button.roundedbottom.horizontal"
+          },
+          {
+            "id": "r1",
+            "kind": "button",
+            "displayName": "R1 Bumper",
+            "symbolName": "r1.button.roundedbottom.horizontal"
+          },
+          {
+            "id": "l2",
+            "kind": "button",
+            "displayName": "L2 Trigger",
+            "symbolName": "l2.button.roundedtop.horizontal"
+          },
+          {
+            "id": "r2",
+            "kind": "button",
+            "displayName": "R2 Trigger",
+            "symbolName": "r2.button.roundedtop.horizontal"
+          },
+          {
+            "id": "l3",
+            "kind": "button",
+            "displayName": "L3 (Left Stick Click)",
+            "symbolName": "l3.button.horizontal"
+          },
+          {
+            "id": "r3",
+            "kind": "button",
+            "displayName": "R3 (Right Stick Click)",
+            "symbolName": "r3.button.horizontal"
+          },
+          {
+            "id": "create",
+            "kind": "button",
+            "displayName": "Create",
+            "symbolName": "plus.rectangle"
+          },
+          {
+            "id": "options",
+            "kind": "button",
+            "displayName": "Options",
+            "symbolName": "line.3.horizontal"
+          },
+          {
+            "id": "touchpad",
+            "kind": "button",
+            "displayName": "Touchpad",
+            "symbolName": "rectangle.and.hand.point.up.left"
+          },
+          {
+            "id": "ps",
+            "kind": "button",
+            "displayName": "PS Button",
+            "symbolName": "playstation.logo"
+          }
+        ]
+      },
+      "reason": "Mapping keys are these ids, the mapping editor lists these names and symbols in this order; a moved or renamed control loses the user's binding or reorders the editor."
+    }
+  ]
+}

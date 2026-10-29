@@ -3,7 +3,8 @@ import XCTest
 
 /// Plays the `Tests/Fixtures/mapping/` case tables (spec #97, slice 2.2)
 /// against the Swift app: the action wire shape, action decoding, the
-/// intent rule and the hold rule. The Rust core plays the same files
+/// intent rule, the hold rule, the default mappings, action resolution and
+/// the config mapping subtree. The Rust core plays the same files
 /// (`rust/powerup-core/tests/mapping.rs`), so the two can only agree.
 final class MappingFixtureTests: XCTestCase {
 
@@ -91,6 +92,97 @@ final class MappingFixtureTests: XCTestCase {
                 XCTFail(failure)
             }
         }
+    }
+
+    // MARK: default-mapping.json
+
+    func testDefaultMappingTable() throws {
+        let fileName = "default-mapping.json"
+        let file = try TextSafetyFixtures.load(fileName, area: Self.area,
+                                               input: FixtureJSON.self, expected: FixtureJSON.self)
+        TextSafetyFixtures.assertWellFormed(file, fileName)
+        // The button-keyed view the Settings editor reads must agree.
+        let buttonKeyed = Dictionary(uniqueKeysWithValues: AppConfig.defaultMapping().map {
+            ($0.key.rawValue, $0.value)
+        })
+        for fixtureCase in file.cases {
+            for actual in [AppConfig.defaultDeviceMappings(), [DeviceProfile.dualSenseID: buttonKeyed]] {
+                if let failure = TextSafetyFixtures.mismatch(in: fileName, fixtureCase,
+                                                             actual: FixtureMappings.descriptor(actual)) {
+                    XCTFail(failure)
+                }
+            }
+        }
+    }
+
+    // MARK: resolve-action.json
+
+    private struct ResolveInput: Decodable {
+        let deviceMappings: FixtureJSON
+        let profile: String
+        let control: String
+    }
+
+    func testResolveActionTable() throws {
+        let fileName = "resolve-action.json"
+        let file = try TextSafetyFixtures.load(fileName, area: Self.area,
+                                               input: ResolveInput.self, expected: FixtureJSON.self)
+        TextSafetyFixtures.assertWellFormed(file, fileName)
+        for fixtureCase in file.cases {
+            var config = AppConfig.defaultConfig()
+            config.deviceMappings = try FixtureMappings.deviceMappings(fixtureCase.input.deviceMappings)
+            let actual = config.action(onProfile: fixtureCase.input.profile,
+                                       control: fixtureCase.input.control).fixtureDescriptor
+            if let failure = TextSafetyFixtures.mismatch(in: fileName, fixtureCase, actual: actual) {
+                XCTFail(failure)
+            }
+        }
+    }
+
+    // MARK: config-load.json
+
+    /// Both halves of loading a config.json: what AppConfig's decoder keeps,
+    /// and whether ConfigStore copies the file first. The copy runs against a
+    /// temporary directory, never the real Application Support folder.
+    func testConfigLoadTable() throws {
+        let fileName = "config-load.json"
+        let file = try TextSafetyFixtures.load(fileName, area: Self.area,
+                                               input: FixtureJSON.self, expected: FixtureJSON.self)
+        TextSafetyFixtures.assertWellFormed(file, fileName)
+        for fixtureCase in file.cases {
+            let data = try JSONEncoder().encode(fixtureCase.input)
+            let config = try JSONDecoder().decode(AppConfig.self, from: data)
+            let actual: FixtureJSON = .object([
+                "deviceMappings": FixtureMappings.descriptor(config.deviceMappings),
+                "backupBeforeSave": .bool(try Self.backupTaken(loading: data)),
+            ])
+            // "defaults" in the table is the shipped mappings, spelled out
+            // here so the comparison is value for value.
+            let expectedMappings = try FixtureMappings.deviceMappings(
+                fixtureCase.expected["deviceMappings"] ?? .null)
+            let normalized = TextSafetyFixtures.StructuredCase(
+                name: fixtureCase.name, input: fixtureCase.input,
+                expected: FixtureJSON.object([
+                    "deviceMappings": FixtureMappings.descriptor(expectedMappings),
+                    "backupBeforeSave": fixtureCase.expected["backupBeforeSave"] ?? .null,
+                ]),
+                reason: fixtureCase.reason)
+            if let failure = TextSafetyFixtures.mismatch(in: fileName, normalized, actual: actual) {
+                XCTFail(failure)
+            }
+        }
+    }
+
+    private static func backupTaken(loading data: Data) throws -> Bool {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("powerup-test-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("config.json")
+        try data.write(to: url)
+        ConfigStore.backupConfigBeforeLossyLoadIfNeeded(at: url, data: data)
+        let backupURL = dir.appendingPathComponent("config.pre-profiles.json")
+        return FileManager.default.fileExists(atPath: backupURL.path)
     }
 
     /// The shape and hold tables each hold every case once, so a new action

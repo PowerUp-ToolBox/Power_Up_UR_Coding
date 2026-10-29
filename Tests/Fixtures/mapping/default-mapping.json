@@ -1,0 +1,76 @@
+{
+  "description": "The mappings a fresh config ships with: one profile, dualsense, binding all 18 DualSense controls to the v1.3 layout (DESIGN v2.4 B, HK-007). R2 is push-to-talk, L2 dictates to the prompt box, L1 sends the prompt box, the touchpad cycles the permission mode, and the PS button is mappable but deliberately none. Every control is listed explicitly, none included, so the defaults never depend on what a missing key means. Input is {}; expected is the mappings ({profileID: {controlID: <action descriptor>}}).",
+  "function": "AppConfig.defaultDeviceMappings() — input {}, expected the default mappings",
+  "verifiedBy": "DESIGN.md v2.4 B; Tests/PowerUpTests/MappingFixtureTests.swift testDefaultMappingTable compares AppConfig.defaultDeviceMappings() and AppConfig.defaultMapping() (keyed by button) with the table.",
+  "capturedAgainst": "Swift 5.9.2 synthesized Codable (Xcode 15.2), PowerUp at 106773b",
+  "cases": [
+    {
+      "name": "the shipped DualSense layout",
+      "input": {},
+      "expected": {
+        "dualsense": {
+          "cross": {
+            "case": "approve"
+          },
+          "circle": {
+            "case": "interrupt"
+          },
+          "square": {
+            "case": "sendPrompt",
+            "prompt": "Continue"
+          },
+          "triangle": {
+            "case": "stopSpeaking"
+          },
+          "dpadUp": {
+            "case": "sendPrompt",
+            "prompt": "Run the tests and report the results"
+          },
+          "dpadDown": {
+            "case": "sendPrompt",
+            "prompt": "Explain what you just did, briefly"
+          },
+          "dpadLeft": {
+            "case": "sendPrompt",
+            "prompt": "Undo the last change you made"
+          },
+          "dpadRight": {
+            "case": "sendPrompt",
+            "prompt": "Commit the current changes with a good message"
+          },
+          "l1": {
+            "case": "sendDraft"
+          },
+          "r1": {
+            "case": "toggleTTS"
+          },
+          "l2": {
+            "case": "pushToTalkDraft"
+          },
+          "r2": {
+            "case": "pushToTalk"
+          },
+          "l3": {
+            "case": "cycleModel"
+          },
+          "r3": {
+            "case": "cycleEffort"
+          },
+          "create": {
+            "case": "showWindow"
+          },
+          "options": {
+            "case": "newSession"
+          },
+          "touchpad": {
+            "case": "cyclePermissionMode"
+          },
+          "ps": {
+            "case": "none"
+          }
+        }
+      },
+      "reason": "A fresh install and a config with no mapping keys both start here; a changed default silently rebinds every new user's buttons."
+    }
+  ]
+}

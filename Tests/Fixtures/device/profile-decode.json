@@ -1,0 +1,339 @@
+{
+  "description": "Reading a device profile (ADR 0006, DESIGN v2.7 A and D) and writing it back. A profile is {id, displayName, controls}; each control is {id, kind, displayName, symbolName}; every field is required and every id and name is a string. controls is a list whose order is kept. kind follows device/control-kind.json. Keys the profile or a control does not define are read past and never written; that includes match and report, which v2.7 D reserves for a later release. Input is a profile object; expected is the profile written back (compared as JSON), or null when the profile fails to read.",
+  "function": "DeviceProfile decoding then encoding — input a profile object, expected the re-encoded profile object or null",
+  "verifiedBy": "DESIGN.md v2.7 A and D; Tests/PowerUpTests/DeviceFixtureTests.swift testProfileDecodeTable decodes a DeviceProfile with JSONDecoder, encodes it with JSONEncoder and compares the JSON.",
+  "capturedAgainst": "Swift 5.9.2 synthesized Codable (Xcode 15.2), PowerUp at 106773b",
+  "cases": [
+    {
+      "name": "match and report are read past and never written",
+      "input": {
+        "id": "dualsense",
+        "displayName": "DualSense",
+        "controls": [
+          {
+            "id": "cross",
+            "kind": "button",
+            "displayName": "Cross",
+            "symbolName": "xmark.circle"
+          },
+          {
+            "id": "pedal-1",
+            "kind": "hold",
+            "displayName": "Pedal",
+            "symbolName": "pedal"
+          }
+        ],
+        "match": {
+          "vendorID": 1356,
+          "productID": 3302,
+          "productCategory": "gamepad",
+          "namePattern": "^DualSense"
+        },
+        "report": {
+          "layout": "usb",
+          "fields": [
+            {
+              "offset": 8,
+              "length": 1
+            }
+          ]
+        }
+      },
+      "expected": {
+        "id": "dualsense",
+        "displayName": "DualSense",
+        "controls": [
+          {
+            "id": "cross",
+            "kind": "button",
+            "displayName": "Cross",
+            "symbolName": "xmark.circle"
+          },
+          {
+            "id": "pedal-1",
+            "kind": "button",
+            "displayName": "Pedal",
+            "symbolName": "pedal"
+          }
+        ]
+      },
+      "reason": "v2.7 D reserves match and report for a later release: this build neither interprets nor writes them, and a file carrying them still loads (DeviceProfileTests.testProfileReservingMatchAndReportKeepsEveryKnownField). The legacy hold kind reads as button."
+    },
+    {
+      "name": "a minimal profile round-trips",
+      "input": {
+        "id": "pedal",
+        "displayName": "Foot Pedal",
+        "controls": [
+          {
+            "id": "pedal-1",
+            "kind": "button",
+            "displayName": "Pedal",
+            "symbolName": "pedal"
+          }
+        ]
+      },
+      "expected": {
+        "id": "pedal",
+        "displayName": "Foot Pedal",
+        "controls": [
+          {
+            "id": "pedal-1",
+            "kind": "button",
+            "displayName": "Pedal",
+            "symbolName": "pedal"
+          }
+        ]
+      },
+      "reason": "Every known field survives a read and a write."
+    },
+    {
+      "name": "axis and key controls round-trip",
+      "input": {
+        "id": "deck",
+        "displayName": "Deck",
+        "controls": [
+          {
+            "id": "dial",
+            "kind": "axis",
+            "displayName": "dial",
+            "symbolName": "circle"
+          },
+          {
+            "id": "f13",
+            "kind": "key",
+            "displayName": "f13",
+            "symbolName": "circle"
+          }
+        ]
+      },
+      "expected": {
+        "id": "deck",
+        "displayName": "Deck",
+        "controls": [
+          {
+            "id": "dial",
+            "kind": "axis",
+            "displayName": "dial",
+            "symbolName": "circle"
+          },
+          {
+            "id": "f13",
+            "kind": "key",
+            "displayName": "f13",
+            "symbolName": "circle"
+          }
+        ]
+      },
+      "reason": "The v2.7 kind set is button, axis and key."
+    },
+    {
+      "name": "an empty control list is a profile",
+      "input": {
+        "id": "virtual",
+        "displayName": "Virtual",
+        "controls": []
+      },
+      "expected": {
+        "id": "virtual",
+        "displayName": "Virtual",
+        "controls": []
+      },
+      "reason": "A device with no controls yet is valid."
+    },
+    {
+      "name": "controls keep their order and duplicates",
+      "input": {
+        "id": "pad",
+        "displayName": "Pad",
+        "controls": [
+          {
+            "id": "b",
+            "kind": "button",
+            "displayName": "b",
+            "symbolName": "circle"
+          },
+          {
+            "id": "a",
+            "kind": "button",
+            "displayName": "a",
+            "symbolName": "circle"
+          },
+          {
+            "id": "b",
+            "kind": "button",
+            "displayName": "again",
+            "symbolName": "circle"
+          }
+        ]
+      },
+      "expected": {
+        "id": "pad",
+        "displayName": "Pad",
+        "controls": [
+          {
+            "id": "b",
+            "kind": "button",
+            "displayName": "b",
+            "symbolName": "circle"
+          },
+          {
+            "id": "a",
+            "kind": "button",
+            "displayName": "a",
+            "symbolName": "circle"
+          },
+          {
+            "id": "b",
+            "kind": "button",
+            "displayName": "again",
+            "symbolName": "circle"
+          }
+        ]
+      },
+      "reason": "The profile decoder does not sort or deduplicate; order is the file's."
+    },
+    {
+      "name": "unknown keys are read past",
+      "input": {
+        "id": "pad",
+        "displayName": "Pad",
+        "fromTheFuture": true,
+        "controls": [
+          {
+            "id": "a",
+            "kind": "button",
+            "displayName": "a",
+            "symbolName": "circle",
+            "extra": {
+              "x": 1
+            }
+          }
+        ]
+      },
+      "expected": {
+        "id": "pad",
+        "displayName": "Pad",
+        "controls": [
+          {
+            "id": "a",
+            "kind": "button",
+            "displayName": "a",
+            "symbolName": "circle"
+          }
+        ]
+      },
+      "reason": "A newer build's extra fields, on the profile or on a control, do not fail the profile and are not written back."
+    },
+    {
+      "name": "a missing controls list fails",
+      "input": {
+        "id": "pad",
+        "displayName": "Pad"
+      },
+      "expected": null,
+      "reason": "controls is required; a profile without it is not loaded."
+    },
+    {
+      "name": "controls that are not a list fail",
+      "input": {
+        "id": "pad",
+        "displayName": "Pad",
+        "controls": {
+          "a": {
+            "id": "a",
+            "kind": "button",
+            "displayName": "a",
+            "symbolName": "circle"
+          }
+        }
+      },
+      "expected": null,
+      "reason": "controls is an ordered list, never an object."
+    },
+    {
+      "name": "a missing id fails",
+      "input": {
+        "displayName": "Pad",
+        "controls": []
+      },
+      "expected": null,
+      "reason": "The id is the profile's identity."
+    },
+    {
+      "name": "a numeric id fails",
+      "input": {
+        "id": 7,
+        "displayName": "Pad",
+        "controls": []
+      },
+      "expected": null,
+      "reason": "Ids are strings, never numbers."
+    },
+    {
+      "name": "a missing displayName fails",
+      "input": {
+        "id": "pad",
+        "controls": []
+      },
+      "expected": null,
+      "reason": "Every field is required."
+    },
+    {
+      "name": "a control without symbolName fails",
+      "input": {
+        "id": "pad",
+        "displayName": "Pad",
+        "controls": [
+          {
+            "id": "a",
+            "kind": "button",
+            "displayName": "A"
+          }
+        ]
+      },
+      "expected": null,
+      "reason": "Every control field is required; one bad control fails the whole profile."
+    },
+    {
+      "name": "a control with a null id fails",
+      "input": {
+        "id": "pad",
+        "displayName": "Pad",
+        "controls": [
+          {
+            "id": null,
+            "kind": "button",
+            "displayName": "a",
+            "symbolName": "circle"
+          }
+        ]
+      },
+      "expected": null,
+      "reason": "null is not a string."
+    },
+    {
+      "name": "an unknown control kind fails the profile",
+      "input": {
+        "id": "pad",
+        "displayName": "Pad",
+        "controls": [
+          {
+            "id": "a",
+            "kind": "button",
+            "displayName": "a",
+            "symbolName": "circle"
+          },
+          {
+            "id": "t",
+            "kind": "trigger",
+            "displayName": "t",
+            "symbolName": "circle"
+          }
+        ]
+      },
+      "expected": null,
+      "reason": "An unknown kind fails its control, and the control fails the profile."
+    }
+  ]
+}

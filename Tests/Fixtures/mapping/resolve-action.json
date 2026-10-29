@@ -1,0 +1,168 @@
+{
+  "description": "The action bound to one control of one profile: the mapping for (profileID, controlID), or none when the profile or the control has no binding (DESIGN v2.4 B). It is the single resolution point every input surface routes through. Ids are compared exactly. Input is {deviceMappings, profile, control}; Mappings are written {profileID: {controlID: <action descriptor>}}, or the string \"defaults\" for the shipped default mappings. Expected is an action descriptor.",
+  "function": "AppConfig.action(onProfile:control:) — input {deviceMappings, profile, control}, expected an action descriptor",
+  "verifiedBy": "DESIGN.md v2.4 B; Tests/PowerUpTests/MappingFixtureTests.swift testResolveActionTable sets AppConfig.deviceMappings and calls AppConfig.action(onProfile:control:).",
+  "capturedAgainst": "Swift 5.9.2 synthesized Codable (Xcode 15.2), PowerUp at 106773b",
+  "cases": [
+    {
+      "name": "a mapped control resolves to its action",
+      "input": {
+        "deviceMappings": "defaults",
+        "profile": "dualsense",
+        "control": "r2"
+      },
+      "expected": {
+        "case": "pushToTalk"
+      },
+      "reason": "The one resolution point every input surface routes through (DESIGN v2.4 B)."
+    },
+    {
+      "name": "sendPrompt resolves with its prompt",
+      "input": {
+        "deviceMappings": "defaults",
+        "profile": "dualsense",
+        "control": "square"
+      },
+      "expected": {
+        "case": "sendPrompt",
+        "prompt": "Continue"
+      },
+      "reason": "The payload travels with the action."
+    },
+    {
+      "name": "an explicit none resolves to none",
+      "input": {
+        "deviceMappings": "defaults",
+        "profile": "dualsense",
+        "control": "ps"
+      },
+      "expected": {
+        "case": "none"
+      },
+      "reason": "The PS button is mapped, to none."
+    },
+    {
+      "name": "an unmapped control resolves to none",
+      "input": {
+        "deviceMappings": "defaults",
+        "profile": "dualsense",
+        "control": "no-such"
+      },
+      "expected": {
+        "case": "none"
+      },
+      "reason": "A control with no binding does nothing; it is never an error."
+    },
+    {
+      "name": "an unknown profile resolves to none",
+      "input": {
+        "deviceMappings": "defaults",
+        "profile": "no-such-profile",
+        "control": "r2"
+      },
+      "expected": {
+        "case": "none"
+      },
+      "reason": "A device without mappings does nothing, even for a control id the DualSense uses."
+    },
+    {
+      "name": "a foreign profile resolves its own controls",
+      "input": {
+        "deviceMappings": {
+          "dualsense": {
+            "r2": {
+              "case": "pushToTalk"
+            },
+            "cross": {
+              "case": "approve"
+            }
+          },
+          "streamdeck-test": {
+            "key-1": {
+              "case": "approve"
+            },
+            "key-2": {
+              "case": "sendPrompt",
+              "prompt": "Ship it"
+            }
+          },
+          "pedal": {}
+        },
+        "profile": "streamdeck-test",
+        "control": "key-2"
+      },
+      "expected": {
+        "case": "sendPrompt",
+        "prompt": "Ship it"
+      },
+      "reason": "Profiles other than the DualSense map their own control ids (ADR 0006)."
+    },
+    {
+      "name": "a profile never borrows another profile's bindings",
+      "input": {
+        "deviceMappings": {
+          "dualsense": {
+            "r2": {
+              "case": "pushToTalk"
+            },
+            "cross": {
+              "case": "approve"
+            }
+          },
+          "streamdeck-test": {
+            "key-1": {
+              "case": "approve"
+            },
+            "key-2": {
+              "case": "sendPrompt",
+              "prompt": "Ship it"
+            }
+          },
+          "pedal": {}
+        },
+        "profile": "pedal",
+        "control": "r2"
+      },
+      "expected": {
+        "case": "none"
+      },
+      "reason": "r2 is bound on the DualSense only; the pedal's empty mapping resolves nothing."
+    },
+    {
+      "name": "no mappings at all resolve to none",
+      "input": {
+        "deviceMappings": {},
+        "profile": "dualsense",
+        "control": "r2"
+      },
+      "expected": {
+        "case": "none"
+      },
+      "reason": "An empty deviceMappings means no bindings, not the defaults."
+    },
+    {
+      "name": "control ids are case-sensitive",
+      "input": {
+        "deviceMappings": "defaults",
+        "profile": "dualsense",
+        "control": "R2"
+      },
+      "expected": {
+        "case": "none"
+      },
+      "reason": "Ids are compared exactly; R2 is not r2."
+    },
+    {
+      "name": "profile ids are case-sensitive",
+      "input": {
+        "deviceMappings": "defaults",
+        "profile": "DualSense",
+        "control": "r2"
+      },
+      "expected": {
+        "case": "none"
+      },
+      "reason": "Ids are compared exactly; DualSense is the display name, dualsense the id."
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "description": "The kind of one control in a device profile (DESIGN v2.7 A): button, axis or key. The obsolete pre-v2.7 value hold reads as button, and is never written back (encoding writes the kind's own name). Any other string fails the control, and with it the profile. Input is the kind string as a profile file holds it; expected is the kind it reads as, or null when it fails.",
+  "function": "ControlDescriptor.Kind decoding — input the kind string, expected \"button\", \"axis\", \"key\" or null",
+  "verifiedBy": "DESIGN.md v2.7 A; Tests/PowerUpTests/DeviceFixtureTests.swift testControlKindTable decodes a ControlDescriptor holding the kind and reads its raw value.",
+  "capturedAgainst": "Swift 5.9.2 synthesized Codable (Xcode 15.2), PowerUp at 106773b",
+  "cases": [
+    {
+      "name": "button",
+      "input": "button",
+      "expected": "button",
+      "reason": "A control that is pressed and released."
+    },
+    {
+      "name": "axis",
+      "input": "axis",
+      "expected": "axis",
+      "reason": "A control with a continuous value (v2.7 A)."
+    },
+    {
+      "name": "key",
+      "input": "key",
+      "expected": "key",
+      "reason": "A keyboard key (v2.7 A)."
+    },
+    {
+      "name": "the pre-v2.7 hold reads as a button",
+      "input": "hold",
+      "expected": "button",
+      "reason": "Whether an action holds belongs to the action, so a profile written before v2.7 must not fail on its obsolete hold kind (HK-005)."
+    },
+    {
+      "name": "kinds are case-sensitive",
+      "input": "Button",
+      "expected": null,
+      "reason": "Button is not button; an unknown kind fails the control."
+    },
+    {
+      "name": "hold is matched exactly",
+      "input": "HOLD",
+      "expected": null,
+      "reason": "Only the exact legacy spelling is read as a button."
+    },
+    {
+      "name": "an unknown kind fails",
+      "input": "trigger",
+      "expected": null,
+      "reason": "A kind this build does not know fails the control rather than guessing."
+    },
+    {
+      "name": "an empty kind fails",
+      "input": "",
+      "expected": null,
+      "reason": "An empty string is not a kind."
+    }
+  ]
+}
