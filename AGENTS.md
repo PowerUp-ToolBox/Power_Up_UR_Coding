@@ -67,6 +67,10 @@ clearly without them. CI runs the cargo job on macOS, Windows and Linux.
 - **Workspace.** `rust/` holds `powerup-core` (the logic), `powerup-core-ffi`
   (the uniffi bridge the macOS app links) and `uniffi-bindgen` (generates the
   Swift side). The compiler is pinned in `rust/rust-toolchain.toml`.
+- **What lives there.** The device layer (intents, actions, mappings,
+  profiles, the Controller slot rule and the hold rule) lives in
+  `powerup-core` since slice 2.2; the app reaches it only through
+  `CoreBridge.swift` (DESIGN v2.11).
 - **Panic rule.** Every public core function is total: it returns its
   value, or a `Result` when it can fail, and never panics. Library code
   never calls `unwrap`, `expect` or `panic!` (clippy denies the first two).
@@ -124,7 +128,7 @@ contract change.
 | `TTSService.swift` | Text-to-speech with language-aware voice selection |
 | `SummaryService.swift` | Lightweight claude process that summarizes replies for TTS |
 | `DestructiveActionClassifier.swift` | Pure classifier for actions needing confirmation |
-| `ControllerSlot.swift` | Pure Controller slot rule (`ControllerSlotSelector`) and hold rule (`HoldTracker`) |
+| `ControllerSlot.swift` | Controller slot (`ControllerSlotSelector`) and hold (`HoldTracker`) value types; the rules run in the Rust core |
 | `ControllerPicker.swift` | Pure rows and caption for the Settings → Devices Controller picker |
 | `ViewLogic.swift` | Pure view rules extracted from MainView/ComponentViews (#126; DESIGN v2.7 §F) |
 | `RemoteControlService.swift` | Routes text/keys to cmux or keyboard injection |
@@ -135,7 +139,7 @@ contract change.
 | `ConfigStore.swift` | Persistent config (JSON, debounced, repairs corruption) |
 | `TranscriptStore.swift` | Per-project transcript persistence (JSON Lines) |
 | `MainView.swift` / `ComponentViews.swift` / `SettingsView.swift` / `MappingView.swift` | SwiftUI views |
-| `CoreBridge.swift` | Launch check of the Rust core bridge (DESIGN v2.10) |
+| `CoreBridge.swift` | The only file that imports the Rust core: launch check and the device-layer wrappers (DESIGN v2.10, v2.11) |
 
 The Rust core lives in `rust/` (see "The Rust core" above); its bridge tests
 are in `Tests/PowerUpCoreTests/`.

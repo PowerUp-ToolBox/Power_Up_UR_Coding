@@ -66,6 +66,10 @@ The rules for core work:
 - **Workspace.** `rust/` holds `powerup-core` (the logic), `powerup-core-ffi`
   (the uniffi bridge the macOS app links) and `uniffi-bindgen` (generates the
   Swift side). The compiler is pinned in `rust/rust-toolchain.toml`.
+- **What lives there.** The device layer (intents, actions, mappings,
+  profiles, the Controller slot rule and the hold rule) lives in
+  `powerup-core` since slice 2.2; the app reaches it only through
+  `CoreBridge.swift` (DESIGN v2.11).
 - **Panic rule.** Every public core function is total: it returns its
   value, or a `Result` when it can fail, and never panics. Library code
   never calls `unwrap`, `expect` or `panic!` (clippy denies the first two).
