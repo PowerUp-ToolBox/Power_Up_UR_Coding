@@ -28,7 +28,7 @@ case table's `verifiedBy` sentence.
 
 - One subdirectory per area: `session/` (scenarios), `text-safety/`,
   `status/`, `mapping/`, `device/`, `harness/`, `config/`, `transcript/`,
-  `hooks/` and `speech/` (case tables).
+  `hooks/`, `speech/` and `protocol/` (case tables).
 - Plain JSON only, with no comments and no implementation-specific shapes.
   The one exception is `harness/acp-mock-agent.py`, the scripted ACP agent
   both suites run as a process (see [the ACP adapter](#harness-the-acp-adapter)):
@@ -39,7 +39,7 @@ case table's `verifiedBy` sentence.
     `description`, `reason` (why the rule exists), `source` (where the rule
     is written down) and `verifiedBy` (the implementations that run it, for
     example `["swift"]`). See [`session/`](#session-session-scenarios-format-1).
-  - Case tables (`text-safety/`, `status/`, `mapping/`, `device/`, `harness/`, `config/`, `transcript/`, `hooks/`, `speech/`) use `description`,
+  - Case tables (`text-safety/`, `status/`, `mapping/`, `device/`, `harness/`, `config/`, `transcript/`, `hooks/`, `speech/`, `protocol/`) use `description`,
     `function`, `verifiedBy`, `capturedAgainst` and a `cases` list in which
     every case has a `reason`. See [case tables](#text-safety-and-status-case-tables).
 - Add `capturedAgainst` when the data was recorded from a real tool (for
@@ -506,6 +506,54 @@ is `rust/powerup-core/tests/speech.rs`, one test per table; it compares
 `expected.core` where an agreement case records one and `expected.swift`
 everywhere else, and checks that a recorded difference still differs and is of an
 accepted kind.
+
+## `protocol/`: the PowerUp protocol's messages and WebSocket framing
+
+The local plugin API of `docs/protocol.md` (spec v0; spec #101, slice 2.6,
+ticket #161): how a client message reads (`client-message.json`), the
+intents a client may name (`intent-names.json`), every server message as
+the bytes of its text frame (`server-message.json`), what the listener
+decides about a request head on its port (`handshake.json`, bare-LF heads
+included), the `Sec-WebSocket-Accept` value (`accept-key.json`), and
+decoding client frames (`frame-decode.json`) and encoding server frames
+(`frame-encode.json`). The platform keeps the sockets; what the listener
+does with a connection is the connection policy's. Every expected value was
+captured from the Swift app. These are ordinary case tables with one more
+descriptor (and the intent descriptor of
+[`mapping/`](#mapping-and-device-case-tables-with-value-descriptors)):
+
+| Descriptor | Shape |
+| --- | --- |
+| bytes | `{"hex": "<bytes>"}`, `{"text": "<string>"}` (its UTF-8), `{"hex": "<bytes>", "times": <n>}` (those bytes n times over, so a 70,000-byte frame stays short), or a list of these, joined in order; compared by the bytes it stands for |
+
+`client-message.json` takes the bytes of a text frame's payload and
+expects `{"type": "hello", "token"}`, `{"type": "intent", "intent", ...}`
+(an intent descriptor with `type` added) or `{"type": "ping"}`, or the
+error it is answered with, `{"error": <code>, "message": <text>}`.
+`intent-names.json` takes `{name, text}` (`text` a string or `null`) and
+expects an intent descriptor or `null` (refused). `server-message.json`
+takes `{type, ...}`, the message type and its builder's arguments
+(`costUSD` a number, or `"nan"`, `"infinity"` or `"-0"`), and expects the
+payload's exact text or `null` (not encoded); Swift writes an object's
+members in a hash order that changes from launch to launch, so its runner
+compares the members of every object in any order and everything else
+byte for byte. `handshake.json` takes the bytes received and expects
+`{"outcome"}`: `incomplete`, `unparseable`, `notWebSocket` (with `method`
+and `path`), `refuse` (with `method`, `path`, `status` and `reason`) or
+`accept` (with `method`, `path` and `acceptKey`). `accept-key.json` takes
+a key and expects the accept value. `frame-decode.json` takes `{buffer,
+maxPayload}` (`buffer` bytes) and expects `{frames, remaining}`, each frame
+`{opcode, payload}` (`opcode` one of `continuation`, `text`, `binary`,
+`close`, `ping` and `pong`, `payload` bytes) and `remaining` the bytes left
+in the buffer, or `{"error": "protocolViolation"}`. `frame-encode.json`
+takes `{opcode, payload}` or `{close: <code>}` and expects the frame's
+bytes.
+
+The Swift runner is `Tests/PowerUpTests/ProtocolFixtureTests.swift`, which
+plays every table against `PowerUpProtocol`, `IntentMapper`, `RequestHead`
+and `WebSocketFraming` and checks that the tables cover every message
+type, error code, status, entry kind, handshake outcome, refusal status,
+opcode and close code in use.
 
 ## `session/`: session scenarios (format 1)
 

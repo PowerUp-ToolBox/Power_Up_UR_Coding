@@ -1,0 +1,883 @@
+{
+  "description": "Every server → client message of protocol v0 (docs/protocol.md, \"Server → client\") as the bytes sent in one text frame: one compact JSON object, no whitespace, never a raw newline (HK-233). welcome is {type, protocol: 0, app: \"PowerUp\", version} (HK-234); status {type, status} with the fixed wire names (HK-230); transcript {type, entry: {id, kind, text, date}} with the id uppercase (uuidString) and the date as Unix seconds (HK-231); session {type, model, effort, permissionMode, controlMode, costUSD} plus tokens only when above zero and liveModel and sessionID only when present and not empty (HK-232); pong {type}; error {type, code, message}. Swift writes the members in a hash order that changes from launch to launch, so the table fixes the order shown (type first, then the order above, entry as id, kind, text, date, session's optional members as tokens, liveModel, sessionID), and writes strings and numbers exactly as JSONSerialization wrote them. Strings escape \", \\, / (as \\/), \\b \\f \\n \\r \\t and the other C0 controls as lowercase \\u00xx; DEL and all non-ASCII are raw. Integers are decimal; a Double is written as printf's %.17g would (17 significant digits, trailing zeros dropped, the exponent form d.dddde±XX below 1e-4 and from 1e17 on), so 0.0421 is 0.042099999999999999: not the shortest round-trip digits JSONEncoder writes (json::encoder). A message holding a non-finite number is no valid JSON and is never sent (expected null).",
+  "function": "PowerUpProtocol.welcome(appVersion:), status(_:), transcript(_:), session(model:liveModel:effort:permissionMode:controlMode:sessionID:costUSD:tokens:), pong(), error(code:message:) then encode(_:) — input {type, ...fields}: the message type and the builder's arguments (costUSD a number, or the string \"nan\", \"infinity\" or \"-0\" for a Double JSON cannot spell or a reader may not keep; liveModel and sessionID a string or null), expected the frame payload's exact text, or null when encode refuses it",
+  "verifiedBy": "DESIGN.md v1.7; docs/protocol.md spec v0; Tests/PowerUpTests/ProtocolFixtureTests.swift testServerMessageTable builds each message with the PowerUpProtocol builders, encodes it and compares the text member by member at every level (Swift's member order is a hash order).",
+  "capturedAgainst": "Swift 5.9.2 Foundation and CryptoKit (Xcode 15.2) on macOS 27.2, PowerUp at 2d20afb",
+  "cases": [
+    {
+      "name": "welcome",
+      "input": {
+        "type": "welcome",
+        "appVersion": "1.4.0"
+      },
+      "expected": "{\"type\":\"welcome\",\"protocol\":0,\"app\":\"PowerUp\",\"version\":\"1.4.0\"}",
+      "reason": "The first message after a good hello: protocol 0, app PowerUp, the app version (HK-234)."
+    },
+    {
+      "name": "welcome from a dev build",
+      "input": {
+        "type": "welcome",
+        "appVersion": "dev"
+      },
+      "expected": "{\"type\":\"welcome\",\"protocol\":0,\"app\":\"PowerUp\",\"version\":\"dev\"}",
+      "reason": "A build without a bundle version reports dev."
+    },
+    {
+      "name": "welcome escapes the version",
+      "input": {
+        "type": "welcome",
+        "appVersion": "2.0 (beta/7) \"rc\""
+      },
+      "expected": "{\"type\":\"welcome\",\"protocol\":0,\"app\":\"PowerUp\",\"version\":\"2.0 (beta\\/7) \\\"rc\\\"\"}",
+      "reason": "The version is an arbitrary string, escaped like any other."
+    },
+    {
+      "name": "welcome with an empty version",
+      "input": {
+        "type": "welcome",
+        "appVersion": ""
+      },
+      "expected": "{\"type\":\"welcome\",\"protocol\":0,\"app\":\"PowerUp\",\"version\":\"\"}",
+      "reason": "An empty version is still sent."
+    },
+    {
+      "name": "status noController",
+      "input": {
+        "type": "status",
+        "status": "noController"
+      },
+      "expected": "{\"type\":\"status\",\"status\":\"noController\"}",
+      "reason": "Status wire names are fixed strings (HK-230)."
+    },
+    {
+      "name": "status idle",
+      "input": {
+        "type": "status",
+        "status": "idle"
+      },
+      "expected": "{\"type\":\"status\",\"status\":\"idle\"}",
+      "reason": "Status wire names are fixed strings (HK-230)."
+    },
+    {
+      "name": "status listening",
+      "input": {
+        "type": "status",
+        "status": "listening"
+      },
+      "expected": "{\"type\":\"status\",\"status\":\"listening\"}",
+      "reason": "Status wire names are fixed strings (HK-230)."
+    },
+    {
+      "name": "status thinking",
+      "input": {
+        "type": "status",
+        "status": "thinking"
+      },
+      "expected": "{\"type\":\"status\",\"status\":\"thinking\"}",
+      "reason": "Status wire names are fixed strings (HK-230)."
+    },
+    {
+      "name": "status speaking",
+      "input": {
+        "type": "status",
+        "status": "speaking"
+      },
+      "expected": "{\"type\":\"status\",\"status\":\"speaking\"}",
+      "reason": "Status wire names are fixed strings (HK-230)."
+    },
+    {
+      "name": "transcript user entry",
+      "input": {
+        "type": "transcript",
+        "entry": {
+          "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+          "kind": "user",
+          "text": "hi",
+          "date": 1761700000.123456
+        }
+      },
+      "expected": "{\"type\":\"transcript\",\"entry\":{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000.123456}}",
+      "reason": "Every entry kind goes out by its lowercase name."
+    },
+    {
+      "name": "transcript assistant entry",
+      "input": {
+        "type": "transcript",
+        "entry": {
+          "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+          "kind": "assistant",
+          "text": "hi",
+          "date": 1761700000.123456
+        }
+      },
+      "expected": "{\"type\":\"transcript\",\"entry\":{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"assistant\",\"text\":\"hi\",\"date\":1761700000.123456}}",
+      "reason": "Every entry kind goes out by its lowercase name."
+    },
+    {
+      "name": "transcript tool entry",
+      "input": {
+        "type": "transcript",
+        "entry": {
+          "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+          "kind": "tool",
+          "text": "hi",
+          "date": 1761700000.123456
+        }
+      },
+      "expected": "{\"type\":\"transcript\",\"entry\":{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"tool\",\"text\":\"hi\",\"date\":1761700000.123456}}",
+      "reason": "Every entry kind goes out by its lowercase name."
+    },
+    {
+      "name": "transcript system entry",
+      "input": {
+        "type": "transcript",
+        "entry": {
+          "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+          "kind": "system",
+          "text": "hi",
+          "date": 1761700000.123456
+        }
+      },
+      "expected": "{\"type\":\"transcript\",\"entry\":{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"system\",\"text\":\"hi\",\"date\":1761700000.123456}}",
+      "reason": "Every entry kind goes out by its lowercase name."
+    },
+    {
+      "name": "transcript error entry",
+      "input": {
+        "type": "transcript",
+        "entry": {
+          "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+          "kind": "error",
+          "text": "hi",
+          "date": 1761700000.123456
+        }
+      },
+      "expected": "{\"type\":\"transcript\",\"entry\":{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"error\",\"text\":\"hi\",\"date\":1761700000.123456}}",
+      "reason": "Every entry kind goes out by its lowercase name."
+    },
+    {
+      "name": "transcript id is written uppercase",
+      "input": {
+        "type": "transcript",
+        "entry": {
+          "id": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+          "kind": "user",
+          "text": "hi",
+          "date": 1761700000.123456
+        }
+      },
+      "expected": "{\"type\":\"transcript\",\"entry\":{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000.123456}}",
+      "reason": "The id is uuidString, which is uppercase whatever spelling made the UUID."
+    },
+    {
+      "name": "transcript text with a slash",
+      "input": {
+        "type": "transcript",
+        "entry": {
+          "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+          "kind": "assistant",
+          "text": "Bash — /usr/bin/swift test",
+          "date": 1761700000.123456
+        }
+      },
+      "expected": "{\"type\":\"transcript\",\"entry\":{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"assistant\",\"text\":\"Bash — \\/usr\\/bin\\/swift test\",\"date\":1761700000.123456}}",
+      "reason": "JSONSerialization escapes a slash as \\/."
+    },
+    {
+      "name": "transcript text with quotes and backslashes",
+      "input": {
+        "type": "transcript",
+        "entry": {
+          "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+          "kind": "assistant",
+          "text": "say \"hi\" \\ bye",
+          "date": 1761700000.123456
+        }
+      },
+      "expected": "{\"type\":\"transcript\",\"entry\":{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"assistant\",\"text\":\"say \\\"hi\\\" \\\\ bye\",\"date\":1761700000.123456}}",
+      "reason": "Quotes and backslashes are escaped."
+    },
+    {
+      "name": "transcript text with a newline",
+      "input": {
+        "type": "transcript",
+        "entry": {
+          "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+          "kind": "assistant",
+          "text": "line one\nline two",
+          "date": 1761700000.123456
+        }
+      },
+      "expected": "{\"type\":\"transcript\",\"entry\":{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"assistant\",\"text\":\"line one\\nline two\",\"date\":1761700000.123456}}",
+      "reason": "A newline is escaped, so the message is one line (HK-233)."
+    },
+    {
+      "name": "transcript text with control characters",
+      "input": {
+        "type": "transcript",
+        "entry": {
+          "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+          "kind": "assistant",
+          "text": "a\tb\rc\bd\fe\u0001f\u001fg",
+          "date": 1761700000.123456
+        }
+      },
+      "expected": "{\"type\":\"transcript\",\"entry\":{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"assistant\",\"text\":\"a\\tb\\rc\\bd\\fe\\u0001f\\u001fg\",\"date\":1761700000.123456}}",
+      "reason": "Tab, CR, backspace and form feed get short escapes, other C0 controls lowercase \\u00xx."
+    },
+    {
+      "name": "transcript text with DEL",
+      "input": {
+        "type": "transcript",
+        "entry": {
+          "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+          "kind": "assistant",
+          "text": "ab",
+          "date": 1761700000.123456
+        }
+      },
+      "expected": "{\"type\":\"transcript\",\"entry\":{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"assistant\",\"text\":\"ab\",\"date\":1761700000.123456}}",
+      "reason": "DEL is written raw."
+    },
+    {
+      "name": "transcript text with non-ASCII",
+      "input": {
+        "type": "transcript",
+        "entry": {
+          "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+          "kind": "assistant",
+          "text": "项目 🚀 café",
+          "date": 1761700000.123456
+        }
+      },
+      "expected": "{\"type\":\"transcript\",\"entry\":{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"assistant\",\"text\":\"项目 🚀 café\",\"date\":1761700000.123456}}",
+      "reason": "Non-ASCII is written raw as UTF-8."
+    },
+    {
+      "name": "transcript text with line and paragraph separators",
+      "input": {
+        "type": "transcript",
+        "entry": {
+          "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+          "kind": "assistant",
+          "text": "a b c",
+          "date": 1761700000.123456
+        }
+      },
+      "expected": "{\"type\":\"transcript\",\"entry\":{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"assistant\",\"text\":\"a b c\",\"date\":1761700000.123456}}",
+      "reason": "U+2028 and U+2029 are written raw."
+    },
+    {
+      "name": "transcript text with a byte order mark",
+      "input": {
+        "type": "transcript",
+        "entry": {
+          "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+          "kind": "assistant",
+          "text": "﻿hi",
+          "date": 1761700000.123456
+        }
+      },
+      "expected": "{\"type\":\"transcript\",\"entry\":{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"assistant\",\"text\":\"﻿hi\",\"date\":1761700000.123456}}",
+      "reason": "U+FEFF is written raw."
+    },
+    {
+      "name": "transcript text with an empty text",
+      "input": {
+        "type": "transcript",
+        "entry": {
+          "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+          "kind": "assistant",
+          "text": "",
+          "date": 1761700000.123456
+        }
+      },
+      "expected": "{\"type\":\"transcript\",\"entry\":{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"assistant\",\"text\":\"\",\"date\":1761700000.123456}}",
+      "reason": "An empty text is still an entry."
+    },
+    {
+      "name": "transcript with a whole-second date",
+      "input": {
+        "type": "transcript",
+        "entry": {
+          "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+          "kind": "user",
+          "text": "hi",
+          "date": 1761700000
+        }
+      },
+      "expected": "{\"type\":\"transcript\",\"entry\":{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000}}",
+      "reason": "Transcript timestamps go out as Unix seconds, not ISO 8601 (HK-231). A whole number of seconds is written without a fraction."
+    },
+    {
+      "name": "transcript with the 1970 date",
+      "input": {
+        "type": "transcript",
+        "entry": {
+          "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+          "kind": "user",
+          "text": "hi",
+          "date": 0
+        }
+      },
+      "expected": "{\"type\":\"transcript\",\"entry\":{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":0}}",
+      "reason": "Transcript timestamps go out as Unix seconds, not ISO 8601 (HK-231). Zero seconds."
+    },
+    {
+      "name": "transcript with a fraction",
+      "input": {
+        "type": "transcript",
+        "entry": {
+          "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+          "kind": "user",
+          "text": "hi",
+          "date": 1.5
+        }
+      },
+      "expected": "{\"type\":\"transcript\",\"entry\":{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1.5}}",
+      "reason": "Transcript timestamps go out as Unix seconds, not ISO 8601 (HK-231). A fractional date."
+    },
+    {
+      "name": "transcript with a date before 1970",
+      "input": {
+        "type": "transcript",
+        "entry": {
+          "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+          "kind": "user",
+          "text": "hi",
+          "date": -1.5
+        }
+      },
+      "expected": "{\"type\":\"transcript\",\"entry\":{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":-1.5}}",
+      "reason": "Transcript timestamps go out as Unix seconds, not ISO 8601 (HK-231). A negative date."
+    },
+    {
+      "name": "transcript with a microsecond date",
+      "input": {
+        "type": "transcript",
+        "entry": {
+          "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+          "kind": "user",
+          "text": "hi",
+          "date": 1761700000.000001
+        }
+      },
+      "expected": "{\"type\":\"transcript\",\"entry\":{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000.000001}}",
+      "reason": "Transcript timestamps go out as Unix seconds, not ISO 8601 (HK-231). 17 significant digits, trailing zeros dropped."
+    },
+    {
+      "name": "transcript with a date above 2^53",
+      "input": {
+        "type": "transcript",
+        "entry": {
+          "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+          "kind": "user",
+          "text": "hi",
+          "date": 9007199254740994
+        }
+      },
+      "expected": "{\"type\":\"transcript\",\"entry\":{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":9007199254740994}}",
+      "reason": "Transcript timestamps go out as Unix seconds, not ISO 8601 (HK-231). A large date is written in plain digits."
+    },
+    {
+      "name": "transcript with a date of 1e16",
+      "input": {
+        "type": "transcript",
+        "entry": {
+          "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+          "kind": "user",
+          "text": "hi",
+          "date": 1e+16
+        }
+      },
+      "expected": "{\"type\":\"transcript\",\"entry\":{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":10000000000000000}}",
+      "reason": "Transcript timestamps go out as Unix seconds, not ISO 8601 (HK-231). Below 1e17 a date is written in plain digits, not an exponent."
+    },
+    {
+      "name": "transcript with a date below 1e-4",
+      "input": {
+        "type": "transcript",
+        "entry": {
+          "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+          "kind": "user",
+          "text": "hi",
+          "date": 9.5367431640625e-07
+        }
+      },
+      "expected": "{\"type\":\"transcript\",\"entry\":{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":9.5367431640625e-07}}",
+      "reason": "Transcript timestamps go out as Unix seconds, not ISO 8601 (HK-231). Below 1e-4 the exponent form is used."
+    },
+    {
+      "name": "session with nothing known",
+      "input": {
+        "type": "session",
+        "model": "default",
+        "liveModel": null,
+        "effort": "high",
+        "permissionMode": "acceptEdits",
+        "controlMode": "builtin",
+        "sessionID": null,
+        "costUSD": 0,
+        "tokens": 0
+      },
+      "expected": "{\"type\":\"session\",\"model\":\"default\",\"effort\":\"high\",\"permissionMode\":\"acceptEdits\",\"controlMode\":\"builtin\",\"costUSD\":0}",
+      "reason": "liveModel and sessionID are omitted when absent and tokens when zero; model default means the adapter decides (HK-232)."
+    },
+    {
+      "name": "session with everything known",
+      "input": {
+        "type": "session",
+        "model": "opus",
+        "liveModel": "claude-opus-4-1-20250805",
+        "effort": "high",
+        "permissionMode": "acceptEdits",
+        "controlMode": "builtin",
+        "sessionID": "7f3c2a9e-1b2d-4c5e-8f90-123456789abc",
+        "costUSD": 0.0421,
+        "tokens": 55888
+      },
+      "expected": "{\"type\":\"session\",\"model\":\"opus\",\"effort\":\"high\",\"permissionMode\":\"acceptEdits\",\"controlMode\":\"builtin\",\"costUSD\":0.042099999999999999,\"tokens\":55888,\"liveModel\":\"claude-opus-4-1-20250805\",\"sessionID\":\"7f3c2a9e-1b2d-4c5e-8f90-123456789abc\"}",
+      "reason": "Every optional member present; 0.0421 is written with 17 significant digits as 0.042099999999999999."
+    },
+    {
+      "name": "session with an empty liveModel",
+      "input": {
+        "type": "session",
+        "model": "default",
+        "liveModel": "",
+        "effort": "high",
+        "permissionMode": "acceptEdits",
+        "controlMode": "builtin",
+        "sessionID": null,
+        "costUSD": 0,
+        "tokens": 0
+      },
+      "expected": "{\"type\":\"session\",\"model\":\"default\",\"effort\":\"high\",\"permissionMode\":\"acceptEdits\",\"controlMode\":\"builtin\",\"costUSD\":0}",
+      "reason": "An empty liveModel is omitted (HK-232)."
+    },
+    {
+      "name": "session with an empty sessionID",
+      "input": {
+        "type": "session",
+        "model": "default",
+        "liveModel": null,
+        "effort": "high",
+        "permissionMode": "acceptEdits",
+        "controlMode": "builtin",
+        "sessionID": "",
+        "costUSD": 0,
+        "tokens": 0
+      },
+      "expected": "{\"type\":\"session\",\"model\":\"default\",\"effort\":\"high\",\"permissionMode\":\"acceptEdits\",\"controlMode\":\"builtin\",\"costUSD\":0}",
+      "reason": "An empty sessionID is omitted (HK-232)."
+    },
+    {
+      "name": "session with a blank liveModel",
+      "input": {
+        "type": "session",
+        "model": "default",
+        "liveModel": " ",
+        "effort": "high",
+        "permissionMode": "acceptEdits",
+        "controlMode": "builtin",
+        "sessionID": null,
+        "costUSD": 0,
+        "tokens": 0
+      },
+      "expected": "{\"type\":\"session\",\"model\":\"default\",\"effort\":\"high\",\"permissionMode\":\"acceptEdits\",\"controlMode\":\"builtin\",\"costUSD\":0,\"liveModel\":\" \"}",
+      "reason": "Only an empty string is omitted; a blank one is not trimmed."
+    },
+    {
+      "name": "session with negative tokens",
+      "input": {
+        "type": "session",
+        "model": "default",
+        "liveModel": null,
+        "effort": "high",
+        "permissionMode": "acceptEdits",
+        "controlMode": "builtin",
+        "sessionID": null,
+        "costUSD": 0,
+        "tokens": -1
+      },
+      "expected": "{\"type\":\"session\",\"model\":\"default\",\"effort\":\"high\",\"permissionMode\":\"acceptEdits\",\"controlMode\":\"builtin\",\"costUSD\":0}",
+      "reason": "Tokens are sent only when above zero."
+    },
+    {
+      "name": "session with one token",
+      "input": {
+        "type": "session",
+        "model": "default",
+        "liveModel": null,
+        "effort": "high",
+        "permissionMode": "acceptEdits",
+        "controlMode": "builtin",
+        "sessionID": null,
+        "costUSD": 0,
+        "tokens": 1
+      },
+      "expected": "{\"type\":\"session\",\"model\":\"default\",\"effort\":\"high\",\"permissionMode\":\"acceptEdits\",\"controlMode\":\"builtin\",\"costUSD\":0,\"tokens\":1}",
+      "reason": "One token is sent."
+    },
+    {
+      "name": "session with Int64 max tokens",
+      "input": {
+        "type": "session",
+        "model": "default",
+        "liveModel": null,
+        "effort": "high",
+        "permissionMode": "acceptEdits",
+        "controlMode": "builtin",
+        "sessionID": null,
+        "costUSD": 0,
+        "tokens": 9223372036854775807
+      },
+      "expected": "{\"type\":\"session\",\"model\":\"default\",\"effort\":\"high\",\"permissionMode\":\"acceptEdits\",\"controlMode\":\"builtin\",\"costUSD\":0,\"tokens\":9223372036854775807}",
+      "reason": "Tokens are written as an integer."
+    },
+    {
+      "name": "session in cmux remote mode",
+      "input": {
+        "type": "session",
+        "model": "default",
+        "liveModel": null,
+        "effort": "max",
+        "permissionMode": "plan",
+        "controlMode": "remote",
+        "sessionID": null,
+        "costUSD": 0,
+        "tokens": 0
+      },
+      "expected": "{\"type\":\"session\",\"model\":\"default\",\"effort\":\"max\",\"permissionMode\":\"plan\",\"controlMode\":\"remote\",\"costUSD\":0}",
+      "reason": "controlMode is passed through."
+    },
+    {
+      "name": "session cost of one dollar",
+      "input": {
+        "type": "session",
+        "model": "default",
+        "liveModel": null,
+        "effort": "high",
+        "permissionMode": "acceptEdits",
+        "controlMode": "builtin",
+        "sessionID": null,
+        "costUSD": 1,
+        "tokens": 0
+      },
+      "expected": "{\"type\":\"session\",\"model\":\"default\",\"effort\":\"high\",\"permissionMode\":\"acceptEdits\",\"controlMode\":\"builtin\",\"costUSD\":1}",
+      "reason": "A whole-dollar Double is written without a fraction."
+    },
+    {
+      "name": "session cost 0.1 + 0.2",
+      "input": {
+        "type": "session",
+        "model": "default",
+        "liveModel": null,
+        "effort": "high",
+        "permissionMode": "acceptEdits",
+        "controlMode": "builtin",
+        "sessionID": null,
+        "costUSD": 0.30000000000000004,
+        "tokens": 0
+      },
+      "expected": "{\"type\":\"session\",\"model\":\"default\",\"effort\":\"high\",\"permissionMode\":\"acceptEdits\",\"controlMode\":\"builtin\",\"costUSD\":0.30000000000000004}",
+      "reason": "17 significant digits."
+    },
+    {
+      "name": "session cost 12.5",
+      "input": {
+        "type": "session",
+        "model": "default",
+        "liveModel": null,
+        "effort": "high",
+        "permissionMode": "acceptEdits",
+        "controlMode": "builtin",
+        "sessionID": null,
+        "costUSD": 12.5,
+        "tokens": 0
+      },
+      "expected": "{\"type\":\"session\",\"model\":\"default\",\"effort\":\"high\",\"permissionMode\":\"acceptEdits\",\"controlMode\":\"builtin\",\"costUSD\":12.5}",
+      "reason": "A plain decimal cost."
+    },
+    {
+      "name": "session cost 1e-7",
+      "input": {
+        "type": "session",
+        "model": "default",
+        "liveModel": null,
+        "effort": "high",
+        "permissionMode": "acceptEdits",
+        "controlMode": "builtin",
+        "sessionID": null,
+        "costUSD": 1e-07,
+        "tokens": 0
+      },
+      "expected": "{\"type\":\"session\",\"model\":\"default\",\"effort\":\"high\",\"permissionMode\":\"acceptEdits\",\"controlMode\":\"builtin\",\"costUSD\":9.9999999999999995e-08}",
+      "reason": "JSONSerialization writes 17 significant digits (printf %.17g), not the shortest spelling: 1e-7 is 9.9999999999999995e-08."
+    },
+    {
+      "name": "session cost 1e21",
+      "input": {
+        "type": "session",
+        "model": "default",
+        "liveModel": null,
+        "effort": "high",
+        "permissionMode": "acceptEdits",
+        "controlMode": "builtin",
+        "sessionID": null,
+        "costUSD": 1e+21,
+        "tokens": 0
+      },
+      "expected": "{\"type\":\"session\",\"model\":\"default\",\"effort\":\"high\",\"permissionMode\":\"acceptEdits\",\"controlMode\":\"builtin\",\"costUSD\":1e+21}",
+      "reason": "The exponent form carries a sign and at least two digits: 1e+21."
+    },
+    {
+      "name": "session cost 123456.789",
+      "input": {
+        "type": "session",
+        "model": "default",
+        "liveModel": null,
+        "effort": "high",
+        "permissionMode": "acceptEdits",
+        "controlMode": "builtin",
+        "sessionID": null,
+        "costUSD": 123456.789,
+        "tokens": 0
+      },
+      "expected": "{\"type\":\"session\",\"model\":\"default\",\"effort\":\"high\",\"permissionMode\":\"acceptEdits\",\"controlMode\":\"builtin\",\"costUSD\":123456.789}",
+      "reason": "%.17g drops trailing zeros, so 123456.789 stays short."
+    },
+    {
+      "name": "session cost 1e16 is plain digits",
+      "input": {
+        "type": "session",
+        "model": "default",
+        "liveModel": null,
+        "effort": "high",
+        "permissionMode": "acceptEdits",
+        "controlMode": "builtin",
+        "sessionID": null,
+        "costUSD": 1e+16,
+        "tokens": 0
+      },
+      "expected": "{\"type\":\"session\",\"model\":\"default\",\"effort\":\"high\",\"permissionMode\":\"acceptEdits\",\"controlMode\":\"builtin\",\"costUSD\":10000000000000000}",
+      "reason": "Under 17 digits before the point, %.17g writes plain digits."
+    },
+    {
+      "name": "session cost 1e17 uses the exponent form",
+      "input": {
+        "type": "session",
+        "model": "default",
+        "liveModel": null,
+        "effort": "high",
+        "permissionMode": "acceptEdits",
+        "controlMode": "builtin",
+        "sessionID": null,
+        "costUSD": 1e+17,
+        "tokens": 0
+      },
+      "expected": "{\"type\":\"session\",\"model\":\"default\",\"effort\":\"high\",\"permissionMode\":\"acceptEdits\",\"controlMode\":\"builtin\",\"costUSD\":1e+17}",
+      "reason": "At 17 digits before the point, %.17g switches to the exponent form."
+    },
+    {
+      "name": "session cost 0.0001 is plain digits",
+      "input": {
+        "type": "session",
+        "model": "default",
+        "liveModel": null,
+        "effort": "high",
+        "permissionMode": "acceptEdits",
+        "controlMode": "builtin",
+        "sessionID": null,
+        "costUSD": 0.0001,
+        "tokens": 0
+      },
+      "expected": "{\"type\":\"session\",\"model\":\"default\",\"effort\":\"high\",\"permissionMode\":\"acceptEdits\",\"controlMode\":\"builtin\",\"costUSD\":0.0001}",
+      "reason": "An exponent of -4 is still written plain."
+    },
+    {
+      "name": "session cost 0.00001 uses the exponent form",
+      "input": {
+        "type": "session",
+        "model": "default",
+        "liveModel": null,
+        "effort": "high",
+        "permissionMode": "acceptEdits",
+        "controlMode": "builtin",
+        "sessionID": null,
+        "costUSD": 1e-05,
+        "tokens": 0
+      },
+      "expected": "{\"type\":\"session\",\"model\":\"default\",\"effort\":\"high\",\"permissionMode\":\"acceptEdits\",\"controlMode\":\"builtin\",\"costUSD\":1.0000000000000001e-05}",
+      "reason": "Below 1e-4 the exponent form, with all 17 digits."
+    },
+    {
+      "name": "session negative cost",
+      "input": {
+        "type": "session",
+        "model": "default",
+        "liveModel": null,
+        "effort": "high",
+        "permissionMode": "acceptEdits",
+        "controlMode": "builtin",
+        "sessionID": null,
+        "costUSD": -0.5,
+        "tokens": 0
+      },
+      "expected": "{\"type\":\"session\",\"model\":\"default\",\"effort\":\"high\",\"permissionMode\":\"acceptEdits\",\"controlMode\":\"builtin\",\"costUSD\":-0.5}",
+      "reason": "A negative cost is written as it is."
+    },
+    {
+      "name": "session negative zero cost",
+      "input": {
+        "type": "session",
+        "model": "default",
+        "liveModel": null,
+        "effort": "high",
+        "permissionMode": "acceptEdits",
+        "controlMode": "builtin",
+        "sessionID": null,
+        "costUSD": "-0",
+        "tokens": 0
+      },
+      "expected": "{\"type\":\"session\",\"model\":\"default\",\"effort\":\"high\",\"permissionMode\":\"acceptEdits\",\"controlMode\":\"builtin\",\"costUSD\":-0}",
+      "reason": "Negative zero is written -0."
+    },
+    {
+      "name": "session NaN cost is not encoded",
+      "input": {
+        "type": "session",
+        "model": "default",
+        "liveModel": null,
+        "effort": "high",
+        "permissionMode": "acceptEdits",
+        "controlMode": "builtin",
+        "sessionID": null,
+        "costUSD": "nan",
+        "tokens": 0
+      },
+      "expected": null,
+      "reason": "encode returns nil for an object that is not valid JSON, so the message is never sent (HK-233)."
+    },
+    {
+      "name": "session infinite cost is not encoded",
+      "input": {
+        "type": "session",
+        "model": "default",
+        "liveModel": null,
+        "effort": "high",
+        "permissionMode": "acceptEdits",
+        "controlMode": "builtin",
+        "sessionID": null,
+        "costUSD": "infinity",
+        "tokens": 0
+      },
+      "expected": null,
+      "reason": "Infinity is not valid JSON either (HK-233)."
+    },
+    {
+      "name": "session strings are escaped",
+      "input": {
+        "type": "session",
+        "model": "claude/opus \"x\"",
+        "liveModel": "météo",
+        "effort": "high",
+        "permissionMode": "acceptEdits",
+        "controlMode": "builtin",
+        "sessionID": "a\nb",
+        "costUSD": 0,
+        "tokens": 0
+      },
+      "expected": "{\"type\":\"session\",\"model\":\"claude\\/opus \\\"x\\\"\",\"effort\":\"high\",\"permissionMode\":\"acceptEdits\",\"controlMode\":\"builtin\",\"costUSD\":0,\"liveModel\":\"météo\",\"sessionID\":\"a\\nb\"}",
+      "reason": "Model names and ids are escaped like any string."
+    },
+    {
+      "name": "pong",
+      "input": {
+        "type": "pong"
+      },
+      "expected": "{\"type\":\"pong\"}",
+      "reason": "The answer to a protocol ping."
+    },
+    {
+      "name": "error malformed",
+      "input": {
+        "type": "error",
+        "code": "malformed",
+        "message": "Messages must be single JSON objects with a \"type\" field."
+      },
+      "expected": "{\"type\":\"error\",\"code\":\"malformed\",\"message\":\"Messages must be single JSON objects with a \\\"type\\\" field.\"}",
+      "reason": "Error codes are contract; clients branch on them (HK-229). The text is the one the server sends."
+    },
+    {
+      "name": "error unknown_type",
+      "input": {
+        "type": "error",
+        "code": "unknown_type",
+        "message": "Unknown message type \"mystery\"."
+      },
+      "expected": "{\"type\":\"error\",\"code\":\"unknown_type\",\"message\":\"Unknown message type \\\"mystery\\\".\"}",
+      "reason": "Error codes are contract; clients branch on them (HK-229). The text is the one the server sends."
+    },
+    {
+      "name": "error bad_hello",
+      "input": {
+        "type": "error",
+        "code": "bad_hello",
+        "message": "hello must carry a non-empty \"token\"."
+      },
+      "expected": "{\"type\":\"error\",\"code\":\"bad_hello\",\"message\":\"hello must carry a non-empty \\\"token\\\".\"}",
+      "reason": "Error codes are contract; clients branch on them (HK-229). The text is the one the server sends."
+    },
+    {
+      "name": "error unsupported_protocol",
+      "input": {
+        "type": "error",
+        "code": "unsupported_protocol",
+        "message": "This server speaks protocol 0; you asked for 7."
+      },
+      "expected": "{\"type\":\"error\",\"code\":\"unsupported_protocol\",\"message\":\"This server speaks protocol 0; you asked for 7.\"}",
+      "reason": "Error codes are contract; clients branch on them (HK-229). The text is the one the server sends."
+    },
+    {
+      "name": "error unknown_intent",
+      "input": {
+        "type": "error",
+        "code": "unknown_intent",
+        "message": "Unknown or disallowed intent \"launchMissiles\" (see docs/protocol.md for the allowed set)."
+      },
+      "expected": "{\"type\":\"error\",\"code\":\"unknown_intent\",\"message\":\"Unknown or disallowed intent \\\"launchMissiles\\\" (see docs\\/protocol.md for the allowed set).\"}",
+      "reason": "Error codes are contract; clients branch on them (HK-229). The text is the one the server sends."
+    },
+    {
+      "name": "error auth_failed",
+      "input": {
+        "type": "error",
+        "code": "auth_failed",
+        "message": "The token doesn't match — copy it from Settings → Remote → Read-back."
+      },
+      "expected": "{\"type\":\"error\",\"code\":\"auth_failed\",\"message\":\"The token doesn't match — copy it from Settings → Remote → Read-back.\"}",
+      "reason": "Error codes are contract; clients branch on them (HK-229). The text is the one the server sends."
+    },
+    {
+      "name": "error not_authenticated",
+      "input": {
+        "type": "error",
+        "code": "not_authenticated",
+        "message": "Send hello with the token before anything else."
+      },
+      "expected": "{\"type\":\"error\",\"code\":\"not_authenticated\",\"message\":\"Send hello with the token before anything else.\"}",
+      "reason": "Error codes are contract; clients branch on them (HK-229). The text is the one the server sends."
+    },
+    {
+      "name": "error server_busy",
+      "input": {
+        "type": "error",
+        "code": "server_busy",
+        "message": "Too many protocol clients are connected."
+      },
+      "expected": "{\"type\":\"error\",\"code\":\"server_busy\",\"message\":\"Too many protocol clients are connected.\"}",
+      "reason": "Error codes are contract; clients branch on them (HK-229). The text is the one the server sends."
+    }
+  ]
+}

@@ -1,0 +1,1012 @@
+{
+  "description": "How one client text frame's payload is read as a protocol v0 message (docs/protocol.md, \"Client → server\"): the bytes are read as Foundation's JSONSerialization reads them, the root must be an object whose \"type\" is a string, else malformed. hello needs a non-empty string token (not trimmed), and its protocol field, read through NSNumber.intValue when it is a JSON number and otherwise ignored, must be 0 (missing means 0); the token is checked first. intent maps its \"intent\" name (\"\" when absent or not a string) and, for sendPrompt, its string \"text\" through the protocol name table (intent-names.json); a name the table refuses is unknown_intent. ping takes no fields. Any other type is unknown_type. Unknown fields are always ignored. A failure is answered with an error message whose code and message are contract (HK-229); what the listener then does (close 1002 for malformed, bad_hello and unsupported_protocol, keep the connection otherwise) is the connection policy's.",
+  "function": "PowerUpProtocol.parseClientMessage(_:) — input the frame payload (a bytes descriptor), expected the message ({\"type\": \"hello\", \"token\"}, {\"type\": \"intent\", <intent descriptor fields>}, {\"type\": \"ping\"}) or the error it is answered with ({\"error\": <code>, \"message\": <text>})",
+  "verifiedBy": "DESIGN.md v1.7; docs/protocol.md spec v0; Tests/PowerUpTests/ProtocolFixtureTests.swift testClientMessageTable plays it through PowerUpProtocol.parseClientMessage(_:).",
+  "capturedAgainst": "Swift 5.9.2 Foundation and CryptoKit (Xcode 15.2) on macOS 27.2, PowerUp at 2d20afb",
+  "cases": [
+    {
+      "name": "hello with token and protocol 0",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"secret\",\"protocol\":0}"
+      },
+      "expected": {
+        "type": "hello",
+        "token": "secret"
+      },
+      "reason": "The documented hello (HK-223)."
+    },
+    {
+      "name": "hello without protocol defaults to version 0",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"secret\"}"
+      },
+      "expected": {
+        "type": "hello",
+        "token": "secret"
+      },
+      "reason": "A missing protocol field reads as the current version, so minimal clients connect (HK-223)."
+    },
+    {
+      "name": "hello without token is bad_hello",
+      "input": {
+        "text": "{\"type\":\"hello\"}"
+      },
+      "expected": {
+        "error": "bad_hello",
+        "message": "hello must carry a non-empty \"token\"."
+      },
+      "reason": "No token, no session (HK-223, HK-229)."
+    },
+    {
+      "name": "hello with an empty token is bad_hello",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"\"}"
+      },
+      "expected": {
+        "error": "bad_hello",
+        "message": "hello must carry a non-empty \"token\"."
+      },
+      "reason": "An empty token is no token (HK-223)."
+    },
+    {
+      "name": "hello with a blank token is accepted as it is",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\" \"}"
+      },
+      "expected": {
+        "type": "hello",
+        "token": " "
+      },
+      "reason": "The token is not trimmed: a blank token parses, and the listener's comparison then refuses it."
+    },
+    {
+      "name": "hello with a numeric token is bad_hello",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":42}"
+      },
+      "expected": {
+        "error": "bad_hello",
+        "message": "hello must carry a non-empty \"token\"."
+      },
+      "reason": "The token must be a JSON string."
+    },
+    {
+      "name": "hello with a null token is bad_hello",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":null}"
+      },
+      "expected": {
+        "error": "bad_hello",
+        "message": "hello must carry a non-empty \"token\"."
+      },
+      "reason": "null is no token."
+    },
+    {
+      "name": "hello with an array token is bad_hello",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":[\"secret\"]}"
+      },
+      "expected": {
+        "error": "bad_hello",
+        "message": "hello must carry a non-empty \"token\"."
+      },
+      "reason": "Only a string is a token."
+    },
+    {
+      "name": "hello asking for protocol 7 is unsupported_protocol",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":7}"
+      },
+      "expected": {
+        "error": "unsupported_protocol",
+        "message": "This server speaks protocol 0; you asked for 7."
+      },
+      "reason": "A future version is refused, naming both versions (HK-223, HK-229)."
+    },
+    {
+      "name": "hello asking for protocol 1 is unsupported_protocol",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":1}"
+      },
+      "expected": {
+        "error": "unsupported_protocol",
+        "message": "This server speaks protocol 0; you asked for 1."
+      },
+      "reason": "Any version but 0 is refused."
+    },
+    {
+      "name": "hello asking for protocol -1 is unsupported_protocol",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":-1}"
+      },
+      "expected": {
+        "error": "unsupported_protocol",
+        "message": "This server speaks protocol 0; you asked for -1."
+      },
+      "reason": "A negative version is refused and named as sent."
+    },
+    {
+      "name": "the token is checked before the version",
+      "input": {
+        "text": "{\"type\":\"hello\",\"protocol\":7}"
+      },
+      "expected": {
+        "error": "bad_hello",
+        "message": "hello must carry a non-empty \"token\"."
+      },
+      "reason": "bad_hello wins over unsupported_protocol when both are wrong."
+    },
+    {
+      "name": "protocol 0.5 reads as 0",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":0.5}"
+      },
+      "expected": {
+        "type": "hello",
+        "token": "t"
+      },
+      "reason": "The version is read through NSNumber.intValue, which truncates toward zero."
+    },
+    {
+      "name": "protocol 1.9 reads as 1",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":1.9}"
+      },
+      "expected": {
+        "error": "unsupported_protocol",
+        "message": "This server speaks protocol 0; you asked for 1."
+      },
+      "reason": "Truncation, not rounding: 1.9 asks for 1."
+    },
+    {
+      "name": "protocol -0.5 reads as 0",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":-0.5}"
+      },
+      "expected": {
+        "type": "hello",
+        "token": "t"
+      },
+      "reason": "Truncation toward zero makes -0.5 version 0."
+    },
+    {
+      "name": "protocol 0.0 reads as 0",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":0.0}"
+      },
+      "expected": {
+        "type": "hello",
+        "token": "t"
+      },
+      "reason": "A zero written as a decimal is version 0."
+    },
+    {
+      "name": "protocol -0 reads as 0",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":-0}"
+      },
+      "expected": {
+        "type": "hello",
+        "token": "t"
+      },
+      "reason": "Negative zero is version 0."
+    },
+    {
+      "name": "protocol 1e-300 reads as 0",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":1e-300}"
+      },
+      "expected": {
+        "type": "hello",
+        "token": "t"
+      },
+      "reason": "A tiny decimal truncates to 0."
+    },
+    {
+      "name": "protocol 7e0 reads as 7",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":7e0}"
+      },
+      "expected": {
+        "error": "unsupported_protocol",
+        "message": "This server speaks protocol 0; you asked for 7."
+      },
+      "reason": "An exponent spelling is the same number."
+    },
+    {
+      "name": "protocol true reads as 1",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":true}"
+      },
+      "expected": {
+        "error": "unsupported_protocol",
+        "message": "This server speaks protocol 0; you asked for 1."
+      },
+      "reason": "A JSON bool is an NSNumber too: true asks for version 1."
+    },
+    {
+      "name": "protocol false reads as 0",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":false}"
+      },
+      "expected": {
+        "type": "hello",
+        "token": "t"
+      },
+      "reason": "A JSON bool is an NSNumber too: false is version 0, so the hello is accepted."
+    },
+    {
+      "name": "protocol as the string 0 is ignored",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":\"0\"}"
+      },
+      "expected": {
+        "type": "hello",
+        "token": "t"
+      },
+      "reason": "Only a JSON number is a version; a string reads as absent, so the default applies."
+    },
+    {
+      "name": "protocol as the string 7 is ignored",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":\"7\"}"
+      },
+      "expected": {
+        "type": "hello",
+        "token": "t"
+      },
+      "reason": "A string version is ignored rather than refused."
+    },
+    {
+      "name": "protocol null is ignored",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":null}"
+      },
+      "expected": {
+        "type": "hello",
+        "token": "t"
+      },
+      "reason": "null reads as absent, so the default applies."
+    },
+    {
+      "name": "protocol 2^32 is unsupported",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":4294967296}"
+      },
+      "expected": {
+        "error": "unsupported_protocol",
+        "message": "This server speaks protocol 0; you asked for 4294967296."
+      },
+      "reason": "The version is a 64-bit integer: 2^32 is not 0."
+    },
+    {
+      "name": "protocol Int64 max is unsupported",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":9223372036854775807}"
+      },
+      "expected": {
+        "error": "unsupported_protocol",
+        "message": "This server speaks protocol 0; you asked for 9223372036854775807."
+      },
+      "reason": "The largest Int64 is named as sent."
+    },
+    {
+      "name": "protocol 2^63 wraps to the smallest Int64",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":9223372036854775808}"
+      },
+      "expected": {
+        "error": "unsupported_protocol",
+        "message": "This server speaks protocol 0; you asked for -9223372036854775808."
+      },
+      "reason": "One past Int64 is read unsigned, and NSNumber.intValue wraps it around: the message names -9223372036854775808."
+    },
+    {
+      "name": "protocol 2^64 reads as 0",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":18446744073709551616}"
+      },
+      "expected": {
+        "type": "hello",
+        "token": "t"
+      },
+      "reason": "One past UInt64: NSNumber.intValue makes 0 of it, so the hello is accepted as version 0."
+    },
+    {
+      "name": "protocol 1e30 saturates at the largest Int64",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":1e30}"
+      },
+      "expected": {
+        "error": "unsupported_protocol",
+        "message": "This server speaks protocol 0; you asked for 9223372036854775807."
+      },
+      "reason": "NSNumber.intValue of a double past Int64 saturates: the message names 9223372036854775807."
+    },
+    {
+      "name": "protocol -1e30 saturates at the smallest Int64",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":-1e30}"
+      },
+      "expected": {
+        "error": "unsupported_protocol",
+        "message": "This server speaks protocol 0; you asked for -9223372036854775808."
+      },
+      "reason": "NSNumber.intValue of a double below Int64 saturates: the message names -9223372036854775808."
+    },
+    {
+      "name": "hello keeps a Unicode token exactly",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"tökén🔑\"}"
+      },
+      "expected": {
+        "type": "hello",
+        "token": "tökén🔑"
+      },
+      "reason": "Tokens are compared as strings; non-ASCII must survive the parse."
+    },
+    {
+      "name": "hello unescapes the token",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"a\\\"b\\\\c\\u00e9\"}"
+      },
+      "expected": {
+        "type": "hello",
+        "token": "a\"b\\cé"
+      },
+      "reason": "JSON escapes in the token are decoded before comparison."
+    },
+    {
+      "name": "hello ignores extra fields",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"client\":\"my-plugin\",\"x\":[1,2]}"
+      },
+      "expected": {
+        "type": "hello",
+        "token": "t"
+      },
+      "reason": "Unknown fields are ignored (ADR 0003)."
+    },
+    {
+      "name": "hello drops a leading escaped byte order mark from the token",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"\\ufeffsecret\"}"
+      },
+      "expected": {
+        "type": "hello",
+        "token": "secret"
+      },
+      "reason": "Foundation drops one U+FEFF at the start of a string (HK-393), so the token is secret."
+    },
+    {
+      "name": "of two token keys the first wins",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"first\",\"token\":\"second\"}"
+      },
+      "expected": {
+        "type": "hello",
+        "token": "first"
+      },
+      "reason": "Foundation keeps the first of two equal keys."
+    },
+    {
+      "name": "of two type keys the first wins",
+      "input": {
+        "text": "{\"type\":\"ping\",\"type\":\"hello\",\"token\":\"t\"}"
+      },
+      "expected": {
+        "type": "ping"
+      },
+      "reason": "Foundation keeps the first of two equal keys, so this is a ping."
+    },
+    {
+      "name": "intent approve",
+      "input": {
+        "text": "{\"type\":\"intent\",\"intent\":\"approve\"}"
+      },
+      "expected": {
+        "type": "intent",
+        "intent": "approve"
+      },
+      "reason": "A plain intent by its wire name."
+    },
+    {
+      "name": "intent sendPrompt with text",
+      "input": {
+        "text": "{\"type\":\"intent\",\"intent\":\"sendPrompt\",\"text\":\"hi\"}"
+      },
+      "expected": {
+        "type": "intent",
+        "intent": "sendPrompt",
+        "prompt": "hi"
+      },
+      "reason": "sendPrompt carries its text."
+    },
+    {
+      "name": "intent sendPrompt text is trimmed",
+      "input": {
+        "text": "{\"type\":\"intent\",\"intent\":\"sendPrompt\",\"text\":\"  hi there \\n\"}"
+      },
+      "expected": {
+        "type": "intent",
+        "intent": "sendPrompt",
+        "prompt": "hi there"
+      },
+      "reason": "The prompt is the trimmed text (HK-228)."
+    },
+    {
+      "name": "intent sendPrompt with blank text is unknown_intent",
+      "input": {
+        "text": "{\"type\":\"intent\",\"intent\":\"sendPrompt\",\"text\":\"   \"}"
+      },
+      "expected": {
+        "error": "unknown_intent",
+        "message": "Unknown or disallowed intent \"sendPrompt\" (see docs/protocol.md for the allowed set)."
+      },
+      "reason": "A whitespace-only prompt is rejected, not sent; the error names sendPrompt (HK-228)."
+    },
+    {
+      "name": "intent sendPrompt without text is unknown_intent",
+      "input": {
+        "text": "{\"type\":\"intent\",\"intent\":\"sendPrompt\"}"
+      },
+      "expected": {
+        "error": "unknown_intent",
+        "message": "Unknown or disallowed intent \"sendPrompt\" (see docs/protocol.md for the allowed set)."
+      },
+      "reason": "No text, no prompt (HK-228)."
+    },
+    {
+      "name": "intent sendPrompt with numeric text is unknown_intent",
+      "input": {
+        "text": "{\"type\":\"intent\",\"intent\":\"sendPrompt\",\"text\":5}"
+      },
+      "expected": {
+        "error": "unknown_intent",
+        "message": "Unknown or disallowed intent \"sendPrompt\" (see docs/protocol.md for the allowed set)."
+      },
+      "reason": "Only a string is text."
+    },
+    {
+      "name": "intent without a name is unknown_intent with an empty name",
+      "input": {
+        "text": "{\"type\":\"intent\"}"
+      },
+      "expected": {
+        "error": "unknown_intent",
+        "message": "Unknown or disallowed intent \"\" (see docs/protocol.md for the allowed set)."
+      },
+      "reason": "A missing intent field is named as the empty string."
+    },
+    {
+      "name": "intent with a numeric name is unknown_intent with an empty name",
+      "input": {
+        "text": "{\"type\":\"intent\",\"intent\":3}"
+      },
+      "expected": {
+        "error": "unknown_intent",
+        "message": "Unknown or disallowed intent \"\" (see docs/protocol.md for the allowed set)."
+      },
+      "reason": "A non-string intent field is named as the empty string."
+    },
+    {
+      "name": "intent with a null name",
+      "input": {
+        "text": "{\"type\":\"intent\",\"intent\":null}"
+      },
+      "expected": {
+        "error": "unknown_intent",
+        "message": "Unknown or disallowed intent \"\" (see docs/protocol.md for the allowed set)."
+      },
+      "reason": "null is no name."
+    },
+    {
+      "name": "unknown intent is unknown_intent",
+      "input": {
+        "text": "{\"type\":\"intent\",\"intent\":\"launchMissiles\"}"
+      },
+      "expected": {
+        "error": "unknown_intent",
+        "message": "Unknown or disallowed intent \"launchMissiles\" (see docs/protocol.md for the allowed set)."
+      },
+      "reason": "Unknown names are answered with an error, never acted on (HK-227)."
+    },
+    {
+      "name": "voice capture is not a protocol intent",
+      "input": {
+        "text": "{\"type\":\"intent\",\"intent\":\"beginVoiceCapture\"}"
+      },
+      "expected": {
+        "error": "unknown_intent",
+        "message": "Unknown or disallowed intent \"beginVoiceCapture\" (see docs/protocol.md for the allowed set)."
+      },
+      "reason": "The microphone is local-only (HK-226)."
+    },
+    {
+      "name": "push to talk is not a protocol intent",
+      "input": {
+        "text": "{\"type\":\"intent\",\"intent\":\"pushToTalk\"}"
+      },
+      "expected": {
+        "error": "unknown_intent",
+        "message": "Unknown or disallowed intent \"pushToTalk\" (see docs/protocol.md for the allowed set)."
+      },
+      "reason": "Voice capture stays off the wire (HK-226)."
+    },
+    {
+      "name": "setPermissionMode is not a protocol intent",
+      "input": {
+        "text": "{\"type\":\"intent\",\"intent\":\"setPermissionMode\",\"mode\":\"bypassPermissions\"}"
+      },
+      "expected": {
+        "error": "unknown_intent",
+        "message": "Unknown or disallowed intent \"setPermissionMode\" (see docs/protocol.md for the allowed set)."
+      },
+      "reason": "No name grants escalation (HK-227)."
+    },
+    {
+      "name": "intent names are case-sensitive",
+      "input": {
+        "text": "{\"type\":\"intent\",\"intent\":\"Approve\"}"
+      },
+      "expected": {
+        "error": "unknown_intent",
+        "message": "Unknown or disallowed intent \"Approve\" (see docs/protocol.md for the allowed set)."
+      },
+      "reason": "Approve is not approve."
+    },
+    {
+      "name": "an intent name with a quote is named raw in the message",
+      "input": {
+        "text": "{\"type\":\"intent\",\"intent\":\"la\\\"unch\"}"
+      },
+      "expected": {
+        "error": "unknown_intent",
+        "message": "Unknown or disallowed intent \"la\"unch\" (see docs/protocol.md for the allowed set)."
+      },
+      "reason": "The name is inserted into the message as it is; JSON escaping happens when the error is encoded."
+    },
+    {
+      "name": "text is ignored for intents other than sendPrompt",
+      "input": {
+        "text": "{\"type\":\"intent\",\"intent\":\"interrupt\",\"text\":\"ignored\"}"
+      },
+      "expected": {
+        "type": "intent",
+        "intent": "interrupt"
+      },
+      "reason": "Only sendPrompt reads text."
+    },
+    {
+      "name": "ping",
+      "input": {
+        "text": "{\"type\":\"ping\"}"
+      },
+      "expected": {
+        "type": "ping"
+      },
+      "reason": "The protocol-level ping, answered with pong."
+    },
+    {
+      "name": "ping ignores extra fields",
+      "input": {
+        "text": "{\"type\":\"ping\",\"id\":17}"
+      },
+      "expected": {
+        "type": "ping"
+      },
+      "reason": "Unknown fields are ignored."
+    },
+    {
+      "name": "unknown type keeps the connection",
+      "input": {
+        "text": "{\"type\":\"mystery\"}"
+      },
+      "expected": {
+        "error": "unknown_type",
+        "message": "Unknown message type \"mystery\"."
+      },
+      "reason": "An unknown type is answered with unknown_type (ADR 0003, HK-224)."
+    },
+    {
+      "name": "an empty type is an unknown type",
+      "input": {
+        "text": "{\"type\":\"\"}"
+      },
+      "expected": {
+        "error": "unknown_type",
+        "message": "Unknown message type \"\"."
+      },
+      "reason": "The empty string is a type, just not a known one."
+    },
+    {
+      "name": "types are case-sensitive",
+      "input": {
+        "text": "{\"type\":\"Hello\",\"token\":\"t\"}"
+      },
+      "expected": {
+        "error": "unknown_type",
+        "message": "Unknown message type \"Hello\"."
+      },
+      "reason": "Hello is not hello."
+    },
+    {
+      "name": "a server message type sent by a client is unknown",
+      "input": {
+        "text": "{\"type\":\"pong\"}"
+      },
+      "expected": {
+        "error": "unknown_type",
+        "message": "Unknown message type \"pong\"."
+      },
+      "reason": "pong is a server message."
+    },
+    {
+      "name": "a type with a quote is named raw in the message",
+      "input": {
+        "text": "{\"type\":\"a\\\"b\"}"
+      },
+      "expected": {
+        "error": "unknown_type",
+        "message": "Unknown message type \"a\"b\"."
+      },
+      "reason": "The type is inserted into the message as it is."
+    },
+    {
+      "name": "an escaped type name is decoded",
+      "input": {
+        "text": "{\"type\":\"\\u0068ello\",\"token\":\"t\"}"
+      },
+      "expected": {
+        "type": "hello",
+        "token": "t"
+      },
+      "reason": "Escapes in the type are decoded before dispatch."
+    },
+    {
+      "name": "a numeric type is malformed",
+      "input": {
+        "text": "{\"type\":7}"
+      },
+      "expected": {
+        "error": "malformed",
+        "message": "Messages must be single JSON objects with a \"type\" field."
+      },
+      "reason": "type must be a string (HK-224)."
+    },
+    {
+      "name": "a null type is malformed",
+      "input": {
+        "text": "{\"type\":null}"
+      },
+      "expected": {
+        "error": "malformed",
+        "message": "Messages must be single JSON objects with a \"type\" field."
+      },
+      "reason": "type must be a string."
+    },
+    {
+      "name": "an object without type is malformed",
+      "input": {
+        "text": "{\"token\":\"t\"}"
+      },
+      "expected": {
+        "error": "malformed",
+        "message": "Messages must be single JSON objects with a \"type\" field."
+      },
+      "reason": "No type field (HK-224)."
+    },
+    {
+      "name": "an empty object is malformed",
+      "input": {
+        "text": "{}"
+      },
+      "expected": {
+        "error": "malformed",
+        "message": "Messages must be single JSON objects with a \"type\" field."
+      },
+      "reason": "No type field."
+    },
+    {
+      "name": "not JSON is malformed",
+      "input": {
+        "text": "not json"
+      },
+      "expected": {
+        "error": "malformed",
+        "message": "Messages must be single JSON objects with a \"type\" field."
+      },
+      "reason": "Garbage is malformed (HK-224)."
+    },
+    {
+      "name": "an array is malformed",
+      "input": {
+        "text": "[1,2]"
+      },
+      "expected": {
+        "error": "malformed",
+        "message": "Messages must be single JSON objects with a \"type\" field."
+      },
+      "reason": "Messages are JSON objects (HK-224)."
+    },
+    {
+      "name": "an array holding a message is malformed",
+      "input": {
+        "text": "[{\"type\":\"ping\"}]"
+      },
+      "expected": {
+        "error": "malformed",
+        "message": "Messages must be single JSON objects with a \"type\" field."
+      },
+      "reason": "Only an object at the top level."
+    },
+    {
+      "name": "an empty payload is malformed",
+      "input": {
+        "hex": ""
+      },
+      "expected": {
+        "error": "malformed",
+        "message": "Messages must be single JSON objects with a \"type\" field."
+      },
+      "reason": "An empty text frame is no message."
+    },
+    {
+      "name": "null is malformed",
+      "input": {
+        "text": "null"
+      },
+      "expected": {
+        "error": "malformed",
+        "message": "Messages must be single JSON objects with a \"type\" field."
+      },
+      "reason": "A bare scalar is no object."
+    },
+    {
+      "name": "a string is malformed",
+      "input": {
+        "text": "\"hello\""
+      },
+      "expected": {
+        "error": "malformed",
+        "message": "Messages must be single JSON objects with a \"type\" field."
+      },
+      "reason": "A bare string is no object."
+    },
+    {
+      "name": "a number is malformed",
+      "input": {
+        "text": "42"
+      },
+      "expected": {
+        "error": "malformed",
+        "message": "Messages must be single JSON objects with a \"type\" field."
+      },
+      "reason": "A bare number is no object."
+    },
+    {
+      "name": "an unclosed object is malformed",
+      "input": {
+        "text": "{\"type\":\"ping\""
+      },
+      "expected": {
+        "error": "malformed",
+        "message": "Messages must be single JSON objects with a \"type\" field."
+      },
+      "reason": "Truncated JSON."
+    },
+    {
+      "name": "trailing garbage is malformed",
+      "input": {
+        "text": "{\"type\":\"ping\"} x"
+      },
+      "expected": {
+        "error": "malformed",
+        "message": "Messages must be single JSON objects with a \"type\" field."
+      },
+      "reason": "Nothing may follow the object."
+    },
+    {
+      "name": "two objects in one frame are malformed",
+      "input": {
+        "text": "{\"type\":\"ping\"}{\"type\":\"ping\"}"
+      },
+      "expected": {
+        "error": "malformed",
+        "message": "Messages must be single JSON objects with a \"type\" field."
+      },
+      "reason": "One message per frame."
+    },
+    {
+      "name": "whitespace around the object is allowed",
+      "input": {
+        "text": " \t\r\n{\"type\":\"ping\"}\n "
+      },
+      "expected": {
+        "type": "ping"
+      },
+      "reason": "JSON whitespace around the root is fine."
+    },
+    {
+      "name": "a trailing comma is tolerated",
+      "input": {
+        "text": "{\"type\":\"ping\",}"
+      },
+      "expected": {
+        "type": "ping"
+      },
+      "reason": "Foundation accepts one trailing comma after the last member."
+    },
+    {
+      "name": "single quotes are malformed",
+      "input": {
+        "text": "{'type':'ping'}"
+      },
+      "expected": {
+        "error": "malformed",
+        "message": "Messages must be single JSON objects with a \"type\" field."
+      },
+      "reason": "JSON strings use double quotes."
+    },
+    {
+      "name": "a comment is malformed",
+      "input": {
+        "text": "{\"type\":\"ping\" /* hi */}"
+      },
+      "expected": {
+        "error": "malformed",
+        "message": "Messages must be single JSON objects with a \"type\" field."
+      },
+      "reason": "JSON has no comments."
+    },
+    {
+      "name": "a raw tab inside a string is malformed",
+      "input": {
+        "hex": "7b2274797065223a2270696e67222c2278223a22610962227d"
+      },
+      "expected": {
+        "error": "malformed",
+        "message": "Messages must be single JSON objects with a \"type\" field."
+      },
+      "reason": "Raw control characters are not allowed in JSON strings."
+    },
+    {
+      "name": "a UTF-8 byte order mark before the object is skipped",
+      "input": {
+        "hex": "efbbbf7b2274797065223a2270696e67227d"
+      },
+      "expected": {
+        "type": "ping"
+      },
+      "reason": "Foundation skips one leading UTF-8 byte order mark."
+    },
+    {
+      "name": "UTF-16LE with a byte order mark is read",
+      "input": {
+        "hex": "fffe7b002200740079007000650022003a002200700069006e00670022007d00"
+      },
+      "expected": {
+        "type": "ping"
+      },
+      "reason": "Foundation detects UTF-16 by its byte order mark and reads the text, though RFC 6455 text frames are UTF-8."
+    },
+    {
+      "name": "UTF-16BE without a byte order mark is read",
+      "input": {
+        "hex": "007b002200740079007000650022003a002200700069006e00670022007d"
+      },
+      "expected": {
+        "type": "ping"
+      },
+      "reason": "Foundation detects UTF-16 from the zero bytes and reads the text."
+    },
+    {
+      "name": "invalid UTF-8 inside a string is malformed",
+      "input": {
+        "hex": "7b2274797065223a2270696e67222c2278223a22ff227d"
+      },
+      "expected": {
+        "error": "malformed",
+        "message": "Messages must be single JSON objects with a \"type\" field."
+      },
+      "reason": "There is no separate UTF-8 step: invalid UTF-8 is malformed (close 1002), never 1007 (HK-225)."
+    },
+    {
+      "name": "invalid UTF-8 in the type",
+      "input": {
+        "hex": "7b2274797065223a227069c36e67227d"
+      },
+      "expected": {
+        "error": "malformed",
+        "message": "Messages must be single JSON objects with a \"type\" field."
+      },
+      "reason": "A truncated UTF-8 sequence in the type (HK-225)."
+    },
+    {
+      "name": "a stray 0xA9 inside a string is read",
+      "input": {
+        "hex": "7b2274797065223a2270696e67222c2278223a2261a962227d"
+      },
+      "expected": {
+        "type": "ping"
+      },
+      "reason": "Foundation reads a stray 0xA9 inside a string as U+FFFD (HK-393), so the message still reads."
+    },
+    {
+      "name": "a NUL byte after the object is malformed",
+      "input": {
+        "hex": "7b2274797065223a2270696e67227d00"
+      },
+      "expected": {
+        "error": "malformed",
+        "message": "Messages must be single JSON objects with a \"type\" field."
+      },
+      "reason": "A C string terminator is not whitespace."
+    },
+    {
+      "name": "an escaped NUL in a string is fine",
+      "input": {
+        "text": "{\"type\":\"ping\",\"x\":\"\\u0000\"}"
+      },
+      "expected": {
+        "type": "ping"
+      },
+      "reason": "\\u0000 is an ordinary character."
+    },
+    {
+      "name": "a lone surrogate escape is malformed",
+      "input": {
+        "text": "{\"type\":\"ping\",\"x\":\"\\ud800\"}"
+      },
+      "expected": {
+        "error": "malformed",
+        "message": "Messages must be single JSON objects with a \"type\" field."
+      },
+      "reason": "An unpaired surrogate escape rejects the whole message, even in a field nobody reads."
+    },
+    {
+      "name": "an overflowing number is malformed",
+      "input": {
+        "text": "{\"type\":\"ping\",\"n\":1e400}"
+      },
+      "expected": {
+        "error": "malformed",
+        "message": "Messages must be single JSON objects with a \"type\" field."
+      },
+      "reason": "A number past Double's range rejects the whole message, even in a field nobody reads."
+    },
+    {
+      "name": "a field nested 600 levels deep is malformed",
+      "input": {
+        "text": "{\"type\":\"ping\",\"x\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}"
+      },
+      "expected": {
+        "error": "malformed",
+        "message": "Messages must be single JSON objects with a \"type\" field."
+      },
+      "reason": "Foundation's nesting limit rejects the whole message, even in a field nobody reads."
+    },
+    {
+      "name": "a nested field of 100 levels is fine",
+      "input": {
+        "text": "{\"type\":\"ping\",\"x\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}"
+      },
+      "expected": {
+        "type": "ping"
+      },
+      "reason": "Ordinary nesting is no problem."
+    },
+    {
+      "name": "a long text prompt",
+      "input": {
+        "text": "{\"type\":\"intent\",\"intent\":\"sendPrompt\",\"text\":\"word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word \"}"
+      },
+      "expected": {
+        "type": "intent",
+        "intent": "sendPrompt",
+        "prompt": "word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word"
+      },
+      "reason": "A 1,000-character prompt parses and is trimmed."
+    }
+  ]
+}

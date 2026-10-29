@@ -1,0 +1,789 @@
+{
+  "description": "What PowerUp decides about one HTTP request head on its listener port (docs/protocol.md, \"Connecting\"). The head ends at the first CR LF CR LF or LF LF, whichever comes first (bare LF is tolerated, HK-254), and is read as UTF-8 with invalid bytes replaced; it splits into lines at LF, one trailing CR dropped from each. The request line splits on runs of spaces and needs a method and a target (the version is not read); the method is uppercased and the path is the target up to its first ?. A header line splits at its first colon; the name is trimmed of spaces and tabs and lowercased, the value trimmed; lines without a colon or with an empty name are skipped, and the last of two equal names wins. A request whose path is not exactly /ws is not a WebSocket request (plain HTTP handling carries on, HK-218). Otherwise, in order: a method other than GET is 405; an Upgrade value not containing websocket or a Connection value not containing upgrade (both lowercased) is 400 (HK-220); any Origin that is not empty once trimmed is 403 (HK-219); a Sec-WebSocket-Version other than exactly 13 is 426 (HK-221); a Sec-WebSocket-Key empty once trimmed is 400 (HK-222); else the upgrade is accepted with the accept key of the trimmed key (accept-key.json).",
+  "function": "RequestHead.headerBoundary(in:), RequestHead(_:) and PowerUpProtocol.upgradeDecision(method:path:header:) — input the bytes received (a bytes descriptor), expected {\"outcome\": \"incomplete\"} (no header block yet), {\"outcome\": \"unparseable\"} (no request line; the listener answers 400), {\"outcome\": \"notWebSocket\", method, path}, {\"outcome\": \"refuse\", method, path, status, reason} or {\"outcome\": \"accept\", method, path, acceptKey}",
+  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0; Tests/PowerUpTests/ProtocolFixtureTests.swift testHandshakeTable plays it through RequestHead and PowerUpProtocol.upgradeDecision(method:path:header:).",
+  "capturedAgainst": "Swift 5.9.2 Foundation and CryptoKit (Xcode 15.2) on macOS 27.2, PowerUp at 2d20afb",
+  "cases": [
+    {
+      "name": "a valid upgrade is accepted",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "accept",
+        "method": "GET",
+        "path": "/ws",
+        "acceptKey": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+      },
+      "reason": "The RFC 6455 handshake with the RFC's sample key (HK-235)."
+    },
+    {
+      "name": "bare-LF line endings are accepted",
+      "input": {
+        "text": "GET /ws HTTP/1.1\nHost: 127.0.0.1:48738\nUpgrade: websocket\nConnection: Upgrade\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\nSec-WebSocket-Version: 13\n\n"
+      },
+      "expected": {
+        "outcome": "accept",
+        "method": "GET",
+        "path": "/ws",
+        "acceptKey": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+      },
+      "reason": "Header lines may end in a bare LF: a real hook script sent them (HK-254)."
+    },
+    {
+      "name": "CRLF lines ending in a bare-LF blank line",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\n"
+      },
+      "expected": {
+        "outcome": "accept",
+        "method": "GET",
+        "path": "/ws",
+        "acceptKey": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+      },
+      "reason": "The block ends at the first LF LF; the CR left on the last line is dropped."
+    },
+    {
+      "name": "bare-LF lines ending in a CRLF blank line are not yet a header block",
+      "input": {
+        "text": "GET /ws HTTP/1.1\nHost: 127.0.0.1:48738\nUpgrade: websocket\nConnection: Upgrade\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\nSec-WebSocket-Version: 13\n\r\n"
+      },
+      "expected": {
+        "outcome": "incomplete"
+      },
+      "reason": "LF CR LF is neither terminator, so the block is still incomplete."
+    },
+    {
+      "name": "no blank line yet is incomplete",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n"
+      },
+      "expected": {
+        "outcome": "incomplete"
+      },
+      "reason": "The header block is read only once its terminator arrives."
+    },
+    {
+      "name": "one byte is incomplete",
+      "input": {
+        "hex": "0a"
+      },
+      "expected": {
+        "outcome": "incomplete"
+      },
+      "reason": "Nothing can end with fewer than two bytes."
+    },
+    {
+      "name": "a request starting with LF LF has an empty request line",
+      "input": {
+        "text": "\n\nGET /ws HTTP/1.1\r\n"
+      },
+      "expected": {
+        "outcome": "unparseable"
+      },
+      "reason": "The terminator is found at the start, so the head is empty and unparseable (answered 400)."
+    },
+    {
+      "name": "a leading LF makes the request line empty",
+      "input": {
+        "text": "\nGET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "unparseable"
+      },
+      "reason": "The first line is the request line, even when empty."
+    },
+    {
+      "name": "bytes after the header block are not part of it",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "accept",
+        "method": "GET",
+        "path": "/ws",
+        "acceptKey": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+      },
+      "reason": "A fast client's first frame may follow the handshake in the same read (HK-256); the head ends at the blank line."
+    },
+    {
+      "name": "a hook POST with bare LF is not a WebSocket request",
+      "input": {
+        "text": "POST /event HTTP/1.1\nHost: 127.0.0.1:48738\nContent-Type: application/json\nX-PowerUp-Token: t\nContent-Length: 2\n\n{}"
+      },
+      "expected": {
+        "outcome": "notWebSocket",
+        "method": "POST",
+        "path": "/event"
+      },
+      "reason": "Plain HTTP on the same port carries on (HK-218, HK-254)."
+    },
+    {
+      "name": "a CRLF hook POST is not a WebSocket request",
+      "input": {
+        "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nContent-Type: application/json\r\nX-PowerUp-Token: t\r\nContent-Length: 2\r\n\r\n{}"
+      },
+      "expected": {
+        "outcome": "notWebSocket",
+        "method": "POST",
+        "path": "/event"
+      },
+      "reason": "Plain HTTP on the same port carries on (HK-218)."
+    },
+    {
+      "name": "GET /event is not a WebSocket request",
+      "input": {
+        "text": "GET /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "notWebSocket",
+        "method": "GET",
+        "path": "/event"
+      },
+      "reason": "Only /ws upgrades (HK-218)."
+    },
+    {
+      "name": "the root path is not a WebSocket request",
+      "input": {
+        "text": "GET / HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "notWebSocket",
+        "method": "GET",
+        "path": "/"
+      },
+      "reason": "Only /ws upgrades (HK-218)."
+    },
+    {
+      "name": "a trailing slash is another path",
+      "input": {
+        "text": "GET /ws/ HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "notWebSocket",
+        "method": "GET",
+        "path": "/ws/"
+      },
+      "reason": "The path must be exactly /ws."
+    },
+    {
+      "name": "paths are case-sensitive",
+      "input": {
+        "text": "GET /WS HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "notWebSocket",
+        "method": "GET",
+        "path": "/WS"
+      },
+      "reason": "/WS is not /ws."
+    },
+    {
+      "name": "the query string is dropped",
+      "input": {
+        "text": "GET /ws?token=x HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "accept",
+        "method": "GET",
+        "path": "/ws",
+        "acceptKey": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+      },
+      "reason": "The path is what precedes the first ?; no token travels in the URL (ADR 0003)."
+    },
+    {
+      "name": "a fragment is part of the path",
+      "input": {
+        "text": "GET /ws#x HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "notWebSocket",
+        "method": "GET",
+        "path": "/ws#x"
+      },
+      "reason": "Only ? starts something the path drops."
+    },
+    {
+      "name": "an absolute target is another path",
+      "input": {
+        "text": "GET http://127.0.0.1:48738/ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "notWebSocket",
+        "method": "GET",
+        "path": "http://127.0.0.1:48738/ws"
+      },
+      "reason": "The target is not resolved."
+    },
+    {
+      "name": "a percent-encoded path is not decoded",
+      "input": {
+        "text": "GET /%77s HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "notWebSocket",
+        "method": "GET",
+        "path": "/%77s"
+      },
+      "reason": "No percent-decoding."
+    },
+    {
+      "name": "POST /ws is 405",
+      "input": {
+        "text": "POST /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "refuse",
+        "method": "POST",
+        "path": "/ws",
+        "status": 405,
+        "reason": "Method Not Allowed"
+      },
+      "reason": "Upgrade requires GET (HK-220)."
+    },
+    {
+      "name": "a lowercase method is uppercased",
+      "input": {
+        "text": "get /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "accept",
+        "method": "GET",
+        "path": "/ws",
+        "acceptKey": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+      },
+      "reason": "The method is uppercased before the check (HK-254)."
+    },
+    {
+      "name": "extra spaces in the request line",
+      "input": {
+        "text": "GET  /ws   HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "accept",
+        "method": "GET",
+        "path": "/ws",
+        "acceptKey": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+      },
+      "reason": "The request line splits on runs of spaces."
+    },
+    {
+      "name": "a request line without a version",
+      "input": {
+        "text": "GET /ws\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "accept",
+        "method": "GET",
+        "path": "/ws",
+        "acceptKey": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+      },
+      "reason": "The HTTP version is not read."
+    },
+    {
+      "name": "a tab is no separator in the request line",
+      "input": {
+        "text": "GET\t/ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "notWebSocket",
+        "method": "GET\t/WS",
+        "path": "HTTP/1.1"
+      },
+      "reason": "Only spaces separate the request line's parts."
+    },
+    {
+      "name": "a request line with one part is unparseable",
+      "input": {
+        "text": "GET\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "unparseable"
+      },
+      "reason": "A method alone is no request (answered 400)."
+    },
+    {
+      "name": "an empty head is unparseable",
+      "input": {
+        "text": "\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "unparseable"
+      },
+      "reason": "Nothing but a terminator (answered 400)."
+    },
+    {
+      "name": "a missing Upgrade header is 400",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "refuse",
+        "method": "GET",
+        "path": "/ws",
+        "status": 400,
+        "reason": "Bad Request"
+      },
+      "reason": "Upgrade must name websocket (HK-220)."
+    },
+    {
+      "name": "a missing Connection header is 400",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "refuse",
+        "method": "GET",
+        "path": "/ws",
+        "status": 400,
+        "reason": "Bad Request"
+      },
+      "reason": "Connection must contain upgrade (HK-220)."
+    },
+    {
+      "name": "Upgrade h2c is 400",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: h2c\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "refuse",
+        "method": "GET",
+        "path": "/ws",
+        "status": 400,
+        "reason": "Bad Request"
+      },
+      "reason": "Only a websocket upgrade."
+    },
+    {
+      "name": "Upgrade is matched case-insensitively",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "accept",
+        "method": "GET",
+        "path": "/ws",
+        "acceptKey": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+      },
+      "reason": "The Upgrade value is lowercased first."
+    },
+    {
+      "name": "Upgrade is matched as a substring",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: h2c, websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "accept",
+        "method": "GET",
+        "path": "/ws",
+        "acceptKey": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+      },
+      "reason": "The value need only contain websocket."
+    },
+    {
+      "name": "Connection keep-alive, Upgrade is accepted",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: keep-alive, Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "accept",
+        "method": "GET",
+        "path": "/ws",
+        "acceptKey": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+      },
+      "reason": "Firefox sends this; the value need only contain upgrade."
+    },
+    {
+      "name": "Connection matched case-insensitively",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: UPGRADE\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "accept",
+        "method": "GET",
+        "path": "/ws",
+        "acceptKey": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+      },
+      "reason": "The Connection value is lowercased first."
+    },
+    {
+      "name": "a browser Origin is 403",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nOrigin: https://evil.example\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "refuse",
+        "method": "GET",
+        "path": "/ws",
+        "status": 403,
+        "reason": "Forbidden"
+      },
+      "reason": "Any non-empty Origin is refused: cross-site WebSocket hijacking defence (HK-219)."
+    },
+    {
+      "name": "Origin null is 403",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nOrigin: null\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "refuse",
+        "method": "GET",
+        "path": "/ws",
+        "status": 403,
+        "reason": "Forbidden"
+      },
+      "reason": "The string null is a non-empty Origin."
+    },
+    {
+      "name": "a loopback Origin is 403",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nOrigin: http://127.0.0.1:48738\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "refuse",
+        "method": "GET",
+        "path": "/ws",
+        "status": 403,
+        "reason": "Forbidden"
+      },
+      "reason": "No Origin is allowed, not even our own (HK-219)."
+    },
+    {
+      "name": "an empty Origin is accepted",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nOrigin:\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "accept",
+        "method": "GET",
+        "path": "/ws",
+        "acceptKey": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+      },
+      "reason": "Only a non-empty Origin is refused."
+    },
+    {
+      "name": "a blank Origin is accepted",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nOrigin:  \t  \r\n\r\n"
+      },
+      "expected": {
+        "outcome": "accept",
+        "method": "GET",
+        "path": "/ws",
+        "acceptKey": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+      },
+      "reason": "Spaces and tabs are trimmed, leaving it empty."
+    },
+    {
+      "name": "Origin is checked after the upgrade headers",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nOrigin: https://evil.example\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "refuse",
+        "method": "GET",
+        "path": "/ws",
+        "status": 400,
+        "reason": "Bad Request"
+      },
+      "reason": "A missing Upgrade header is 400 even with an Origin."
+    },
+    {
+      "name": "Origin is checked before the version",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 8\r\nOrigin: https://evil.example\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "refuse",
+        "method": "GET",
+        "path": "/ws",
+        "status": 403,
+        "reason": "Forbidden"
+      },
+      "reason": "403, not 426 (HK-219)."
+    },
+    {
+      "name": "Origin is checked before the key",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nOrigin: https://evil.example\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "refuse",
+        "method": "GET",
+        "path": "/ws",
+        "status": 403,
+        "reason": "Forbidden"
+      },
+      "reason": "403, not 400 (HK-219)."
+    },
+    {
+      "name": "version 8 is 426",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 8\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "refuse",
+        "method": "GET",
+        "path": "/ws",
+        "status": 426,
+        "reason": "Upgrade Required"
+      },
+      "reason": "Only version 13 (HK-221)."
+    },
+    {
+      "name": "a missing version is 426",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "refuse",
+        "method": "GET",
+        "path": "/ws",
+        "status": 426,
+        "reason": "Upgrade Required"
+      },
+      "reason": "No version is not 13 (HK-221)."
+    },
+    {
+      "name": "a version list is 426",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13, 8\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "refuse",
+        "method": "GET",
+        "path": "/ws",
+        "status": 426,
+        "reason": "Upgrade Required"
+      },
+      "reason": "The value must be exactly 13."
+    },
+    {
+      "name": "version 013 is 426",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 013\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "refuse",
+        "method": "GET",
+        "path": "/ws",
+        "status": 426,
+        "reason": "Upgrade Required"
+      },
+      "reason": "Compared as text, not as a number."
+    },
+    {
+      "name": "spaces around the version are trimmed",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version:   13  \r\n\r\n"
+      },
+      "expected": {
+        "outcome": "accept",
+        "method": "GET",
+        "path": "/ws",
+        "acceptKey": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+      },
+      "reason": "Header values are trimmed of spaces and tabs."
+    },
+    {
+      "name": "a version ending in CR CR LF keeps one CR",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\r\nX-After: 1\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "refuse",
+        "method": "GET",
+        "path": "/ws",
+        "status": 426,
+        "reason": "Upgrade Required"
+      },
+      "reason": "Only one CR is dropped from a line, and CR is not trimmed from a value, so the version reads as 13 plus CR."
+    },
+    {
+      "name": "a missing key is 400",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "refuse",
+        "method": "GET",
+        "path": "/ws",
+        "status": 400,
+        "reason": "Bad Request"
+      },
+      "reason": "The key is required (HK-222)."
+    },
+    {
+      "name": "a blank key is 400",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key:    \r\nSec-WebSocket-Version: 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "refuse",
+        "method": "GET",
+        "path": "/ws",
+        "status": 400,
+        "reason": "Bad Request"
+      },
+      "reason": "A key trimmed to nothing is no key (HK-222)."
+    },
+    {
+      "name": "the key is trimmed",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: \t dGhlIHNhbXBsZSBub25jZQ== \r\nSec-WebSocket-Version: 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "accept",
+        "method": "GET",
+        "path": "/ws",
+        "acceptKey": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+      },
+      "reason": "The trimmed key is what is hashed (HK-222)."
+    },
+    {
+      "name": "the key is not checked as base64",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: x\r\nSec-WebSocket-Version: 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "accept",
+        "method": "GET",
+        "path": "/ws",
+        "acceptKey": "JVxkmtKFjDcI/Pm/AGPEKSN6wT8="
+      },
+      "reason": "Any non-blank key is hashed."
+    },
+    {
+      "name": "header names are case-insensitive",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHOST: 127.0.0.1:48738\r\nUPGRADE: websocket\r\nCONNECTION: Upgrade\r\nSEC-WEBSOCKET-KEY: dGhlIHNhbXBsZSBub25jZQ==\r\nSEC-WEBSOCKET-VERSION: 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "accept",
+        "method": "GET",
+        "path": "/ws",
+        "acceptKey": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+      },
+      "reason": "Names are lowercased (HK-254)."
+    },
+    {
+      "name": "spaces around a header name are trimmed",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost : 127.0.0.1:48738\r\nUpgrade : websocket\r\nConnection : Upgrade\r\nSec-WebSocket-Key : dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version : 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "accept",
+        "method": "GET",
+        "path": "/ws",
+        "acceptKey": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+      },
+      "reason": "Names are trimmed of spaces and tabs."
+    },
+    {
+      "name": "a header value may hold colons",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nX-Note: a:b:c\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "accept",
+        "method": "GET",
+        "path": "/ws",
+        "acceptKey": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+      },
+      "reason": "Only the first colon separates name and value."
+    },
+    {
+      "name": "of two version headers the last wins",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Version: 8\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "refuse",
+        "method": "GET",
+        "path": "/ws",
+        "status": 426,
+        "reason": "Upgrade Required"
+      },
+      "reason": "A repeated header replaces the earlier one."
+    },
+    {
+      "name": "a later good version replaces a bad one",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 8\r\nSec-WebSocket-Version: 13\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "accept",
+        "method": "GET",
+        "path": "/ws",
+        "acceptKey": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+      },
+      "reason": "A repeated header replaces the earlier one."
+    },
+    {
+      "name": "a line without a colon is skipped",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\ngarbage line\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "accept",
+        "method": "GET",
+        "path": "/ws",
+        "acceptKey": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+      },
+      "reason": "Lines without a colon are ignored."
+    },
+    {
+      "name": "a header with an empty name is skipped",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n: nameless\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "accept",
+        "method": "GET",
+        "path": "/ws",
+        "acceptKey": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+      },
+      "reason": "Lines with an empty name are ignored."
+    },
+    {
+      "name": "a folded header line is not joined",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nUpgrade:\r\n websocket\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "refuse",
+        "method": "GET",
+        "path": "/ws",
+        "status": 400,
+        "reason": "Bad Request"
+      },
+      "reason": "No obsolete line folding: the continuation has no colon and is skipped, so Upgrade is empty."
+    },
+    {
+      "name": "invalid UTF-8 in a header value does not stop the parse",
+      "input": {
+        "hex": "474554202f777320485454502f312e310d0a486f73743a203132372e302e302e313a34383733380d0a557067726164653a20776562736f636b65740d0a436f6e6e656374696f6e3a20557067726164650d0a5365632d576562536f636b65742d4b65793a206447686c49484e68625842735a5342756232356a5a513d3d0d0a5365632d576562536f636b65742d56657273696f6e3a2031330d0a582d4a756e6b3a20ff0d0a0d0a"
+      },
+      "expected": {
+        "outcome": "accept",
+        "method": "GET",
+        "path": "/ws",
+        "acceptKey": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+      },
+      "reason": "The head is read as UTF-8 with invalid bytes replaced."
+    },
+    {
+      "name": "a Kelvin sign in a header name lowercases to k",
+      "input": {
+        "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"
+      },
+      "expected": {
+        "outcome": "accept",
+        "method": "GET",
+        "path": "/ws",
+        "acceptKey": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+      },
+      "reason": "Names are lowercased by Unicode rules: U+212A KELVIN SIGN becomes k."
+    }
+  ]
+}

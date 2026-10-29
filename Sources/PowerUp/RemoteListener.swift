@@ -504,7 +504,7 @@ private final class HookConnection: @unchecked Sendable {
 
     private func process() {
         if head == nil {
-            guard let boundary = HookConnection.headerBoundary(in: buffer) else {
+            guard let boundary = RequestHead.headerBoundary(in: buffer) else {
                 if buffer.count > maxHeaderBytes {
                     respond(status: 431, reason: "Request Header Fields Too Large")
                 }
@@ -738,24 +738,6 @@ private final class HookConnection: @unchecked Sendable {
 
     // MARK: Parsing helpers
 
-    /// Finds the end of the header block, tolerating bare-LF line endings.
-    private static func headerBoundary(in data: Data) -> (headerEnd: Int, bodyStart: Int)? {
-        let bytes = [UInt8](data)
-        guard bytes.count >= 2 else { return nil }
-        var index = 0
-        while index + 1 < bytes.count {
-            if bytes[index] == 0x0D, index + 3 < bytes.count,
-               bytes[index + 1] == 0x0A, bytes[index + 2] == 0x0D, bytes[index + 3] == 0x0A {
-                return (index, index + 4)
-            }
-            if bytes[index] == 0x0A, bytes[index + 1] == 0x0A {
-                return (index, index + 2)
-            }
-            index += 1
-        }
-        return nil
-    }
-
     /// Maps a hook payload to an event. Anything unexpected yields nil, which
     /// the caller treats as "answer 204 and forget it".
     private static func event(from body: Data) -> RemoteHookEvent? {
@@ -801,11 +783,31 @@ private final class HookConnection: @unchecked Sendable {
 
 // MARK: - RequestHead
 
-/// The request line plus headers of one HTTP request.
-private struct RequestHead {
+/// The request line plus headers of one HTTP request. Internal (not
+/// private) only so `ProtocolFixtureTests` can play the handshake table
+/// through it.
+struct RequestHead {
     let method: String
     let path: String
     private let headers: [String: String]   // lowercased names
+
+    /// Finds the end of the header block, tolerating bare-LF line endings.
+    static func headerBoundary(in data: Data) -> (headerEnd: Int, bodyStart: Int)? {
+        let bytes = [UInt8](data)
+        guard bytes.count >= 2 else { return nil }
+        var index = 0
+        while index + 1 < bytes.count {
+            if bytes[index] == 0x0D, index + 3 < bytes.count,
+               bytes[index + 1] == 0x0A, bytes[index + 2] == 0x0D, bytes[index + 3] == 0x0A {
+                return (index, index + 4)
+            }
+            if bytes[index] == 0x0A, bytes[index + 1] == 0x0A {
+                return (index, index + 2)
+            }
+            index += 1
+        }
+        return nil
+    }
 
     init?(_ data: Data) {
         let text = String(decoding: data, as: UTF8.self)

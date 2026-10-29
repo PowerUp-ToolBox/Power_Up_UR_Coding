@@ -36,6 +36,7 @@ fn every_case_table_loads() {
         "transcript",
         "hooks",
         "speech",
+        "protocol",
     ] {
         let files = json_files(area);
         assert!(!files.is_empty(), "no case tables in {area}/");
@@ -81,6 +82,7 @@ fn every_fixture_is_a_known_format() {
                         | "transcript"
                         | "hooks"
                         | "speech"
+                        | "protocol"
                 )
             ),
             "{}: unknown fixture area; teach tests/support how to load it",

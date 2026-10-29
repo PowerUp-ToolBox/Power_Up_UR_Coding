@@ -252,6 +252,38 @@ enum FixtureLine {
     }
 }
 
+/// A bytes descriptor (`protocol/`): `{"hex": "<bytes>"}`, `{"text":
+/// "<string>"}` (its UTF-8), `{"hex": "<bytes>", "times": <n>}` (those bytes
+/// n times over), or a list of these, joined in order.
+enum FixtureBytes {
+    static func data(_ descriptor: JSONValue) throws -> Data {
+        switch descriptor {
+        case .array(let parts):
+            return try parts.reduce(into: Data()) { $0.append(try data($1)) }
+        case .object(let fields):
+            if let text = fields["text"]?.stringValue, fields.count == 1 { return Data(text.utf8) }
+            guard let hex = fields["hex"]?.stringValue else { break }
+            var times = 1
+            if let count = fields["times"] {
+                guard case .integer(let value) = count, value >= 0, fields.count == 2 else { break }
+                times = Int(value)
+            } else if fields.count != 1 {
+                break
+            }
+            let once = try FixtureLine.bytes(.object(["hex": .string(hex)]))
+            return Data(repeatElement(once, count: times).joined())
+        default:
+            break
+        }
+        throw FixtureValueError(description: "not a bytes descriptor: \(descriptor)")
+    }
+
+    /// `{"hex": <lowercase hex>}`, the form actual values are compared in.
+    static func descriptor(_ data: Data) -> JSONValue {
+        .object(["hex": .string(data.map { String(format: "%02x", $0) }.joined())])
+    }
+}
+
 extension HarnessEvent {
     /// The `harnessEvent` shape of `session/` scenarios, tagged by `type`,
     /// with every optional field written (`null` when absent). Exhaustive,

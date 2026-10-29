@@ -1,0 +1,1110 @@
+{
+  "description": "Server-side RFC 6455 frame decoding with PowerUp's v0 limits (docs/protocol.md, \"Framing\"). From the start of the buffer, while at least two bytes remain: RSV bits must be zero (HK-237), the opcode must be continuation, text, binary, close, ping or pong (HK-239), the mask bit must be set (HK-236); a control frame (close, ping, pong) must be final with a 7-bit length of at most 125, a data frame final and not a continuation (HK-238). A 7-bit length of 126 is followed by a 2-byte big-endian length and 127 by an 8-byte one (HK-241); non-minimal encodings are accepted. Each check is made as soon as its bytes are present, the length against maxPayload before any conversion (HK-240), and before the payload arrives. A frame is decoded only once its 4-byte mask key and whole payload are present, the payload XORed with the key; a trailing partial frame stays in the buffer (HK-242). Any violation refuses the whole buffer: no frame of it is returned and nothing is consumed. The listener decodes with maxPayload 1,048,576.",
+  "function": "WebSocketFraming.decodeFrames(from:maxPayload:) — input {buffer, maxPayload} (buffer a bytes descriptor), expected {\"frames\": [{\"opcode\", \"payload\"}], \"remaining\"} (payload and remaining bytes descriptors; remaining is the buffer after the call) or {\"error\": \"protocolViolation\"}",
+  "verifiedBy": "DESIGN.md v1.7; RFC 6455 section 5; Tests/PowerUpTests/ProtocolFixtureTests.swift testFrameDecodeTable plays it through WebSocketFraming.decodeFrames(from:maxPayload:).",
+  "capturedAgainst": "Swift 5.9.2 Foundation and CryptoKit (Xcode 15.2) on macOS 27.2, PowerUp at 2d20afb",
+  "cases": [
+    {
+      "name": "a small text frame",
+      "input": {
+        "buffer": {
+          "hex": "818f112233446a00473d6147117e33525a2a76004e"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "frames": [
+          {
+            "opcode": "text",
+            "payload": {
+              "text": "{\"type\":\"ping\"}"
+            }
+          }
+        ],
+        "remaining": {
+          "hex": ""
+        }
+      },
+      "reason": "The common case: one masked, final text frame (HK-236)."
+    },
+    {
+      "name": "an empty text frame",
+      "input": {
+        "buffer": {
+          "hex": "818011223344"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "frames": [
+          {
+            "opcode": "text",
+            "payload": {
+              "hex": ""
+            }
+          }
+        ],
+        "remaining": {
+          "hex": ""
+        }
+      },
+      "reason": "A zero-length payload is a frame."
+    },
+    {
+      "name": "a 125-byte frame uses the 7-bit length",
+      "input": {
+        "buffer": [
+          {
+            "hex": "81fd11223344"
+          },
+          {
+            "hex": "70435225",
+            "times": 31
+          },
+          {
+            "hex": "70"
+          }
+        ],
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "frames": [
+          {
+            "opcode": "text",
+            "payload": {
+              "hex": "61",
+              "times": 125
+            }
+          }
+        ],
+        "remaining": {
+          "hex": ""
+        }
+      },
+      "reason": "125 is the largest 7-bit length."
+    },
+    {
+      "name": "a 126-byte frame uses the 16-bit length",
+      "input": {
+        "buffer": [
+          {
+            "hex": "81fe007e11223344"
+          },
+          {
+            "hex": "70435225",
+            "times": 31
+          },
+          {
+            "hex": "7043"
+          }
+        ],
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "frames": [
+          {
+            "opcode": "text",
+            "payload": {
+              "hex": "61",
+              "times": 126
+            }
+          }
+        ],
+        "remaining": {
+          "hex": ""
+        }
+      },
+      "reason": "Length marker 126 means a 2-byte big-endian length (HK-241)."
+    },
+    {
+      "name": "a 300-byte frame",
+      "input": {
+        "buffer": [
+          {
+            "hex": "81fe012c11223344"
+          },
+          {
+            "hex": "70435225",
+            "times": 75
+          }
+        ],
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "frames": [
+          {
+            "opcode": "text",
+            "payload": {
+              "hex": "61",
+              "times": 300
+            }
+          }
+        ],
+        "remaining": {
+          "hex": ""
+        }
+      },
+      "reason": "The 16-bit form (HK-241)."
+    },
+    {
+      "name": "a 65535-byte frame",
+      "input": {
+        "buffer": [
+          {
+            "hex": "81feffff11223344"
+          },
+          {
+            "hex": "70435225",
+            "times": 16383
+          },
+          {
+            "hex": "704352"
+          }
+        ],
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "frames": [
+          {
+            "opcode": "text",
+            "payload": {
+              "hex": "61",
+              "times": 65535
+            }
+          }
+        ],
+        "remaining": {
+          "hex": ""
+        }
+      },
+      "reason": "The largest 16-bit length."
+    },
+    {
+      "name": "a 65536-byte frame uses the 64-bit length",
+      "input": {
+        "buffer": [
+          {
+            "hex": "81ff000000000001000011223344"
+          },
+          {
+            "hex": "70435225",
+            "times": 16384
+          }
+        ],
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "frames": [
+          {
+            "opcode": "text",
+            "payload": {
+              "hex": "61",
+              "times": 65536
+            }
+          }
+        ],
+        "remaining": {
+          "hex": ""
+        }
+      },
+      "reason": "Length marker 127 means an 8-byte big-endian length (HK-241)."
+    },
+    {
+      "name": "a 70000-byte binary frame",
+      "input": {
+        "buffer": [
+          {
+            "hex": "82ff000000000001117011223344"
+          },
+          {
+            "hex": "73405126",
+            "times": 17500
+          }
+        ],
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "frames": [
+          {
+            "opcode": "binary",
+            "payload": {
+              "hex": "62",
+              "times": 70000
+            }
+          }
+        ],
+        "remaining": {
+          "hex": ""
+        }
+      },
+      "reason": "Binary frames decode too; the listener answers them with close 1003."
+    },
+    {
+      "name": "a ping with a payload",
+      "input": {
+        "buffer": {
+          "hex": "898311223344704050"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "frames": [
+          {
+            "opcode": "ping",
+            "payload": {
+              "text": "abc"
+            }
+          }
+        ],
+        "remaining": {
+          "hex": ""
+        }
+      },
+      "reason": "Control frames decode with their payload; the pong echoes it (HK-258)."
+    },
+    {
+      "name": "an empty ping",
+      "input": {
+        "buffer": {
+          "hex": "898011223344"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "frames": [
+          {
+            "opcode": "ping",
+            "payload": {
+              "hex": ""
+            }
+          }
+        ],
+        "remaining": {
+          "hex": ""
+        }
+      },
+      "reason": "A ping need not carry a payload."
+    },
+    {
+      "name": "a pong",
+      "input": {
+        "buffer": {
+          "hex": "8a8311223344704050"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "frames": [
+          {
+            "opcode": "pong",
+            "payload": {
+              "text": "abc"
+            }
+          }
+        ],
+        "remaining": {
+          "hex": ""
+        }
+      },
+      "reason": "Unsolicited pongs decode and are ignored by the listener."
+    },
+    {
+      "name": "a close with a code and reason",
+      "input": {
+        "buffer": {
+          "hex": "88851122334412ca513d74"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "frames": [
+          {
+            "opcode": "close",
+            "payload": {
+              "hex": "03e8627965"
+            }
+          }
+        ],
+        "remaining": {
+          "hex": ""
+        }
+      },
+      "reason": "The close payload is not interpreted."
+    },
+    {
+      "name": "an empty close",
+      "input": {
+        "buffer": {
+          "hex": "888011223344"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "frames": [
+          {
+            "opcode": "close",
+            "payload": {
+              "hex": ""
+            }
+          }
+        ],
+        "remaining": {
+          "hex": ""
+        }
+      },
+      "reason": "A close without a code."
+    },
+    {
+      "name": "a close with a one-byte payload",
+      "input": {
+        "buffer": {
+          "hex": "88811122334412"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "frames": [
+          {
+            "opcode": "close",
+            "payload": {
+              "hex": "03"
+            }
+          }
+        ],
+        "remaining": {
+          "hex": ""
+        }
+      },
+      "reason": "The close payload is not validated."
+    },
+    {
+      "name": "a 125-byte ping is allowed",
+      "input": {
+        "buffer": [
+          {
+            "hex": "89fd11223344"
+          },
+          {
+            "hex": "61524334",
+            "times": 31
+          },
+          {
+            "hex": "61"
+          }
+        ],
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "frames": [
+          {
+            "opcode": "ping",
+            "payload": {
+              "hex": "70",
+              "times": 125
+            }
+          }
+        ],
+        "remaining": {
+          "hex": ""
+        }
+      },
+      "reason": "Control frames may carry up to 125 bytes (HK-238)."
+    },
+    {
+      "name": "a 126-byte ping is refused",
+      "input": {
+        "buffer": [
+          {
+            "hex": "89fe007e11223344"
+          },
+          {
+            "hex": "61524334",
+            "times": 31
+          },
+          {
+            "hex": "6152"
+          }
+        ],
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "error": "protocolViolation"
+      },
+      "reason": "A control frame over 125 bytes is a violation (HK-238)."
+    },
+    {
+      "name": "a ping with the 16-bit length form is refused",
+      "input": {
+        "buffer": {
+          "hex": "89fe0005112233446152433461"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "error": "protocolViolation"
+      },
+      "reason": "Control frames must use the 7-bit length."
+    },
+    {
+      "name": "a continuation frame is refused",
+      "input": {
+        "buffer": {
+          "hex": "80811122334469"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "error": "protocolViolation"
+      },
+      "reason": "v0 forbids fragmentation, so a continuation opcode is a violation (HK-238)."
+    },
+    {
+      "name": "a non-final text frame is refused",
+      "input": {
+        "buffer": {
+          "hex": "01811122334469"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "error": "protocolViolation"
+      },
+      "reason": "v0 forbids fragmentation (HK-238)."
+    },
+    {
+      "name": "a non-final ping is refused",
+      "input": {
+        "buffer": {
+          "hex": "09811122334469"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "error": "protocolViolation"
+      },
+      "reason": "Control frames must be final (HK-238)."
+    },
+    {
+      "name": "RSV1 is refused",
+      "input": {
+        "buffer": {
+          "hex": "c1811122334469"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "error": "protocolViolation"
+      },
+      "reason": "No extension is negotiated (HK-237)."
+    },
+    {
+      "name": "RSV2 is refused",
+      "input": {
+        "buffer": {
+          "hex": "a1811122334469"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "error": "protocolViolation"
+      },
+      "reason": "No extension is negotiated (HK-237)."
+    },
+    {
+      "name": "RSV3 is refused",
+      "input": {
+        "buffer": {
+          "hex": "91811122334469"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "error": "protocolViolation"
+      },
+      "reason": "No extension is negotiated (HK-237)."
+    },
+    {
+      "name": "opcode 0x3 is refused",
+      "input": {
+        "buffer": {
+          "hex": "838011223344"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "error": "protocolViolation"
+      },
+      "reason": "Unknown opcodes are violations (HK-239)."
+    },
+    {
+      "name": "opcode 0x7 is refused",
+      "input": {
+        "buffer": {
+          "hex": "878011223344"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "error": "protocolViolation"
+      },
+      "reason": "Unknown opcodes are violations (HK-239)."
+    },
+    {
+      "name": "opcode 0xB is refused",
+      "input": {
+        "buffer": {
+          "hex": "8b8011223344"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "error": "protocolViolation"
+      },
+      "reason": "Unknown opcodes are violations (HK-239)."
+    },
+    {
+      "name": "opcode 0xF is refused",
+      "input": {
+        "buffer": {
+          "hex": "8f8011223344"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "error": "protocolViolation"
+      },
+      "reason": "Unknown opcodes are violations (HK-239)."
+    },
+    {
+      "name": "an unmasked text frame is refused",
+      "input": {
+        "buffer": {
+          "hex": "81046e6f7065"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "error": "protocolViolation"
+      },
+      "reason": "Client frames must be masked (HK-236)."
+    },
+    {
+      "name": "an unmasked close is refused",
+      "input": {
+        "buffer": {
+          "hex": "880203e8"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "error": "protocolViolation"
+      },
+      "reason": "Even a close must be masked."
+    },
+    {
+      "name": "two frames in one chunk",
+      "input": {
+        "buffer": {
+          "hex": "8183112233447e4c5681831122334465555c"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "frames": [
+          {
+            "opcode": "text",
+            "payload": {
+              "text": "one"
+            }
+          },
+          {
+            "opcode": "text",
+            "payload": {
+              "text": "two"
+            }
+          }
+        ],
+        "remaining": {
+          "hex": ""
+        }
+      },
+      "reason": "Several complete frames in one chunk all decode (HK-242)."
+    },
+    {
+      "name": "a text, a ping and a close in one chunk",
+      "input": {
+        "buffer": {
+          "hex": "818211223344794b89801122334488821122334412ca"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "frames": [
+          {
+            "opcode": "text",
+            "payload": {
+              "text": "hi"
+            }
+          },
+          {
+            "opcode": "ping",
+            "payload": {
+              "hex": ""
+            }
+          },
+          {
+            "opcode": "close",
+            "payload": {
+              "hex": "03e8"
+            }
+          }
+        ],
+        "remaining": {
+          "hex": ""
+        }
+      },
+      "reason": "Frames decode in order."
+    },
+    {
+      "name": "no bytes",
+      "input": {
+        "buffer": {
+          "hex": ""
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "frames": [],
+        "remaining": {
+          "hex": ""
+        }
+      },
+      "reason": "Nothing to decode."
+    },
+    {
+      "name": "one byte waits",
+      "input": {
+        "buffer": {
+          "hex": "81"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "frames": [],
+        "remaining": {
+          "hex": "81"
+        }
+      },
+      "reason": "A frame header needs two bytes (HK-242)."
+    },
+    {
+      "name": "a five-byte prefix waits",
+      "input": {
+        "buffer": {
+          "hex": "818b112233"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "frames": [],
+        "remaining": {
+          "hex": "818b112233"
+        }
+      },
+      "reason": "A partial frame stays in the buffer (HK-242)."
+    },
+    {
+      "name": "a frame missing its last byte waits",
+      "input": {
+        "buffer": {
+          "hex": "818b1122334479475f287e02442b634e"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "frames": [],
+        "remaining": {
+          "hex": "818b1122334479475f287e02442b634e"
+        }
+      },
+      "reason": "The payload must be complete."
+    },
+    {
+      "name": "a 16-bit header without its length waits",
+      "input": {
+        "buffer": {
+          "hex": "81fe01"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "frames": [],
+        "remaining": {
+          "hex": "81fe01"
+        }
+      },
+      "reason": "The header is parsed only once all its bytes are present (HK-241)."
+    },
+    {
+      "name": "a 64-bit header without its length waits",
+      "input": {
+        "buffer": {
+          "hex": "81ff00000000000100"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "frames": [],
+        "remaining": {
+          "hex": "81ff00000000000100"
+        }
+      },
+      "reason": "The header is parsed only once all its bytes are present (HK-241)."
+    },
+    {
+      "name": "a frame whose mask key is split waits",
+      "input": {
+        "buffer": {
+          "hex": "818b1122"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "frames": [],
+        "remaining": {
+          "hex": "818b1122"
+        }
+      },
+      "reason": "The mask key may arrive in the next chunk."
+    },
+    {
+      "name": "a complete frame and a partial one",
+      "input": {
+        "buffer": {
+          "hex": "8183112233447e4c56818b112233"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "frames": [
+          {
+            "opcode": "text",
+            "payload": {
+              "text": "one"
+            }
+          }
+        ],
+        "remaining": {
+          "hex": "818b112233"
+        }
+      },
+      "reason": "The complete frame decodes and the partial one stays (HK-242)."
+    },
+    {
+      "name": "a valid frame before a bad one",
+      "input": {
+        "buffer": {
+          "hex": "8183112233447e4c56c1811122334469"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "error": "protocolViolation"
+      },
+      "reason": "Pins whether frames decoded before a violation in the same chunk survive."
+    },
+    {
+      "name": "a 100-byte payload at a 100-byte limit",
+      "input": {
+        "buffer": [
+          {
+            "hex": "81e411223344"
+          },
+          {
+            "hex": "6b58493e",
+            "times": 25
+          }
+        ],
+        "maxPayload": 100
+      },
+      "expected": {
+        "frames": [
+          {
+            "opcode": "text",
+            "payload": {
+              "hex": "7a",
+              "times": 100
+            }
+          }
+        ],
+        "remaining": {
+          "hex": ""
+        }
+      },
+      "reason": "A payload exactly at the limit is accepted."
+    },
+    {
+      "name": "a 101-byte payload over a 100-byte limit",
+      "input": {
+        "buffer": [
+          {
+            "hex": "81e511223344"
+          },
+          {
+            "hex": "6b58493e",
+            "times": 25
+          },
+          {
+            "hex": "6b"
+          }
+        ],
+        "maxPayload": 100
+      },
+      "expected": {
+        "error": "protocolViolation"
+      },
+      "reason": "A payload over the limit is a violation."
+    },
+    {
+      "name": "a 2048-byte payload over a 1024-byte limit",
+      "input": {
+        "buffer": [
+          {
+            "hex": "81fe0800"
+          },
+          {
+            "hex": "11223344",
+            "times": 513
+          }
+        ],
+        "maxPayload": 1024
+      },
+      "expected": {
+        "error": "protocolViolation"
+      },
+      "reason": "The payload ceiling (HK-259)."
+    },
+    {
+      "name": "an oversized 16-bit length is refused before the payload arrives",
+      "input": {
+        "buffer": {
+          "hex": "81fe0800"
+        },
+        "maxPayload": 1024
+      },
+      "expected": {
+        "error": "protocolViolation"
+      },
+      "reason": "The ceiling is checked as soon as the length is known."
+    },
+    {
+      "name": "an oversized 64-bit length is refused before the payload arrives",
+      "input": {
+        "buffer": {
+          "hex": "81ff0000000000100001"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "error": "protocolViolation"
+      },
+      "reason": "The ceiling is checked on the 64-bit length (HK-240)."
+    },
+    {
+      "name": "a 64-bit length at the limit waits for its payload",
+      "input": {
+        "buffer": {
+          "hex": "81ff000000000010000011223344"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "frames": [],
+        "remaining": {
+          "hex": "81ff000000000010000011223344"
+        }
+      },
+      "reason": "A length exactly at the limit is accepted and the payload awaited."
+    },
+    {
+      "name": "a 64-bit length with the top bit set is refused",
+      "input": {
+        "buffer": {
+          "hex": "81ff8000000000000000"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "error": "protocolViolation"
+      },
+      "reason": "A hostile length is compared before any conversion, so it cannot overflow (HK-240)."
+    },
+    {
+      "name": "the largest 64-bit length is refused",
+      "input": {
+        "buffer": {
+          "hex": "81ffffffffffffffffff"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "error": "protocolViolation"
+      },
+      "reason": "A hostile length cannot overflow (HK-240)."
+    },
+    {
+      "name": "a 16-bit length below 126 is accepted",
+      "input": {
+        "buffer": {
+          "hex": "81fe000511223344624a5c3665"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "frames": [
+          {
+            "opcode": "text",
+            "payload": {
+              "text": "short"
+            }
+          }
+        ],
+        "remaining": {
+          "hex": ""
+        }
+      },
+      "reason": "Non-minimal length encodings are not refused."
+    },
+    {
+      "name": "a 64-bit length below 126 is accepted",
+      "input": {
+        "buffer": {
+          "hex": "81ff000000000000000511223344624a5c3665"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "frames": [
+          {
+            "opcode": "text",
+            "payload": {
+              "text": "short"
+            }
+          }
+        ],
+        "remaining": {
+          "hex": ""
+        }
+      },
+      "reason": "Non-minimal length encodings are not refused."
+    },
+    {
+      "name": "a zero limit allows an empty frame",
+      "input": {
+        "buffer": {
+          "hex": "818011223344"
+        },
+        "maxPayload": 0
+      },
+      "expected": {
+        "frames": [
+          {
+            "opcode": "text",
+            "payload": {
+              "hex": ""
+            }
+          }
+        ],
+        "remaining": {
+          "hex": ""
+        }
+      },
+      "reason": "A zero-length payload fits any limit."
+    },
+    {
+      "name": "a zero limit refuses one byte",
+      "input": {
+        "buffer": {
+          "hex": "81811122334469"
+        },
+        "maxPayload": 0
+      },
+      "expected": {
+        "error": "protocolViolation"
+      },
+      "reason": "One byte is over a zero limit."
+    },
+    {
+      "name": "a bad first byte is refused with only two bytes",
+      "input": {
+        "buffer": {
+          "hex": "0181"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "error": "protocolViolation"
+      },
+      "reason": "Header violations are found as soon as two bytes are present."
+    },
+    {
+      "name": "an unmasked header is refused with only two bytes",
+      "input": {
+        "buffer": {
+          "hex": "8104"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "error": "protocolViolation"
+      },
+      "reason": "Header violations are found as soon as two bytes are present."
+    },
+    {
+      "name": "a zero mask key leaves the payload as sent",
+      "input": {
+        "buffer": {
+          "hex": "818500000000706c61696e"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "frames": [
+          {
+            "opcode": "text",
+            "payload": {
+              "text": "plain"
+            }
+          }
+        ],
+        "remaining": {
+          "hex": ""
+        }
+      },
+      "reason": "Unmasking XORs with the key."
+    },
+    {
+      "name": "a text payload that is not UTF-8 decodes",
+      "input": {
+        "buffer": {
+          "hex": "818211223344eedc"
+        },
+        "maxPayload": 1048576
+      },
+      "expected": {
+        "frames": [
+          {
+            "opcode": "text",
+            "payload": {
+              "hex": "fffe"
+            }
+          }
+        ],
+        "remaining": {
+          "hex": ""
+        }
+      },
+      "reason": "Frames are bytes; UTF-8 is never checked here (HK-225)."
+    }
+  ]
+}

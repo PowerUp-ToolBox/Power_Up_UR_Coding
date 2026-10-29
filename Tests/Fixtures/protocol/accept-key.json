@@ -1,0 +1,104 @@
+{
+  "description": "Sec-WebSocket-Accept for a client's Sec-WebSocket-Key (RFC 6455 section 4.2.2, HK-235): the standard base64 (with = padding) of the SHA-1 digest of the key's UTF-8 bytes followed by the GUID 258EAFA5-E914-47DA-95CA-C5AB0DC85B11. The key is hashed as given (the handshake trims it first, handshake.json); it is never checked as base64 or for length. The lengths around 55, 56 and 64 bytes cover SHA-1's padding.",
+  "function": "WebSocketFraming.acceptKey(forClientKey:) — input the key, expected the accept value",
+  "verifiedBy": "DESIGN.md v1.7; RFC 6455; Tests/PowerUpTests/ProtocolFixtureTests.swift testAcceptKeyTable plays it through WebSocketFraming.acceptKey(forClientKey:).",
+  "capturedAgainst": "Swift 5.9.2 Foundation and CryptoKit (Xcode 15.2) on macOS 27.2, PowerUp at 2d20afb",
+  "cases": [
+    {
+      "name": "the RFC 6455 sample key",
+      "input": "dGhlIHNhbXBsZSBub25jZQ==",
+      "expected": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=",
+      "reason": "The worked example of RFC 6455 section 1.3 (HK-235)."
+    },
+    {
+      "name": "the RFC 6455 section 4.2.2 key",
+      "input": "x3JJHMbDL1EzLkh9GBhXDw==",
+      "expected": "HSmrc0sMlYUkAGmm5OPpG2HaGWk=",
+      "reason": "A second published example."
+    },
+    {
+      "name": "an empty key",
+      "input": "",
+      "expected": "Kfh9QIsMVZcl6xEPYxPHzW8SZ8w=",
+      "reason": "The handshake never hashes an empty key, but the function is total."
+    },
+    {
+      "name": "a one-character key",
+      "input": "x",
+      "expected": "JVxkmtKFjDcI/Pm/AGPEKSN6wT8=",
+      "reason": "The key is not checked as base64."
+    },
+    {
+      "name": "a key with spaces inside",
+      "input": "a b c",
+      "expected": "vyySYHx6uV2hsvIMZKTylrr/hmw=",
+      "reason": "Inner spaces are part of the key."
+    },
+    {
+      "name": "a key with padding inside",
+      "input": "ab==cd",
+      "expected": "jmWyXGMmSCDLEeUzYfrG9skp068=",
+      "reason": "The key is hashed as text."
+    },
+    {
+      "name": "a non-ASCII key",
+      "input": "ключ🔑",
+      "expected": "VTQk24Dt0coV6Zn2EA4Dx7Ar6j8=",
+      "reason": "The key's UTF-8 bytes are hashed."
+    },
+    {
+      "name": "a 19-byte key",
+      "input": "kkkkkkkkkkkkkkkkkkk",
+      "expected": "tWclcP21hrR+xgjYVswtQRW71GQ=",
+      "reason": "SHA-1 padding: key plus GUID is 55 bytes: the padding fits one SHA-1 block."
+    },
+    {
+      "name": "a 20-byte key",
+      "input": "kkkkkkkkkkkkkkkkkkkk",
+      "expected": "tSsjsIAvEVIQ+IC5K8+T/OkG8nU=",
+      "reason": "SHA-1 padding: key plus GUID is 56 bytes: the length spills into a second block."
+    },
+    {
+      "name": "a 27-byte key",
+      "input": "kkkkkkkkkkkkkkkkkkkkkkkkkkk",
+      "expected": "qUNe7W8rvas6tQS5F4QBTf/JpvE=",
+      "reason": "SHA-1 padding: key plus GUID is 63 bytes."
+    },
+    {
+      "name": "a 28-byte key",
+      "input": "kkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+      "expected": "x9bmfLYIxLMaaT5h0sFuRlAhhb8=",
+      "reason": "SHA-1 padding: key plus GUID is exactly one 64-byte block."
+    },
+    {
+      "name": "a 29-byte key",
+      "input": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+      "expected": "23YR1Db+zw7wlQpr5c9wffHlaIs=",
+      "reason": "SHA-1 padding: key plus GUID is 65 bytes."
+    },
+    {
+      "name": "a 83-byte key",
+      "input": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+      "expected": "c8WQ7edrEIKQKdUK6YpbGv6/vjc=",
+      "reason": "SHA-1 padding: key plus GUID is 119 bytes: padding fits the second block."
+    },
+    {
+      "name": "a 84-byte key",
+      "input": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+      "expected": "oSGTDoRzn25LiA1UjW2lEH1Pvlc=",
+      "reason": "SHA-1 padding: key plus GUID is 120 bytes: the length spills into a third block."
+    },
+    {
+      "name": "a 92-byte key",
+      "input": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+      "expected": "LY9EluoxzTck+ySKVLqXrQNaqCc=",
+      "reason": "SHA-1 padding: key plus GUID is exactly two blocks."
+    },
+    {
+      "name": "a 1000-byte key",
+      "input": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+      "expected": "D5UkHUEpPcw/Kmar+sMcS126/cM=",
+      "reason": "SHA-1 padding: a long key across many blocks."
+    }
+  ]
+}

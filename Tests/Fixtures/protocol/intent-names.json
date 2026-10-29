@@ -1,0 +1,463 @@
+{
+  "description": "The protocol name table (docs/protocol.md, \"Intent vocabulary\"): the sixteen intents a protocol client may send, by exact, case-sensitive wire name. sendPrompt needs text that is not empty once trimmed of .whitespacesAndNewlines, and its prompt is the trimmed text; every other name ignores text. Voice capture (beginVoiceCapture, endVoiceCapture, pushToTalk, pushToTalkDraft) is never a protocol intent (HK-226), and no name grants escalation (HK-227): any name not in the table is refused, which the server answers with unknown_intent.",
+  "function": "IntentMapper.intent(forProtocolName:text:) — input {name, text} (text a string or null), expected the intent descriptor ({\"intent\": <wire name>}, plus \"prompt\" for sendPrompt) or null when the name is refused",
+  "verifiedBy": "DESIGN.md v1.7, v2.11 C; docs/protocol.md spec v0; Tests/PowerUpTests/ProtocolFixtureTests.swift testIntentNameTable plays it through IntentMapper.intent(forProtocolName:text:).",
+  "capturedAgainst": "Swift 5.9.2 Foundation and CryptoKit (Xcode 15.2) on macOS 27.2, PowerUp at 2d20afb",
+  "cases": [
+    {
+      "name": "sendDraft maps",
+      "input": {
+        "name": "sendDraft",
+        "text": null
+      },
+      "expected": {
+        "intent": "sendDraft"
+      },
+      "reason": "One of the sixteen names a protocol client may send (docs/protocol.md, \"Intent vocabulary\")."
+    },
+    {
+      "name": "approve maps",
+      "input": {
+        "name": "approve",
+        "text": null
+      },
+      "expected": {
+        "intent": "approve"
+      },
+      "reason": "One of the sixteen names a protocol client may send (docs/protocol.md, \"Intent vocabulary\")."
+    },
+    {
+      "name": "reject maps",
+      "input": {
+        "name": "reject",
+        "text": null
+      },
+      "expected": {
+        "intent": "reject"
+      },
+      "reason": "One of the sixteen names a protocol client may send (docs/protocol.md, \"Intent vocabulary\")."
+    },
+    {
+      "name": "interrupt maps",
+      "input": {
+        "name": "interrupt",
+        "text": null
+      },
+      "expected": {
+        "intent": "interrupt"
+      },
+      "reason": "One of the sixteen names a protocol client may send (docs/protocol.md, \"Intent vocabulary\")."
+    },
+    {
+      "name": "stopSpeaking maps",
+      "input": {
+        "name": "stopSpeaking",
+        "text": null
+      },
+      "expected": {
+        "intent": "stopSpeaking"
+      },
+      "reason": "One of the sixteen names a protocol client may send (docs/protocol.md, \"Intent vocabulary\")."
+    },
+    {
+      "name": "replayLastReply maps",
+      "input": {
+        "name": "replayLastReply",
+        "text": null
+      },
+      "expected": {
+        "intent": "replayLastReply"
+      },
+      "reason": "One of the sixteen names a protocol client may send (docs/protocol.md, \"Intent vocabulary\")."
+    },
+    {
+      "name": "toggleTTS maps",
+      "input": {
+        "name": "toggleTTS",
+        "text": null
+      },
+      "expected": {
+        "intent": "toggleTTS"
+      },
+      "reason": "One of the sixteen names a protocol client may send (docs/protocol.md, \"Intent vocabulary\")."
+    },
+    {
+      "name": "newSession maps",
+      "input": {
+        "name": "newSession",
+        "text": null
+      },
+      "expected": {
+        "intent": "newSession"
+      },
+      "reason": "One of the sixteen names a protocol client may send (docs/protocol.md, \"Intent vocabulary\")."
+    },
+    {
+      "name": "showWindow maps",
+      "input": {
+        "name": "showWindow",
+        "text": null
+      },
+      "expected": {
+        "intent": "showWindow"
+      },
+      "reason": "One of the sixteen names a protocol client may send (docs/protocol.md, \"Intent vocabulary\")."
+    },
+    {
+      "name": "cycleModel maps",
+      "input": {
+        "name": "cycleModel",
+        "text": null
+      },
+      "expected": {
+        "intent": "cycleModel"
+      },
+      "reason": "One of the sixteen names a protocol client may send (docs/protocol.md, \"Intent vocabulary\")."
+    },
+    {
+      "name": "cycleEffort maps",
+      "input": {
+        "name": "cycleEffort",
+        "text": null
+      },
+      "expected": {
+        "intent": "cycleEffort"
+      },
+      "reason": "One of the sixteen names a protocol client may send (docs/protocol.md, \"Intent vocabulary\")."
+    },
+    {
+      "name": "cyclePermissionMode maps",
+      "input": {
+        "name": "cyclePermissionMode",
+        "text": null
+      },
+      "expected": {
+        "intent": "cyclePermissionMode"
+      },
+      "reason": "One of the sixteen names a protocol client may send (docs/protocol.md, \"Intent vocabulary\")."
+    },
+    {
+      "name": "cycleProject maps",
+      "input": {
+        "name": "cycleProject",
+        "text": null
+      },
+      "expected": {
+        "intent": "cycleProject"
+      },
+      "reason": "One of the sixteen names a protocol client may send (docs/protocol.md, \"Intent vocabulary\")."
+    },
+    {
+      "name": "cycleFocus maps",
+      "input": {
+        "name": "cycleFocus",
+        "text": null
+      },
+      "expected": {
+        "intent": "cycleFocus"
+      },
+      "reason": "One of the sixteen names a protocol client may send (docs/protocol.md, \"Intent vocabulary\")."
+    },
+    {
+      "name": "toggleControlMode maps",
+      "input": {
+        "name": "toggleControlMode",
+        "text": null
+      },
+      "expected": {
+        "intent": "toggleControlMode"
+      },
+      "reason": "One of the sixteen names a protocol client may send (docs/protocol.md, \"Intent vocabulary\")."
+    },
+    {
+      "name": "sendPrompt maps with its text",
+      "input": {
+        "name": "sendPrompt",
+        "text": "hi"
+      },
+      "expected": {
+        "intent": "sendPrompt",
+        "prompt": "hi"
+      },
+      "reason": "sendPrompt carries its text (HK-228)."
+    },
+    {
+      "name": "sendPrompt text is trimmed",
+      "input": {
+        "name": "sendPrompt",
+        "text": "  run the tests \n\t"
+      },
+      "expected": {
+        "intent": "sendPrompt",
+        "prompt": "run the tests"
+      },
+      "reason": "The prompt is the trimmed text (HK-228)."
+    },
+    {
+      "name": "sendPrompt keeps inner whitespace",
+      "input": {
+        "name": "sendPrompt",
+        "text": "a  b\nc"
+      },
+      "expected": {
+        "intent": "sendPrompt",
+        "prompt": "a  b\nc"
+      },
+      "reason": "Only the ends are trimmed."
+    },
+    {
+      "name": "sendPrompt with empty text is refused",
+      "input": {
+        "name": "sendPrompt",
+        "text": ""
+      },
+      "expected": null,
+      "reason": "An empty prompt is rejected, not sent (HK-228)."
+    },
+    {
+      "name": "sendPrompt with blank text is refused",
+      "input": {
+        "name": "sendPrompt",
+        "text": " \n\t\r "
+      },
+      "expected": null,
+      "reason": "A whitespace-only prompt is rejected (HK-228)."
+    },
+    {
+      "name": "sendPrompt without text is refused",
+      "input": {
+        "name": "sendPrompt",
+        "text": null
+      },
+      "expected": null,
+      "reason": "No text, no prompt."
+    },
+    {
+      "name": "sendPrompt with only a no-break space",
+      "input": {
+        "name": "sendPrompt",
+        "text": " "
+      },
+      "expected": null,
+      "reason": "U+00A0 is whitespace in .whitespacesAndNewlines."
+    },
+    {
+      "name": "sendPrompt with only an ideographic space",
+      "input": {
+        "name": "sendPrompt",
+        "text": "　"
+      },
+      "expected": null,
+      "reason": "U+3000 is whitespace."
+    },
+    {
+      "name": "sendPrompt with only a zero-width space",
+      "input": {
+        "name": "sendPrompt",
+        "text": "​"
+      },
+      "expected": null,
+      "reason": "Pins whether U+200B counts as whitespace for the trim."
+    },
+    {
+      "name": "sendPrompt with only line separators",
+      "input": {
+        "name": "sendPrompt",
+        "text": "  "
+      },
+      "expected": null,
+      "reason": "U+2028, U+2029 and U+0085 are newlines."
+    },
+    {
+      "name": "sendPrompt trims a zero-width space at the end",
+      "input": {
+        "name": "sendPrompt",
+        "text": "go​"
+      },
+      "expected": {
+        "intent": "sendPrompt",
+        "prompt": "go"
+      },
+      "reason": "Pins the trim set at the end of real text."
+    },
+    {
+      "name": "sendPrompt keeps a zero-width joiner",
+      "input": {
+        "name": "sendPrompt",
+        "text": "‍go"
+      },
+      "expected": {
+        "intent": "sendPrompt",
+        "prompt": "‍go"
+      },
+      "reason": "U+200D is not whitespace."
+    },
+    {
+      "name": "sendPrompt keeps non-ASCII text",
+      "input": {
+        "name": "sendPrompt",
+        "text": " 运行测试 🚀 "
+      },
+      "expected": {
+        "intent": "sendPrompt",
+        "prompt": "运行测试 🚀"
+      },
+      "reason": "Prompts in any script survive the trim."
+    },
+    {
+      "name": "text is ignored for other intents",
+      "input": {
+        "name": "approve",
+        "text": "ignored"
+      },
+      "expected": {
+        "intent": "approve"
+      },
+      "reason": "Only sendPrompt reads text."
+    },
+    {
+      "name": "beginVoiceCapture is refused",
+      "input": {
+        "name": "beginVoiceCapture",
+        "text": null
+      },
+      "expected": null,
+      "reason": "Voice capture is never reachable over the protocol: the microphone is local-only (HK-226)."
+    },
+    {
+      "name": "endVoiceCapture is refused",
+      "input": {
+        "name": "endVoiceCapture",
+        "text": null
+      },
+      "expected": null,
+      "reason": "Voice capture is never reachable over the protocol: the microphone is local-only (HK-226)."
+    },
+    {
+      "name": "pushToTalk is refused",
+      "input": {
+        "name": "pushToTalk",
+        "text": null
+      },
+      "expected": null,
+      "reason": "Voice capture is never reachable over the protocol: the microphone is local-only (HK-226)."
+    },
+    {
+      "name": "pushToTalkDraft is refused",
+      "input": {
+        "name": "pushToTalkDraft",
+        "text": null
+      },
+      "expected": null,
+      "reason": "Voice capture is never reachable over the protocol: the microphone is local-only (HK-226)."
+    },
+    {
+      "name": "setPermissionMode is refused",
+      "input": {
+        "name": "setPermissionMode",
+        "text": null
+      },
+      "expected": null,
+      "reason": "No protocol name grants escalation (HK-227)."
+    },
+    {
+      "name": "bypassPermissions is refused",
+      "input": {
+        "name": "bypassPermissions",
+        "text": null
+      },
+      "expected": null,
+      "reason": "No protocol name grants escalation (HK-227)."
+    },
+    {
+      "name": "setModel is refused",
+      "input": {
+        "name": "setModel",
+        "text": null
+      },
+      "expected": null,
+      "reason": "No protocol name grants escalation (HK-227)."
+    },
+    {
+      "name": "sudo is refused",
+      "input": {
+        "name": "sudo",
+        "text": null
+      },
+      "expected": null,
+      "reason": "No protocol name grants escalation (HK-227)."
+    },
+    {
+      "name": "none is refused",
+      "input": {
+        "name": "none",
+        "text": null
+      },
+      "expected": null,
+      "reason": "The no-op action is not an intent name."
+    },
+    {
+      "name": "the empty name is refused",
+      "input": {
+        "name": "",
+        "text": null
+      },
+      "expected": null,
+      "reason": "What a message without an intent field asks for."
+    },
+    {
+      "name": "Approve is refused",
+      "input": {
+        "name": "Approve",
+        "text": null
+      },
+      "expected": null,
+      "reason": "Names are case-sensitive."
+    },
+    {
+      "name": "APPROVE is refused",
+      "input": {
+        "name": "APPROVE",
+        "text": null
+      },
+      "expected": null,
+      "reason": "Names are case-sensitive."
+    },
+    {
+      "name": "a name with a trailing space is refused",
+      "input": {
+        "name": "approve ",
+        "text": null
+      },
+      "expected": null,
+      "reason": "Names are not trimmed."
+    },
+    {
+      "name": "toggleTts is refused",
+      "input": {
+        "name": "toggleTts",
+        "text": null
+      },
+      "expected": null,
+      "reason": "The wire name is toggleTTS; the generated Swift spelling is no wire name."
+    },
+    {
+      "name": "send_prompt is refused",
+      "input": {
+        "name": "send_prompt",
+        "text": "hi"
+      },
+      "expected": null,
+      "reason": "Wire names are camelCase."
+    },
+    {
+      "name": "sendprompt is refused",
+      "input": {
+        "name": "sendprompt",
+        "text": "hi"
+      },
+      "expected": null,
+      "reason": "Names are case-sensitive."
+    }
+  ]
+}
