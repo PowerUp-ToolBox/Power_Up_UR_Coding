@@ -104,9 +104,9 @@ expects `{deviceMappings, backupBeforeSave}`.
 
 The Swift runners are `Tests/PowerUpTests/MappingFixtureTests.swift` and
 `DeviceFixtureTests.swift` (their descriptor helpers are in
-`FixtureValues.swift`). The Rust runner is
-`rust/powerup-core/tests/mapping.rs` (its helpers are in `tests/support`);
-it does not play the newer `mapping/` and `device/` tables yet.
+`FixtureValues.swift`), and the Rust runners are
+`rust/powerup-core/tests/mapping.rs` and `tests/device.rs` (their helpers
+are in `tests/support`).
 
 ## `session/`: session scenarios (format 1)
 

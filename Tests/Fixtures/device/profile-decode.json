@@ -1,7 +1,7 @@
 {
   "description": "Reading a device profile (ADR 0006, DESIGN v2.7 A and D) and writing it back. A profile is {id, displayName, controls}; each control is {id, kind, displayName, symbolName}; every field is required and every id and name is a string. controls is a list whose order is kept. kind follows device/control-kind.json. Keys the profile or a control does not define are read past and never written; that includes match and report, which v2.7 D reserves for a later release. Input is a profile object; expected is the profile written back (compared as JSON), or null when the profile fails to read.",
   "function": "DeviceProfile decoding then encoding — input a profile object, expected the re-encoded profile object or null",
-  "verifiedBy": "DESIGN.md v2.7 A and D; Tests/PowerUpTests/DeviceFixtureTests.swift testProfileDecodeTable decodes a DeviceProfile with JSONDecoder, encodes it with JSONEncoder and compares the JSON.",
+  "verifiedBy": "DESIGN.md v2.7 A and D; Tests/PowerUpTests/DeviceFixtureTests.swift testProfileDecodeTable decodes a DeviceProfile with JSONDecoder, encodes it with JSONEncoder and compares the JSON. Rust: rust/powerup-core/tests/device.rs profile_decode_cases deserializes a profile::DeviceProfile with serde_json and serializes it back.",
   "capturedAgainst": "Swift 5.9.2 synthesized Codable (Xcode 15.2), PowerUp at 106773b",
   "cases": [
     {
@@ -311,6 +311,33 @@
       },
       "expected": null,
       "reason": "null is not a string."
+    },
+    {
+      "name": "a profile written as a list fails",
+      "input": [
+        "pad",
+        "Pad",
+        []
+      ],
+      "expected": null,
+      "reason": "A profile is an object; its fields in order are not a profile (a generic decoder that accepts both would load a file the app rejects)."
+    },
+    {
+      "name": "a control written as a list fails",
+      "input": {
+        "id": "pad",
+        "displayName": "Pad",
+        "controls": [
+          [
+            "a",
+            "button",
+            "A",
+            "circle"
+          ]
+        ]
+      },
+      "expected": null,
+      "reason": "A control is an object too."
     },
     {
       "name": "an unknown control kind fails the profile",

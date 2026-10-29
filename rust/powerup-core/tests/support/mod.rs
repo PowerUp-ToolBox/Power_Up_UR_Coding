@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 
 use powerup_core::action::Action;
 use powerup_core::intent::{ControlPhase, Intent};
+use powerup_core::mapping::{default_device_mappings, DeviceMappings};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -194,6 +195,44 @@ pub fn phase_from(name: &Value) -> ControlPhase {
         Some("ended") => ControlPhase::Ended,
         _ => panic!("unknown phase {name}"),
     }
+}
+
+/// `{profileID: {controlID: <action descriptor>}}`, or `"defaults"` for the
+/// shipped default mappings.
+pub fn mappings_from_descriptors(descriptor: &Value) -> DeviceMappings {
+    if descriptor == "defaults" {
+        return default_device_mappings();
+    }
+    let profiles = descriptor
+        .as_object()
+        .unwrap_or_else(|| panic!("not a mappings descriptor: {descriptor}"));
+    profiles
+        .iter()
+        .map(|(profile_id, mapping)| {
+            let controls = mapping
+                .as_object()
+                .unwrap_or_else(|| panic!("not a profile mapping: {mapping}"));
+            let mapping = controls
+                .iter()
+                .map(|(control_id, action)| (control_id.clone(), action_from_descriptor(action)))
+                .collect();
+            (profile_id.clone(), mapping)
+        })
+        .collect()
+}
+
+pub fn mappings_descriptor(mappings: &DeviceMappings) -> Value {
+    mappings
+        .iter()
+        .map(|(profile_id, mapping)| {
+            let controls = mapping
+                .iter()
+                .map(|(control_id, action)| (control_id.clone(), action_descriptor(action)))
+                .collect::<serde_json::Map<_, _>>();
+            (profile_id.clone(), Value::Object(controls))
+        })
+        .collect::<serde_json::Map<_, _>>()
+        .into()
 }
 
 /// The table at `Tests/Fixtures/<area>/<file>`.

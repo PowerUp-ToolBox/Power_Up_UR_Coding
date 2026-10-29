@@ -7,9 +7,11 @@ use std::collections::BTreeSet;
 
 use powerup_core::action::{Action, WIRE_NAMES};
 use powerup_core::intent::intent_for;
-use serde_json::Value;
+use powerup_core::mapping::{default_device_mappings, load_device_mappings, resolve_action};
+use serde_json::{json, Value};
 use support::{
-    action_descriptor, action_from_descriptor, case_table, intent_descriptor, phase_from,
+    action_descriptor, action_from_descriptor, case_table, intent_descriptor, mappings_descriptor,
+    mappings_from_descriptors, phase_from,
 };
 
 fn fail(file: &str, name: &str, reason: &str, expected: &Value, actual: &Value) -> String {
@@ -104,4 +106,70 @@ fn is_hold_cases() {
         WIRE_NAMES.into_iter().collect(),
         "{file}: one row per action"
     );
+}
+
+#[test]
+fn default_mapping_case() {
+    let file = "default-mapping.json";
+    for case in case_table("mapping", file).cases {
+        let actual = mappings_descriptor(&default_device_mappings());
+        assert_eq!(
+            actual,
+            case.expected,
+            "{}",
+            fail(file, &case.name, &case.reason, &case.expected, &actual)
+        );
+    }
+}
+
+#[test]
+fn resolve_action_cases() {
+    let file = "resolve-action.json";
+    for case in case_table("mapping", file).cases {
+        let mappings = mappings_from_descriptors(&case.input["deviceMappings"]);
+        let text = |key: &str| {
+            case.input[key]
+                .as_str()
+                .unwrap_or_else(|| panic!("{file} case {:?}: {key} must be a string", case.name))
+                .to_owned()
+        };
+        let actual = action_descriptor(&resolve_action(
+            &mappings,
+            &text("profile"),
+            &text("control"),
+        ));
+        assert_eq!(
+            actual,
+            case.expected,
+            "{}",
+            fail(file, &case.name, &case.reason, &case.expected, &actual)
+        );
+    }
+}
+
+/// The core takes the config as text, as the app hands it over.
+#[test]
+fn config_load_cases() {
+    let file = "config-load.json";
+    for case in case_table("mapping", file).cases {
+        let load = load_device_mappings(&case.input.to_string()).unwrap();
+        let actual = json!({
+            "deviceMappings": mappings_descriptor(&load.device_mappings),
+            "backupBeforeSave": load.backup_before_save,
+        });
+        // "defaults" in the table is spelled out so the comparison is value
+        // for value.
+        let expected = json!({
+            "deviceMappings": mappings_descriptor(&mappings_from_descriptors(
+                &case.expected["deviceMappings"]
+            )),
+            "backupBeforeSave": case.expected["backupBeforeSave"],
+        });
+        assert_eq!(
+            actual,
+            expected,
+            "{}",
+            fail(file, &case.name, &case.reason, &expected, &actual)
+        );
+    }
 }

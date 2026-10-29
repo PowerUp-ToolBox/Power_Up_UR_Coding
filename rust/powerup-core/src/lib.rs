@@ -9,7 +9,9 @@
 
 pub mod action;
 pub mod intent;
+pub mod mapping;
 pub mod probe;
+pub mod profile;
 pub mod wire;
 
 use std::fmt;

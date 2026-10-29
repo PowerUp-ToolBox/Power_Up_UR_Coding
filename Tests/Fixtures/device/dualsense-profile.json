@@ -1,7 +1,7 @@
 {
   "description": "The built-in DualSense profile (ADR 0006, HK-006): id dualsense, display name DualSense, and one button control per DualSense button in ControllerButton.allCases order, each carrying the button's id, display name and SF Symbol name. Input is {}; expected is the profile object as it serializes.",
   "function": "DeviceProfile.dualSense — input {}, expected the profile object",
-  "verifiedBy": "ADR 0006; Tests/PowerUpTests/DeviceFixtureTests.swift testDualSenseProfileTable encodes DeviceProfile.dualSense and compares the JSON, and checks the controls against ControllerButton.allCases.",
+  "verifiedBy": "ADR 0006; Tests/PowerUpTests/DeviceFixtureTests.swift testDualSenseProfileTable encodes DeviceProfile.dualSense and compares the JSON, and checks the controls against ControllerButton.allCases. Rust: rust/powerup-core/tests/device.rs dualsense_profile_case serializes profile::dualsense_profile().",
   "capturedAgainst": "Swift 5.9.2 synthesized Codable (Xcode 15.2), PowerUp at 106773b",
   "cases": [
     {

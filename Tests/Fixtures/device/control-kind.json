@@ -1,7 +1,7 @@
 {
   "description": "The kind of one control in a device profile (DESIGN v2.7 A): button, axis or key. The obsolete pre-v2.7 value hold reads as button, and is never written back (encoding writes the kind's own name). Any other string fails the control, and with it the profile. Input is the kind string as a profile file holds it; expected is the kind it reads as, or null when it fails.",
   "function": "ControlDescriptor.Kind decoding — input the kind string, expected \"button\", \"axis\", \"key\" or null",
-  "verifiedBy": "DESIGN.md v2.7 A; Tests/PowerUpTests/DeviceFixtureTests.swift testControlKindTable decodes a ControlDescriptor holding the kind and reads its raw value.",
+  "verifiedBy": "DESIGN.md v2.7 A; Tests/PowerUpTests/DeviceFixtureTests.swift testControlKindTable decodes a ControlDescriptor holding the kind and reads its raw value. Rust: rust/powerup-core/tests/device.rs control_kind_cases runs profile::ControlKind::from_wire.",
   "capturedAgainst": "Swift 5.9.2 synthesized Codable (Xcode 15.2), PowerUp at 106773b",
   "cases": [
     {
