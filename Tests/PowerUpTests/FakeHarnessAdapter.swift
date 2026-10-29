@@ -51,6 +51,10 @@ final class FakeHarnessAdapter: HarnessAdapter {
     /// Mirror the ACP adapter: `stop` clears `sessionID` immediately.
     var clearsSessionIDOnStop = false
 
+    /// Mirror an adapter whose launch fails at once (an ACP agent whose
+    /// `Process.run()` throws): `start` records the call and stays stopped.
+    var startFailsAtOnce = false
+
     private func record(_ call: Call) {
         calls.append(call)
         onCall?(call)
@@ -105,6 +109,7 @@ final class FakeHarnessAdapter: HarnessAdapter {
 
     func start(_ configuration: HarnessConfiguration) {
         record(.start(configuration))
+        if startFailsAtOnce { return }
         sessionID = configuration.resumeSessionID
         modelName = nil
         state = .starting

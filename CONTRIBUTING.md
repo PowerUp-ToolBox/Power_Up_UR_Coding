@@ -69,19 +69,18 @@ The rules for core work:
 - **What lives there.** The device layer (intents, actions, mappings,
   profiles, the Controller slot rule and the hold rule) lives in
   `powerup-core` since slice 2.2; the app reaches it only through
-  `CoreBridge.swift` (DESIGN v2.11). Slice 2.3 is moving the Claude
-  adapter's rules there (`harness::claude`: the stream-json parser, the
-  stdout line splitter, the launch argv and the process rules, played
-  against `Tests/Fixtures/harness/`), the session state machine with
-  remote mode (`session`, played against every `Tests/Fixtures/session/`
-  scenario), the status derivation (`status`, against
-  `Tests/Fixtures/status/`) and the destructive-action classifier
-  (`harness::destructive`). The machine returns effects for the platform
-  to carry out (CONTEXT.md, "Effect"). Since #151 the app parses claude
-  output and splits its stdout through the bridge
-  (`CoreBridgeHarness.swift`, DESIGN v2.12); the other rules keep their
-  Swift copies until #152 runs ClaudeService and AppState on the core's
-  adapter and session objects (`CoreBridgeSession.swift`).
+  `CoreBridge.swift` (DESIGN v2.11). Since slice 2.3 it also holds the
+  Claude adapter's rules (`harness::claude`: the stream-json parser, the
+  stdout line splitter, the stdin lines, the launch argv and the process
+  rules, played against `Tests/Fixtures/harness/`), the session state
+  machine with remote mode (`session`, played against every
+  `Tests/Fixtures/session/` scenario), the status derivation (`status`,
+  against `Tests/Fixtures/status/`) and the destructive-action classifier
+  (`harness::destructive`), reached through `CoreBridgeHarness.swift` and
+  `CoreBridgeSession.swift` (DESIGN v2.12). The core returns effects and
+  the platform carries them out in order (CONTEXT.md, "Effect"):
+  ClaudeService owns the process and pipes, AppState the adapters,
+  config, transcript, speech and remote injector.
 - **Panic rule.** Every public core function is total: it returns its
   value, or a `Result` when it can fail, and never panics. Library code
   never calls `unwrap`, `expect` or `panic!` (clippy denies the first two).
@@ -134,7 +133,9 @@ category `core`) at launch.
   commands are fine; live round-trips go through a disposable workspace only.
 - Don't spawn real `claude` processes in tests. The stream parser is testable
   directly via `ClaudeService.events(fromLine:)` (a wrapper over the core;
-  `cargo test` plays `Tests/Fixtures/harness/`) — and the existing parser
+  `cargo test` plays `Tests/Fixtures/harness/`), and an end-to-end test
+  points `config.claudePath` at a fake CLI script it writes
+  (`ClaudeFakeCLITests`) — and the existing parser
   tests pin CLI quirks that were verified live; if the CLI changes behavior,
   update the tests *and* DESIGN.md together.
 

@@ -141,4 +141,27 @@ final class AppStateSessionTests: XCTestCase {
             .respondToPermission(id: "p", allow: true), .stop,
         ])
     }
+
+    // MARK: The executor checks a send again when it runs
+
+    /// The session models a start as "starting" and queues the send behind
+    /// it; an adapter whose launch failed at once is stopped by the time the
+    /// send runs, so AppState asks the session again and the person hears the
+    /// same refusal as before the rules moved into the core (DESIGN v2.12 C).
+    func testASendToAnAdapterWhoseStartFailedAtOnceIsRefused() {
+        let harness = FakeHarnessAdapter()
+        harness.startFailsAtOnce = true
+        let store = env.makeConfigStore()
+        store.config.projectDir = "/work/app"
+        let app = env.makeAppState(configStore: store, harness: harness)
+
+        app.sendUserText("Hi")
+
+        XCTAssertEqual(harness.calls.count, 1)
+        guard case .start? = harness.calls.first else {
+            return XCTFail("expected a start, got \(harness.calls)")
+        }
+        XCTAssertEqual(app.transcript.map(\.kind), [.user, .error])
+        XCTAssertEqual(app.transcript.last?.text, "No Claude session is running. Choose a project folder to start one.")
+    }
 }

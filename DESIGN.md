@@ -2484,9 +2484,9 @@ The core gains `harness::claude` (the Claude adapter's rules: the stream-json
 line reader and parser, the stdout line buffer, the stdin lines, the launch
 argv and the process rules), `harness::destructive`, `status`, and a
 top-level `session` module (AppState's session rules, remote mode included;
-it is top-level because remote mode is not a harness). This addendum's
-sections A and B describe the bridge surface (#151); C to E, the effect
-executor and what moved, are completed with #152.
+it is top-level because remote mode is not a harness). Sections A and B
+describe the bridge surface (#151); C to E the effect executor, what moved
+and the recorded rules (#152).
 
 ## A. Bridge surface
 
@@ -2551,7 +2551,9 @@ Functions: `derivedStatus(controllerConnected:isPttActive:isSpeaking:isWorking:)
 -> Bool`, `liveRemoteTurns(turns: [String: Double], now:expiry:) -> [String:
 Double]`, `remoteTurnIsActive(turns:focus:) -> Bool`, `remoteTurnExpirySeconds()
 -> Double`, `modelChipLabel(configured:reported:) -> String`,
-`isDestructive(kind:title:detail:) -> Bool`, `effortCycle()`,
+`isDestructive(kind:title:detail:) -> Bool`, `destructivePatterns() ->
+[String]` (the classifier's list, so the Swift suite can count its table
+against it), `effortCycle()`,
 `permissionModeCycle()`, `defaultModelCycle()` (each `-> [String]`),
 `effortDisplayName(effort:)`, `acpAgentDisplayName(agent:)` (each `-> String`),
 `isRemoteMode(controlMode:) -> Bool`, `harnessKindFromSetting(raw:) ->
@@ -2601,6 +2603,7 @@ static func remoteTurnIsActive(_ turns: [String: Date], focus: String?) -> Bool
 static var remoteTurnExpiry: TimeInterval
 static func modelChipLabel(configured: String, reported: String?) -> String
 static func isDestructive(kind: String, title: String, detail: String) -> Bool
+static func destructivePatterns() -> [String]
 static func effortCycle() / permissionModeCycle() / defaultModelCycle() -> [String]
 static func effortDisplayName(_:) / acpAgentDisplayName(_:) -> String
 static func isRemoteMode(controlMode:) -> Bool; static func harnessKind(fromSetting:) -> HarnessKind
@@ -2624,7 +2627,8 @@ is never silent; the stdin and argv functions give nil and `[]`, so nothing
 is sent or spawned; the status gives `.noController`, `derivedIsWorking`
 false, `liveRemoteTurns` the table unchanged, the expiry 15 minutes, the chip
 the configured alias; `isDestructive` gives **true**, the safe side (one
-extra press); the cycles give `[]` and the display names their input.
+extra press); the cycles and the pattern list give `[]` and the display
+names their input.
 
 ## B. Objects
 
@@ -2639,8 +2643,11 @@ extra press); the cycles give `[]` and the display names their input.
 - **Lifetime is Swift's.** One `CoreLineBuffer` per launch, owned by that
   launch's `IOChannel`; one `CoreClaudeAdapter` per `ClaudeService`, alive
   across launches (the launch generation lives inside); one `CoreSession`
-  per `AppState`, created after the launch bookkeeping is seeded. The core
-  object goes when its Swift owner does.
+  per `AppState`, created in its initializer from the stored config. (It is
+  made just before the launch bookkeeping is seeded, because Swift needs
+  every stored property before the first method call; the seeding touches
+  neither setting the session adopts.) The core object goes when its Swift
+  owner does.
 - **Threads.** `CoreLineBuffer` is the only object called off the main
   actor: the stdout readability handler and the termination drain feed it
   from GCD threads. Each launch has its own buffer, so its lock is never
@@ -2654,11 +2661,147 @@ extra press); the cycles give `[]` and the display names their input.
   anyway, so one caught core bug costs at most the call that hit it, never
   the object for the rest of the run.
 
-What runs on the bridge after #151: `ClaudeService.events(fromLine:)` is
-`CoreBridge.claudeEvents(fromLine:)` and `IOChannel`'s stdout splitting is a
-`CoreBridge.LineBuffer` (its stderr tail, event FIFO and lock stay Swift);
-the Swift parser bodies and line splitter are deleted, and
-`ClaudeStreamParsingTests` and `HarnessFixtureTests` run through the bridge.
-The adapter's process rules, the stdin and argv builders, the session rules
-in AppState and the status, classifier and cycle helpers still run in Swift
-until #152 switches them onto these objects.
+## C. The effects and the executor
+
+The core decides; the platform carries out what it decides, in order
+(CONTEXT.md, **Effect**). Two machines, each one object:
+
+- **The Claude adapter** (`CoreBridge.ClaudeAdapter`, one per
+  `ClaudeService`). Its effects, in the glossary's words: *publish* the
+  adapter's state; *resolve the binary* off the main thread, then report it;
+  *spawn* the CLI with the core's argv in the project folder, then report
+  `spawned` or `spawnFailed`; *write a line* on stdin or *close stdin*; *arm
+  the kill* (terminate the process current now if it still runs after the
+  grace, HK-078); *emit* a `HarnessEvent` to the session.
+- **The session** (`CoreBridge.Session`, one per `AppState`). Its effects:
+  the **Harness** — start it (fresh or resuming a session id), send a
+  prompt, interrupt the turn, switch its model or permission mode live,
+  answer a permission request, stop it, each addressed to the Claude or the
+  ACP adapter; the **config** — each setting the rules write, in the order
+  the Swift rules wrote them (the stored and per-project session ids
+  included); the **transcript** — append an entry, switch to a project
+  folder's history, the live reply text, the reply Replay speaks;
+  **published state** — the pending permission request, the remote turn
+  flag and the remote focus, each sent only when it changes, which AppState
+  mirrors into its `@Published` properties; **feedback** — a haptic, the
+  error buzz, a spoken confirmation, a spoken reply, cancelling a summary,
+  stopping speech; **remote mode** — type text or press a key in the remote
+  session, refresh what the remote target offers; **timing** — a remote-turn
+  check after some seconds, the effort restart deferred past the current
+  event delivery, a status update.
+
+Every session call takes a `SessionContext` built at that moment: the config
+as it is now (settings are read live, HK-165), each adapter's state (the ACP
+adapter only once it exists, or is selected) and the injected clock's time.
+Within one call the session models what its own harness commands do at once
+(a start makes the adapter starting with the resumed id and no model, a send
+makes it working, a stop makes it stopped and an ACP adapter drops its id),
+exactly as both real adapters do synchronously.
+
+**The executor contract** (ledger HK-400):
+
+1. Effects run in order, each before the next, and before the next call into
+   the same object.
+2. A harness command that makes an adapter report an event at once (a fake
+   in the tests, an ACP agent whose launch throws) re-enters the session with
+   a fresh context from inside `execute`; that call's effects run before the
+   rest of the outer list.
+3. `sendToHarness` is checked again when it runs: if the adapter is stopped
+   by then (its start failed at once), AppState calls `sendRefused(context:)`
+   instead, which gives the same "No Claude session is running…" entry and
+   error buzz as before.
+4. The Claude adapter publishes its state at each point `ClaudeService`
+   assigned its `@Published` fields, before the event that follows, so the
+   session reads the same harness state while handling that event as it did
+   before; `ClaudeService` assigns only the fields that changed. Parsed stdout
+   events are fed one per call, in order; the core drops a retired launch's.
+5. On an exit `ClaudeService` drains the launch's last events, releases the
+   process, stdin and channel if they are still that launch's, and only then
+   reports `terminated`: a resume retry started from the `ended` it emits
+   installs a new process that must not be cleared afterwards.
+6. `deferEffortRestart` becomes a fresh main-actor `Task` that calls
+   `deferredEffortRestart(context:)` (HK-082);
+   `scheduleRemoteTurnCheck(after:)` goes through the injected clock and calls
+   `remoteTurnCheck(context:)`.
+7. The derived-update pass calls `syncSettings(context:)`, which syncs the
+   control mode and then the harness selection, each once per real change.
+
+Hooks reach the session as `hookEvent(context:hook:)`; harness events as
+`harnessEvent(context:from:event:)`, where `from` is the adapter that
+reported it (the selected kind when it is the active harness). An event from
+an adapter that is not the selected harness is dropped without even a status
+update (HK-124).
+
+## D. What moved and what stayed
+
+Moved into `powerup-core`, unchanged in behaviour (every message byte for
+byte):
+
+- from `ClaudeService`: the launch generation, the queue of lines sent
+  before the spawn (HK-269), the in-flight control requests and their acks,
+  the assistant de-dupe, the init/turn state machine, the cost total, the
+  "not found", "couldn't start", "can't send", "exited unexpectedly" and
+  "couldn't reach" messages, the stdin lines and the argv;
+- from `AppState`: the resume retry and expected exits, the effort restart,
+  the destructive confirmation and the pending request, the model and
+  permission cycles with rollback, `ultracode`, the harness and control-mode
+  switches, project adoption, switching and cycling with the recents, the
+  remote read-back (turn table, registry, focus, folder filter and label),
+  and every transcript entry, announcement and haptic of those rules;
+- the status derivation, the working input, the remote-turn helpers and
+  expiry, the model chip, the destructive-action classifier and its
+  patterns, the cycles and the effort and ACP agent display names.
+
+Kept as thin Swift wrappers, so views and tests are unchanged:
+`ClaudeService.events(fromLine:)`, `HarnessEvent.from(_:)`,
+`DestructiveActionClassifier.isDestructive` and `.patterns`,
+`AppConfig.defaultModelCycle`, `effortCycle`, `permissionModeCycle`,
+`effortDisplayName` and `acpAgentDisplayName`, and AppState's
+`derivedStatus`, `derivedIsWorking`, `liveRemoteTurns`,
+`remoteTurnIsActive`, `remoteTurnExpiry`, `modelChipLabel` and
+`remoteFocusLabel`. `ClaudeEvent` stays as the parse-level conversion type.
+
+Stayed in Swift: the process, the pipes, the binary lookup (override, login
+shell, install paths) and the child environment, SIGPIPE, the stderr ring
+and its tail, the event FIFO and the thread hop, the kill timer, what counts
+as a clean exit (code 0 and reason `.exit`); in AppState, capture, the
+prompt box, speech and summaries, audio devices, the listener and protocol,
+keyboard, light, haptics hardware and the transcript store; and two
+one-line readings of the settings, `isRemoteMode` and the adapter selection,
+pinned to the core's reading by
+`AppStateSeamTests.testRuntimeNormalizationAgreesWithTheCore`.
+
+Removed: `ClaudeService.onEvent`, the wire-level callback nothing read;
+consumers use `onHarnessEvent`. Changed on the wire, recorded and harmless
+(the CLI parses JSON and takes any unique id, v1.1 A): control request ids
+are `"<UUID>-<n>"` per `ClaudeService` instead of one UUID per request
+(HK-396), and stdin lines have a fixed key order (HK-395).
+
+## E. Recorded rules
+
+- The stream-json line is read exactly as `JSONSerialization` reads it:
+  first of two equal keys wins, one leading BOM, one trailing comma, the
+  512-container depth rule, overflow rejects the line and underflow reads
+  as 0 (HK-393); fields are read through Swift's NSNumber bridging (HK-394).
+- Text rules copy Swift's `String`: trimming is Unicode whitespace, counts
+  and cuts are extended grapheme clusters (`unicode-segmentation` pinned to
+  match macOS's rules), and `condense` keeps a line break that a combining
+  mark extends (HK-062, HK-063).
+- Strings are compared by scalar value in the core where Swift compares
+  canonical equivalence; every compared value is an ASCII id, alias or
+  mode, a standardized path, or a folder name that only orders the focus
+  cycle (HK-397).
+- The platform places paths (standardize, resolve symlinks) and lists the
+  recents that exist; the core applies the folder rules (HK-398).
+- Request ids are `<prefix>-<n>` from 1 per adapter (HK-396); stdin key
+  order is fixed and `/` is written `\/` (HK-395).
+- Session scenarios gained the `lastAssistantReply` expectation key (the
+  reply Replay speaks, or null), and both runners — `SessionScenarioTests`
+  through AppState and `rust/powerup-core/tests/session.rs` on the machine —
+  play every scenario.
+- `Tests/PowerUpTests/ClaudeFakeCLITests.swift` drives AppState and a real
+  `ClaudeService` against a `/bin/sh` stand-in for `claude` that the test
+  writes and points `claudePath` at (the override wins before any
+  login-shell lookup, so no real claude can run): a turn through the real
+  pipe, a live model change in the nested envelope, and an effort restart
+  that resumes the same session id.
