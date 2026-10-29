@@ -476,16 +476,22 @@ Japanese, hangul deciding Korean, HK-423), which the Rust runner checks
 is the script rule's answer; or the language a sentence is written in,
 the one its case is named after, where the recognizer named another or
 was undecided (Russian the recognizer read as Kazakh, HK-425). Both
-runners reject any other, so outside CJK the core never names a language
-the app did not unless it is the sentence's own. The corpus holds 351
-sentences, at least four of every Latin- and Cyrillic-script language the
-core can name and of eleven languages whose script the confidence gate
-decides (ar, ur, hi, mr, he, el, th, ka, hy, bn, ta), terse English
-code-review prose and English quoting accented loanwords among the
-English ones, and 74 accepted differences, counted by the ledger rows
-their "Accepted difference" clause cites: 4 of HK-420; 10 of HK-423; 4 of
-HK-421; 11 of HK-422, 3 of them alone, 2 with HK-425 and 6 with HK-421;
-and 45 of HK-425, one of those with HK-424.
+runners reject any other kind in the table, so on these sentences the
+core names no language outside CJK the app did not unless it is the
+sentence's own; that holds for the corpus and the differentials of
+DESIGN v2.14 D, not for every text, and a sentence on which it fails
+belongs here with its fix. The corpus holds 364 sentences, at least four
+of every Latin- and Cyrillic-script language the core can name and of
+eleven languages whose script the confidence gate decides (ar, ur, hi,
+mr, he, el, th, ka, hy, bn, ta), terse English code-review prose,
+English quoting accented loanwords and terse English status lines whose
+acronyms, joined tokens, digits and labels are no words among the
+English ones, replies in other languages naming a person, a street or a
+loanword with a letter their alphabet does not write, and 85 accepted
+differences, counted by the ledger rows their "Accepted difference"
+clause cites: 4 of HK-420; 10 of HK-423; 4 of HK-421; 11 of HK-422, 3 of
+them alone, 2 with HK-425 and 6 with HK-421; and 56 of HK-425, one of
+those with HK-424.
 
 The Swift runner is `Tests/PowerUpTests/SpeechFixtureTests.swift`, which
 plays every table through the bridge (`CoreBridgeSpeech.swift`), compares

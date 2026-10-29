@@ -21,11 +21,21 @@
 //!    whatever the letters (an English sentence quoting "Zürich" is still
 //!    English). A word is a run of Alphabetic scalars, lowercased, so
 //!    `l'erreur` is `l` and `erreur`; a word several lists hold counts for
-//!    each of them. A capital `İ` lowers to `i` alone ([`lowered`]), so
-//!    Turkish `İçin` is `için`, not `i` and `çin`.
+//!    each of them. Identifiers, acronyms and labels are no words
+//!    ([`words`]): `de-dup`, `i.e.`, `is_empty` and `M1` are each one token
+//!    no list holds, and `OS`, `CI` and the `D.` of "section D." are
+//!    skipped, so terse English with few English function words gives no
+//!    foreign answer a vote from them. A capital `İ` lowers to `i` alone
+//!    ([`lowered`]), so Turkish `İçin` is `için`, not `i` and `çin`.
 //!
 //! An answer the evidence does not back is undecided, which reads as
-//! English: a wrong voice is worse than the fallback.
+//! English: a wrong voice is worse than the fallback. That costs a reply
+//! in another language its voice now and then: when its function words
+//! tie a neighbour's (Danish and Norwegian), and when it holds a single
+//! letter its alphabet does not write, a name or a loanword (`Café` in
+//! German, `Müller` in Swedish), however long it is; the second check is
+//! what keeps whatlang's Portuguese from a Czech reply whose only telling
+//! letter is one `ř`.
 
 /// The script a language's alphabet is checked in.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -733,6 +743,65 @@ fn lowered(text: &str) -> Vec<char> {
         .collect()
 }
 
+/// The scalars that join two letters or digits into one token: `de-dup`,
+/// `e.g.`, `os_log` and `src/de` are each one token.
+const JOINERS: [char; 4] = ['-', '_', '.', '/'];
+
+/// The prose words of `text`, lowered ([`lowered`]), that are looked up in
+/// the lists. A token is a run of alphanumeric scalars, and a joiner
+/// ([`JOINERS`]) between two of them keeps the run going; any other scalar
+/// ends it, so `l'erreur` is `l` and `erreur`. A token is a prose word
+/// only when every scalar of it is Alphabetic and it is neither an acronym
+/// (two or more letters, none lowercase) nor an initial (one capital letter
+/// a `.` follows): a joined token is an identifier or an abbreviation
+/// (`de-serialization` holds no `de`, `i.e.` no `i` or `e`), one with a
+/// digit is an identifier (`M1`, `v2`), `OS`, `CI` and `DE` are acronyms,
+/// and `D.` in "section D. Profiles" is a label. So terse English that
+/// holds few English function words gives no Portuguese, Italian, French
+/// or Catalan answer a word from its identifiers, acronyms and labels.
+fn words(text: &str) -> Vec<String> {
+    let scalars: Vec<char> = text.chars().collect();
+    let mut words = Vec::new();
+    let mut start = 0;
+    while start < scalars.len() {
+        if !scalars
+            .get(start)
+            .is_some_and(|scalar| scalar.is_alphanumeric())
+        {
+            start += 1;
+            continue;
+        }
+        let mut end = start + 1;
+        while let Some(scalar) = scalars.get(end) {
+            if scalar.is_alphanumeric() {
+                end += 1;
+            } else if JOINERS.contains(scalar)
+                && scalars
+                    .get(end + 1)
+                    .is_some_and(|next| next.is_alphanumeric())
+            {
+                end += 2;
+            } else {
+                break;
+            }
+        }
+        let token = scalars.get(start..end).unwrap_or_default();
+        let prose = token.iter().all(|scalar| scalar.is_alphabetic());
+        let acronym = token.len() > 1 && !token.iter().any(|scalar| scalar.is_lowercase());
+        let initial =
+            matches!(token, [letter] if letter.is_uppercase()) && scalars.get(end) == Some(&'.');
+        if prose && !acronym && !initial {
+            words.push(
+                lowered(&token.iter().collect::<String>())
+                    .into_iter()
+                    .collect(),
+            );
+        }
+        start = end;
+    }
+    words
+}
+
 /// Whether the evidence backs `code` as the language of `text`: `None`
 /// when the core holds no evidence for `code` (a script other than Latin
 /// or Cyrillic), else whether both checks agree with it.
@@ -744,11 +813,7 @@ pub(super) fn confirms(text: &str, code: &str) -> Option<bool> {
         return Some(false);
     }
     let mut counts = [0usize; TABLE.len()];
-    for word in lowered
-        .split(|scalar| !scalar.is_alphabetic())
-        .filter(|word| !word.is_empty())
-    {
-        let word: String = word.iter().collect();
+    for word in words(text) {
         for (count, language) in counts.iter_mut().zip(&TABLE) {
             if language.words.binary_search(&word.as_str()).is_ok() {
                 *count += 1;
@@ -820,6 +885,56 @@ mod tests {
     }
 
     #[test]
+    fn identifiers_acronyms_and_labels_are_no_words() {
+        assert_eq!(words("l'erreur"), ["l", "erreur"]);
+        assert_eq!(
+            words("de-dup, i.e. e.g. os_log src/de/mod.rs"),
+            [] as [&str; 0]
+        );
+        assert_eq!(words("OS CI DE M1 v2 x86 D. Profiles"), ["profiles"]);
+        // A capital alone is a word unless a dot follows it: a sentence may
+        // open with Portuguese "A", English "I" stands alone, and "D." is a
+        // label (a closing "I." costs English that one word).
+        assert_eq!(
+            words("A função, I think. Option D."),
+            ["a", "função", "i", "think", "option"]
+        );
+        // A joiner at either end of a token ends it: "-x" and "x-" are x.
+        assert_eq!(words("-de de- _ . / --"), ["de", "de"]);
+        assert_eq!(words("İSTANBUL İçin"), ["için"]);
+    }
+
+    #[test]
+    fn terse_english_gives_no_foreign_answer_a_word() {
+        // NLLanguageRecognizer: English at 0.82 to 0.99 for each; read as
+        // words, OS, de-serialization, CI, i.e. and D. made them
+        // Portuguese, French, Italian, Portuguese and Catalan.
+        for (text, answer) in [
+            ("Added UI tests, DB schema, OS matrix.", "pt"),
+            ("Bumped de-serialization helpers plus docs.", "fr"),
+            (
+                "Cached audio tap, session store, config loader & CI cache (see #160).",
+                "it",
+            ),
+            (
+                "Fixed OS matrix, audio tap & config loader, i.e. no behavior change.",
+                "pt",
+            ),
+            ("Moved D. Profiles below C. Semantics notes.", "ca"),
+        ] {
+            assert_eq!(confirms(text, answer), Some(false), "{text:?}");
+        }
+        // An identifier gives English no "is" or "to" in a Turkish reply.
+        assert_eq!(
+            confirms(
+                "Hatayı düzelttim, artık is_empty ve to_string çağrıları doğru çalışıyor.",
+                "tr"
+            ),
+            Some(true)
+        );
+    }
+
+    #[test]
     fn a_letter_outside_the_alphabet_vetoes_the_answer() {
         // whatlang: Portuguese; ř is no Portuguese letter.
         let czech = "Aktualizoval jsem dokumentaci a přidal do projektu dva nové testy.";
@@ -828,6 +943,11 @@ mod tests {
         // Belarusian: ў and і are no Russian letters.
         let belarusian = "Я абнавіў дакументацыю і дадаў два новыя тэсты ў гэты праект сёння.";
         assert_eq!(confirms(belarusian, "ru"), Some(false));
+        // However long the reply, one name or loanword is enough: é is no
+        // German letter (NLLanguageRecognizer: German).
+        let german = "Ich habe die Beispieldaten für das Café aktualisiert, und jetzt laufen alle Tests wieder durch.";
+        assert_eq!(confirms(german, "de"), Some(false));
+        assert_eq!(confirms(&german.replace('é', "e"), "de"), Some(true));
         // A word in another script is not looked at.
         assert_eq!(
             confirms(

@@ -176,8 +176,10 @@ fn language_cases() {
 /// text the core decides by its script where the recognizer named another
 /// CJK language (HK-420, HK-423); or the language the sentence is written
 /// in, the one its case is named after, where the recognizer named another
-/// or was undecided (HK-425). So outside CJK the core never names a
-/// language the Swift app did not, unless it is the sentence's own.
+/// or was undecided (HK-425). So on this corpus, outside CJK, the core
+/// names no language the Swift app did not unless it is the sentence's
+/// own; the case name is the sentence's language, which the corpus states
+/// and the core is never told.
 #[test]
 fn language_agreement_cases() {
     let file = "language-agreement.json";

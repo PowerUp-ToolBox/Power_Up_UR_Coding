@@ -63,19 +63,24 @@ How the language is decided, honestly stated:
   Latin or Cyrillic letters (Spanish, German, Czech, Russian and the rest),
   the detector's guess is only used when the reply's letters belong to
   that language's alphabet and the reply's small common words ("und",
-  "les", "jsem", "что") point to that language and no other. Short,
-  terse technical English otherwise fooled the guess into French or
-  Portuguese. For a language written in another script (Arabic, Hindi,
-  Greek, Hebrew, Thai and the rest), the guess must be a confident one.
+  "les", "jsem", "что") point to that language and no other. Code names,
+  abbreviations and acronyms (`is_empty`, `e.g.`, `M1`, "OS", "CI") don't
+  count as words. Short, terse technical English otherwise fooled the
+  guess into French, Italian or Portuguese. For a language written in
+  another script (Arabic, Hindi, Greek, Hebrew, Thai and the rest), the
+  guess must be a confident one.
 - **When PowerUp isn't sure, it reads in English.** Very short replies
   ("OK", "Done."), lists of names or paths, and sentences whose common
   words don't settle the language (Danish and Norwegian share most of
   theirs, as do Czech and Slovak), and a short Hindi or Arabic note that
   is mostly English identifiers are read by an English voice rather than
-  risk a wrong one. So now and then a short reply in another
-  language is read in English. A few languages macOS can name but
-  PowerUp's detector can't (Icelandic, Kazakh, Lao, Tibetan and Cherokee
-  among them) are always read in English.
+  risk a wrong one. So does a reply that names a person, a place or a dish
+  spelled with a letter its language doesn't use (a German reply about a
+  "Café", a Swedish one mentioning "Müller"), however long it is. So now
+  and then a reply in another language is read in English. A few
+  languages macOS can name but PowerUp's detector can't (Icelandic,
+  Kazakh, Lao, Tibetan and Cherokee among them) are always read in
+  English.
 - PowerUp's own spoken confirmations (such as "Model: Sonnet") are always
   English.
 

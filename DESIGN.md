@@ -3597,7 +3597,14 @@ reply the same and routes it to the same language.
   of English's whatever the letters. Words are runs of Alphabetic scalars,
   lowercased, a capital İ to i alone (Unicode lowers it to i and a
   combining dot above, which would end the word and give English an "i"
-  in every Turkish sentence opening with İ); each of the 24 listed Latin-
+  in every Turkish sentence opening with İ). Identifiers, acronyms and
+  labels are no words: a token runs on through letters, digits and a
+  `-`, `_`, `.` or `/` between two of them, and one holding a digit or a
+  joiner (M1, de-serialization, i.e., is_empty), one of two or more
+  letters none of them lowercase (OS, CI) and a single capital a dot
+  follows (the D. of "section D.") is skipped; read as words, they gave
+  Portuguese, Italian, French or Catalan the only function word in a
+  terse English status line. Each of the 24 listed Latin-
   and Cyrillic-script languages has an alphabet and a list, and the check
   takes no confidence. An answer in any other script (Arabic, Devanagari,
   Greek, Hebrew, Thai, …) keeps a confidence gate, above 0.59 on
@@ -3611,17 +3618,22 @@ reply the same and routes it to the same language.
   Pashto) stays under it, at 0.37 or less.
 - Accepted differences, each a case of
   `Tests/Fixtures/speech/language-agreement.json` with `expected.core`
-  (351 sentences, 74 of them differences), and of three kinds, which both
+  (364 sentences, 85 of them differences), and of three kinds, which both
   runners enforce: the core undecided; CJK decided by its script where the
   recognizer named another CJK language; and the language a sentence is
   written in, the one its case is named after, where the recognizer named
-  another or was undecided. So outside CJK the core names a language the
-  app did not only when it is the sentence's own. The corpus holds at
-  least four sentences of every listed Latin- and Cyrillic-script
-  language and of eleven languages the confidence gate decides (ar, ur,
-  hi, mr, he, el, th, ka, hy, bn, ta), terse English code-review prose
-  and English quoting accented loanwords (crème brûlée, résumé) among the
-  English ones, and Turkish opening with a capital İ.
+  another or was undecided. So on the corpus, outside CJK, the core names
+  a language the app did not only when it is the sentence's own. That is
+  a measurement, here and in the differentials below, not a guarantee: no
+  rule keeps the evidence from backing a wrong answer on some other text.
+  The corpus holds at least four sentences of every listed Latin- and
+  Cyrillic-script language and of eleven languages the confidence gate
+  decides (ar, ur, hi, mr, he, el, th, ka, hy, bn, ta), terse English
+  code-review prose, English quoting accented loanwords (crème brûlée,
+  résumé) and terse English status lines whose acronyms, joined tokens,
+  digits and labels are no words (OS, CI, de-serialization, i.e., D1,
+  D.) among the English ones, Turkish opening with a capital İ, and
+  German, French and Swedish naming Café, Hauptstraße and Müller.
   Han-only text with no kana is zh in the core, where the recognizer knew
   Japanese words written in kanji (東京駅, 日本語, 新幹線 and
   合計：１，２３４，５６７円 read ja in the app; 大丈夫 agrees; HK-420); a
@@ -3634,15 +3646,19 @@ reply the same and routes it to the same language.
   zh, and Korean with full-width exclamation marks is ko and was ja. Text
   whose only CJK-looking scalars are full-width forms is undecided in the
   core where the recognizer said ja (（１２／１２）, ｶﾀｶﾅ), and so is
-  full-width English, which whatlang counts as hangul (HK-423). 62
+  full-width English, which whatlang counts as hangul (HK-423). 73
   sentences are undecided in the core (HK-421, HK-422, HK-423, HK-425):
-  19 the app read as English anyway, and 43 it read in another language,
+  26 the app read as English anyway, and 47 it read in another language,
   among them German (the repeated 'Bitte prüfe…' too, which a confidence
-  gate alone read as French, HK-424), Dutch, Czech, Slovak, Croatian, Swedish, Danish and
-  Norwegian (which share most function words), Russian and Ukrainian,
-  where whatlang's answer was another language or the function words did
-  not settle it, and short Hindi, Arabic and Marathi under the confidence
-  gate. Five languages only the recognizer names (Icelandic, Kazakh, Lao,
+  gate alone read as French, HK-424), Dutch, Czech, Slovak, Croatian,
+  Swedish, Danish and Norwegian (which share most function words),
+  Russian, Bulgarian and Ukrainian, where whatlang's answer was another
+  language or the function words did not settle it (Bulgarian's т.е. is
+  an abbreviation, no word), German, French and Swedish naming Café,
+  Hauptstraße or Müller, where one letter the answer's alphabet does not
+  write vetoes it however long the reply (the veto that keeps whatlang's
+  Portuguese from a Czech reply whose one telling letter is ř), and
+  short Hindi, Arabic and Marathi under the confidence gate. Five languages only the recognizer names (Icelandic, Kazakh, Lao,
   Tibetan, Cherokee) and languages the core does not answer that the
   recognizer read as Arabic, Hindi or Urdu (Persian, Nepali, Central
   Kurdish, Pashto, whose neighbour in whatlang stays under the gate) are
@@ -3688,7 +3704,19 @@ reply the same and routes it to the same language.
   names a language the app did not, where a confidence gate alone did five
   times (Czech as Portuguese twice, Slovene as Croatian where the app said
   Czech, Belarusian as Russian where it said Kazakh, Swahili as Indonesian
-  where it was undecided). On 20,000 random strings mixing kana, Han,
+  where it was undecided). Terse English status lines were the exception
+  until identifiers, acronyms and labels stopped counting as words: on
+  7,000 templated change summaries (a verb and one to four nouns, with
+  acronyms, hyphenated and dotted tokens, labels and identifiers with
+  digits among them, the register of a short reply or a spoken summary),
+  the core named Portuguese, French, Italian, Romanian, Catalan or Dutch
+  161 times, 110 where the app read English and 51 where it was
+  undecided (OS as Portuguese "os", CI as Italian "ci", de-serialization
+  as French "de", D. as Catalan "d"); since, none. Re-run on that
+  change, the differentials above name no language they did not before:
+  the English corpora none, the 155 coding replies none the app did not,
+  the held-out sentences and replies the one Russian sentence, while a
+  few dozen English lines move between English and undecided. On 20,000 random strings mixing kana, Han,
   hangul, full-width forms and CJK punctuation the decisions differ 3,924
   times (8,143 while the core trusted whatlang's CJK answer, 5,495 of them
   Japanese read as Korean), and with the full-width comma the only
