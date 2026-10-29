@@ -61,6 +61,10 @@ cargo test                                  # core tests
 cargo clippy --all-targets -- -D warnings   # lints; unwrap/expect are denied in library code
 ```
 
+`cargo test` runs the scripted ACP agent (`tests/acp_mock_agent.rs`) with
+Python 3: `POWERUP_PYTHON`, else `python3`, else `python`. Without one it
+skips that test with a note; on CI (`CI` set) a missing Python fails it.
+
 The rules for core work:
 
 - **Workspace.** `rust/` holds `powerup-core` (the logic), `powerup-core-ffi`
@@ -80,7 +84,12 @@ The rules for core work:
   `CoreBridgeSession.swift` (DESIGN v2.12). The core returns effects and
   the platform carries them out in order (CONTEXT.md, "Effect"):
   ClaudeService owns the process and pipes, AppState the adapters,
-  config, transcript, speech and remote injector.
+  config, transcript, speech and remote injector. Since slice 2.4 it also
+  holds the ACP adapter's JSON-RPC rules, the agent presets and the
+  environment scrub list (`harness::acp`, DESIGN v2.13), played against
+  `Tests/Fixtures/harness/acp-*.json` and the scripted mock agent and
+  reached through `CoreBridgeACP.swift`; ACPAdapter owns the agent
+  process, its pipes and timers, the install paths and PATH.
 - **Panic rule.** Every public core function is total: it returns its
   value, or a `Result` when it can fail, and never panics. Library code
   never calls `unwrap`, `expect` or `panic!` (clippy denies the first two).

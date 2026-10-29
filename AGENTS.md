@@ -58,6 +58,10 @@ Apple-framework adapter.
 swift test                        # app tests plus Tests/PowerUpCoreTests
 ```
 
+`cargo test` needs Python 3 for the mock ACP agent test
+(`tests/acp_mock_agent.rs`; `POWERUP_PYTHON`, else `python3`, else
+`python`); it skips without one, except on CI, where that fails.
+
 The app always links the core (slice 2.2): `swift build` and `swift test`
 need `./scripts/build-core.sh` to have run, and again after any change under
 `rust/`; without `rust/build/` the manifest stops with that instruction.
@@ -81,7 +85,12 @@ clearly without them. CI runs the cargo job on macOS, Windows and Linux.
   `CoreBridgeSession.swift` (DESIGN v2.12). The core returns effects and
   the platform carries them out in order (CONTEXT.md, "Effect"):
   ClaudeService owns the process and pipes, AppState the adapters,
-  config, transcript, speech and remote injector.
+  config, transcript, speech and remote injector. Since slice 2.4 it also
+  holds the ACP adapter's JSON-RPC rules, the agent presets and the
+  environment scrub list (`harness::acp`, DESIGN v2.13), played against
+  `Tests/Fixtures/harness/acp-*.json` and the scripted mock agent and
+  reached through `CoreBridgeACP.swift`; ACPAdapter owns the agent
+  process, its pipes and timers, the install paths and PATH.
 - **Panic rule.** Every public core function is total: it returns its
   value, or a `Result` when it can fail, and never panics. Library code
   never calls `unwrap`, `expect` or `panic!` (clippy denies the first two).
@@ -133,7 +142,7 @@ contract change.
 | `Models.swift` | Data model contracts (buttons, actions, config, transcript) |
 | `Harness.swift` | `HarnessAdapter` protocol; `HarnessEvent`/configuration contracts |
 | `ClaudeService.swift` | `claude` CLI subprocess adapter (spawn, pipes, kill grace); parsing and the adapter rules run in the core |
-| `ACPAdapter.swift` | ACP adapter for external harnesses (opencode, Codex, …) |
+| `ACPAdapter.swift` | ACP agent subprocess adapter for external harnesses (opencode, Codex, …): spawn, pipes, kill grace, install paths, PATH; its rules run in the core |
 | `ControllerService.swift` | DualSense input, light bar, haptics, battery |
 | `SpeechService.swift` | Push-to-talk STT (AVAudioEngine + SFSpeechRecognizer) |
 | `TTSService.swift` | Text-to-speech with language-aware voice selection |
@@ -150,9 +159,10 @@ contract change.
 | `ConfigStore.swift` | Persistent config (JSON, debounced, repairs corruption) |
 | `TranscriptStore.swift` | Per-project transcript persistence (JSON Lines) |
 | `MainView.swift` / `ComponentViews.swift` / `SettingsView.swift` / `MappingView.swift` | SwiftUI views |
-| `CoreBridge.swift` | Imports the Rust core (with the two `CoreBridge*.swift` files, the only files that do): launch check and the device-layer wrappers (DESIGN v2.10, v2.11) |
+| `CoreBridge.swift` | Imports the Rust core (with the other `CoreBridge*.swift` files, the only files that do): launch check and the device-layer wrappers (DESIGN v2.10, v2.11) |
 | `CoreBridgeHarness.swift` | Bridge wrappers for the Claude harness: line parser, `LineBuffer`, stdin lines, argv, the `ClaudeAdapter` object (DESIGN v2.12) |
 | `CoreBridgeSession.swift` | Bridge wrappers for the session: the `Session` object and its effects, status derivation, classifier, cycles (DESIGN v2.12) |
+| `CoreBridgeACP.swift` | Bridge wrappers for the ACP harness: the `ACPStateMachine` object and its effects, the permission choice, the agent presets, the environment scrub list (DESIGN v2.13) |
 
 The Rust core lives in `rust/` (see "The Rust core" above); its bridge tests
 are in `Tests/PowerUpCoreTests/`.
@@ -182,7 +192,8 @@ are in `Tests/PowerUpCoreTests/`.
 - Don't spawn real ACP agents or npx bridges (opencode, `claude-agent-acp`,
   `codex-acp`) from tests or ad-hoc verification — they hit the network and
   run under the user's real agent logins. ACPAdapter is tested against the
-  scripted mock agent (see `ACPAdapterTests`); live wire shapes come from
+  scripted mock agent (`Tests/Fixtures/harness/acp-mock-agent.py`, run by
+  `ACPAdapterTests`; `cargo test` runs it too, `tests/acp_mock_agent.rs`); live wire shapes come from
   DESIGN.md's verified probes.
 - The tests pin many wire-protocol details; update tests and DESIGN.md
   together only if the CLI genuinely changes.

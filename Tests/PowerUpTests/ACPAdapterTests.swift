@@ -39,6 +39,18 @@ final class ACPAdapterUnitTests: XCTestCase {
         XCTAssertTrue(env["PATH"]!.hasPrefix("/usr/bin"))
     }
 
+    func testAgentEnvironmentAugmentsPathOnceWithADefault() {
+        // HK-128: a GUI app gets a minimal PATH, so the install locations
+        // are appended, each only when missing, after a default when unset.
+        let local = NSHomeDirectory() + "/.local/bin"
+        XCTAssertEqual(ACPAdapter.agentEnvironment(from: [:])["PATH"],
+                       "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin:\(local)")
+        XCTAssertEqual(ACPAdapter.agentEnvironment(from: ["PATH": "/usr/local/bin:/x"])["PATH"],
+                       "/usr/local/bin:/x:/opt/homebrew/bin:\(local)")
+        let full = "\(local):/opt/homebrew/bin:/usr/local/bin"
+        XCTAssertEqual(ACPAdapter.agentEnvironment(from: ["PATH": full])["PATH"], full)
+    }
+
     func testPermissionChoicePrefersOnceVariants() {
         let options: [(id: String, kind: String)] = [
             ("aa", "allow_always"), ("ao", "allow_once"),
@@ -70,22 +82,29 @@ final class ACPAdapterUnitTests: XCTestCase {
 
 /// Runs the real adapter against a python mock speaking ACP over stdio —
 /// initialize, session/new, streamed updates, a permission request, and
-/// set_model, without any real harness or network.
+/// set_model, without any real harness or network. The mock is the shared
+/// fixture `Tests/Fixtures/harness/acp-mock-agent.py`, run in place; it
+/// records every line it reads and writes, so a test can check the exchange
+/// against the matching "mock agent:" case of `acp-adapter.json`.
 @MainActor
 final class ACPAdapterIntegrationTests: XCTestCase {
 
     private var adapter: ACPAdapter!
     private var events: [HarnessEvent] = []
-    private var scriptURL: URL!
+    private var recordURL: URL!
+
+    private static let scriptURL = TextSafetyFixtures.directory(area: "harness")
+        .appendingPathComponent("acp-mock-agent.py")
 
     private static let python = "/usr/bin/python3"
 
     override func setUpWithError() throws {
         try XCTSkipUnless(FileManager.default.isExecutableFile(atPath: Self.python),
                           "python3 unavailable")
-        scriptURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("mock-acp-\(UUID().uuidString).py")
-        try Self.mockAgentScript.write(to: scriptURL, atomically: true, encoding: .utf8)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: Self.scriptURL.path),
+                      "the mock agent fixture is missing: \(Self.scriptURL.path)")
+        recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mock-acp-record-\(UUID().uuidString).jsonl")
 
         adapter = ACPAdapter()
         events = []
@@ -95,7 +114,7 @@ final class ACPAdapterIntegrationTests: XCTestCase {
     override func tearDown() async throws {
         adapter?.stop()
         adapter = nil
-        if let scriptURL { try? FileManager.default.removeItem(at: scriptURL) }
+        if let recordURL { try? FileManager.default.removeItem(at: recordURL) }
     }
 
     private func startAdapter() {
@@ -103,7 +122,7 @@ final class ACPAdapterIntegrationTests: XCTestCase {
             projectDir: URL(fileURLWithPath: "/tmp", isDirectory: true),
             model: "default", permissionMode: "default", effort: "default",
             resumeSessionID: nil, binaryPathOverride: nil,
-            agentCommand: [Self.python, scriptURL.path]))
+            agentCommand: [Self.python, Self.scriptURL.path, "--record", recordURL.path]))
     }
 
     private func waitForEvent(timeout: TimeInterval = 10,
@@ -123,6 +142,7 @@ final class ACPAdapterIntegrationTests: XCTestCase {
         XCTAssertEqual(adapter.state, .ready)
         XCTAssertEqual(adapter.sessionID, "mock-session")
         XCTAssertEqual(adapter.modelName, "mock/model-1")
+        try assertTranscript(matchesCase: "mock agent: the handshake gives sessionReady")
     }
 
     func testPromptStreamsToolsPermissionAndCompletion() async throws {
@@ -181,6 +201,7 @@ final class ACPAdapterIntegrationTests: XCTestCase {
             return false
         }
         XCTAssertEqual(adapter.totalTokens, 300, "usage must accumulate across turns")
+        try assertTranscript(matchesCase: "mock agent: a prompt streams a reply, a tool and a permission, and completes")
     }
 
     func testSetModelSuccessAndRejection() async throws {
@@ -194,68 +215,50 @@ final class ACPAdapterIntegrationTests: XCTestCase {
         adapter.setModel("bad")
         try await waitForEvent { if case .controlResult("set_model", false, _, "bad") = $0 { return true }; return false }
         XCTAssertEqual(adapter.modelName, "mock/model-2", "a rejected switch must not change the model")
+        try assertTranscript(matchesCase: "mock agent: set_model accepted, then rejected")
     }
 
-    // MARK: The mock agent
+    // MARK: The exchange against the shared table
 
-    private static let mockAgentScript = #"""
-    import json, sys
+    /// Checks the mock's record against the "mock agent:" case `name` of
+    /// `Tests/Fixtures/harness/acp-adapter.json`: the lines the mock sent are
+    /// the case's `line` steps, byte for byte and in order, and the lines it
+    /// read are the case's `writeStdin` lines, compared as JSON. That is what
+    /// makes the table's mock lines the real mock's, answering the real
+    /// adapter.
+    private func assertTranscript(matchesCase name: String,
+                                  file: StaticString = #filePath, line: UInt = #line) throws {
+        let fileName = "acp-adapter.json"
+        let table = try TextSafetyFixtures.load(fileName, area: "harness",
+                                                input: JSONValue.self, expected: JSONValue.self)
+        let fixtureCase = try XCTUnwrap(table.cases.first { $0.name == name },
+                                        "\(fileName) has no case \(name)", file: file, line: line)
+        guard case .array(let steps)? = fixtureCase.input["steps"],
+              case .array(let effectLists)? = fixtureCase.expected["effects"] else {
+            throw FixtureValueError(description: "\(fileName) case \(name) has no steps or effects")
+        }
+        let tableSent = steps.compactMap { $0["line"]?.stringValue }
+        let tableWritten = effectLists.flatMap { list -> [JSONValue] in
+            guard case .array(let effects) = list else { return [] }
+            return effects.compactMap { $0["effect"] == .string("writeStdin") ? $0["line"] : nil }
+        }
 
-    def send(obj):
-        sys.stdout.write(json.dumps(obj) + "\n")
-        sys.stdout.flush()
-
-    for line in sys.stdin:
-        line = line.strip()
-        if not line:
-            continue
-        m = json.loads(line)
-        method, mid = m.get("method"), m.get("id")
-        if method == "initialize":
-            send({"jsonrpc": "2.0", "id": mid, "result": {
-                "protocolVersion": 1,
-                "agentInfo": {"name": "MockAgent", "version": "1.0"}}})
-        elif method == "session/new":
-            send({"jsonrpc": "2.0", "id": mid, "result": {
-                "sessionId": "mock-session",
-                "models": {"currentModelId": "mock/model-1"}}})
-        elif method == "session/prompt":
-            sid = m["params"]["sessionId"]
-            def update(u):
-                send({"jsonrpc": "2.0", "method": "session/update",
-                      "params": {"sessionId": sid, "update": u}})
-            update({"sessionUpdate": "agent_thought_chunk",
-                    "content": {"type": "text", "text": "thinking"}})
-            update({"sessionUpdate": "agent_message_chunk",
-                    "content": {"type": "text", "text": "Working. "}})
-            update({"sessionUpdate": "tool_call", "toolCallId": "t1",
-                    "title": "Edit File", "kind": "edit",
-                    "locations": [{"path": "/tmp/a.swift", "line": 1}]})
-            send({"jsonrpc": "2.0", "id": 100, "method": "session/request_permission",
-                  "params": {"sessionId": sid,
-                             "toolCall": {"title": "Edit a.swift", "kind": "edit",
-                                          "rawInput": {"file_path": "/tmp/a.swift"}},
-                             "options": [
-                                 {"optionId": "allow-always", "name": "Always", "kind": "allow_always"},
-                                 {"optionId": "allow-once", "name": "Once", "kind": "allow_once"},
-                                 {"optionId": "reject-once", "name": "No", "kind": "reject_once"}]}})
-            chosen = "cancelled"
-            for reply_line in sys.stdin:
-                r = json.loads(reply_line)
-                if r.get("id") == 100:
-                    outcome = r.get("result", {}).get("outcome", {})
-                    if outcome.get("outcome") == "selected":
-                        chosen = outcome.get("optionId", "cancelled")
-                    break
-            update({"sessionUpdate": "agent_message_chunk",
-                    "content": {"type": "text", "text": "choice=" + chosen}})
-            send({"jsonrpc": "2.0", "id": mid, "result": {"stopReason": "end_turn",
-                  "usage": {"inputTokens": 100, "outputTokens": 50}}})
-        elif method == "session/set_model":
-            if m["params"].get("modelId") == "bad":
-                send({"jsonrpc": "2.0", "id": mid,
-                      "error": {"code": -32602, "message": "unknown model"}})
-            else:
-                send({"jsonrpc": "2.0", "id": mid, "result": {}})
-    """#
+        var sent: [String] = []
+        var received: [JSONValue] = []
+        let record = try String(contentsOf: recordURL, encoding: .utf8)
+        for entry in record.split(separator: "\n") {
+            let value = try JSONDecoder().decode(JSONValue.self, from: Data(entry.utf8))
+            if let text = value["sent"]?.stringValue {
+                sent.append(text)
+            } else if let text = value["received"]?.stringValue {
+                received.append(try JSONDecoder().decode(JSONValue.self, from: Data(text.utf8)))
+            } else {
+                throw FixtureValueError(description: "an unknown record entry: \(entry)")
+            }
+        }
+        XCTAssertEqual(sent, tableSent, "the mock's lines differ from \(fileName) case \(name)",
+                       file: file, line: line)
+        XCTAssertEqual(received, tableWritten, "the adapter's lines differ from \(fileName) case \(name)",
+                       file: file, line: line)
+    }
 }

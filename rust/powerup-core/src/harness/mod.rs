@@ -1,9 +1,13 @@
 //! Harness adapters' platform-independent rules (spec #98). A harness is the
 //! coding agent PowerUp drives; each adapter's wire rules live under its own
-//! module, and the platform owns the process and its pipes.
+//! module, and the platform owns the process and its pipes. Every adapter
+//! reads its stdout lines with the one Foundation-matching JSON reader
+//! (`json`).
 
+pub mod acp;
 pub mod claude;
 pub mod destructive;
+pub(crate) mod json;
 
 /// Which adapter runs the built-in session (Settings → General → Harness).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

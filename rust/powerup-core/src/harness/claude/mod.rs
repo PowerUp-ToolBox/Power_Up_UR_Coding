@@ -5,7 +5,6 @@
 
 pub mod adapter;
 pub mod event;
-mod json;
 pub mod launch;
 pub mod lines;
 pub mod parse;

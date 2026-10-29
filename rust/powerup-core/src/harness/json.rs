@@ -1,6 +1,6 @@
-//! One stdout line read as Foundation's `JSONSerialization` reads it
-//! (HK-393), and its fields read as Swift reads them through `NSNumber`
-//! (HK-394).
+//! One harness stdout line (the claude CLI's stream-json, an ACP agent's
+//! JSON-RPC) read as Foundation's `JSONSerialization` reads it (HK-393),
+//! and its fields read as Swift reads them through `NSNumber` (HK-394).
 //!
 //! serde_json reads differently in ways a line can show: it keeps the last
 //! of two equal keys where Foundation keeps the first, it refuses a byte
@@ -37,7 +37,16 @@
 //! NSDecimalNumber and rejects the line when its exponent leaves Decimal's
 //! range, and rejects some exponents of four digits or more; and Swift's
 //! bridged dictionary merges keys that are canonically equivalent but
-//! spelled differently, which this reader keeps apart.
+//! spelled differently, which this reader keeps apart. Numbers are kept as
+//! doubles, so an integer past 2^53 can read differently from Swift's
+//! `Int` (HK-403); no agent sends such an id or token count.
+//!
+//! [`write`] goes the other way for the lines an ACP adapter sends: compact
+//! text, members in the order they were built, strings escaped as Swift
+//! escapes them, without recursion either (an agent's id is echoed back as
+//! read, however deep).
+
+use crate::{wire, CoreError};
 
 /// A JSON value. Objects keep every member in order; [`JsonValue::get`]
 /// answers the first, as Foundation does.
@@ -107,6 +116,49 @@ impl JsonValue {
         }
     }
 
+    /// Swift's `as? Int` on a JSONSerialization value (measured with Swift
+    /// 5.9.2): a bool reads as 1 or 0, a number only when it is integral and
+    /// inside `Int`'s range. 1.0 and 1e2 read; 1.5, 1e19, strings and null
+    /// do not.
+    pub(crate) fn as_swift_int(&self) -> Option<i64> {
+        match self {
+            JsonValue::Bool(flag) => Some(i64::from(*flag)),
+            JsonValue::Number(number)
+                if number.fract() == 0.0 && (-TWO_TO_63..TWO_TO_63).contains(number) =>
+            {
+                // Exact: integral and inside i64's range.
+                #[allow(clippy::cast_possible_truncation)]
+                Some(*number as i64)
+            }
+            _ => None,
+        }
+    }
+
+    /// Swift's `(as? NSNumber)?.intValue`: a number truncated toward zero
+    /// and saturated at `Int`'s bounds, a bool as 1 or 0; anything else
+    /// `None`.
+    pub(crate) fn as_swift_int_value(&self) -> Option<i64> {
+        match self {
+            JsonValue::Bool(flag) => Some(i64::from(*flag)),
+            // `as` truncates toward zero and saturates, which is what
+            // NSNumber's intValue does with a double.
+            #[allow(clippy::cast_possible_truncation)]
+            JsonValue::Number(number) => Some(*number as i64),
+            _ => None,
+        }
+    }
+
+    /// Swift's `as? [[String: Any]]`: the elements of an array when every
+    /// one is an object. One element of another kind fails the whole cast
+    /// (measured: `[{"optionId":"a"},5]` casts to nil).
+    pub(crate) fn as_object_array(&self) -> Option<Vec<&JsonValue>> {
+        let items = self.as_array()?;
+        items
+            .iter()
+            .all(|item| item.as_object().is_some())
+            .then(|| items.iter().collect())
+    }
+
     /// Moves this value's children onto `into`, leaving it shallow.
     fn take_children(&mut self, into: &mut Vec<JsonValue>) {
         match self {
@@ -126,6 +178,84 @@ impl Drop for JsonValue {
             child.take_children(&mut pending);
         }
     }
+}
+
+/// 2^63 as a double: the first integer past `Int`'s range.
+const TWO_TO_63: f64 = 9_223_372_036_854_775_808.0;
+
+/// 2^53: integers below it are exact in a double, so they are written as
+/// integers.
+const TWO_TO_53: f64 = 9_007_199_254_740_992.0;
+
+/// One step of [`write`]'s explicit stack.
+enum Write<'a> {
+    Value(&'a JsonValue),
+    Key(&'a str),
+    Text(&'static str),
+}
+
+/// Compact JSON text of `value`: members in order, strings escaped as Swift
+/// escapes them (`wire::to_swift_json`, so `/` is `\/`), an integral number
+/// below 2^53 in magnitude as an integer and any other number as serde
+/// writes a double (`-1.5`, `1e+20`, as Swift writes them). Of two members
+/// with the same key only the first is written, as a Swift dictionary read
+/// from the line would hold it. Iterative: an explicit stack, never
+/// recursion.
+pub(crate) fn write(value: &JsonValue) -> Result<String, CoreError> {
+    let mut out = String::new();
+    let mut stack = vec![Write::Value(value)];
+    while let Some(step) = stack.pop() {
+        match step {
+            Write::Text(text) => out.push_str(text),
+            Write::Key(key) => {
+                out.push_str(&wire::to_swift_json(key)?);
+                out.push(':');
+            }
+            Write::Value(value) => match value {
+                JsonValue::Null => out.push_str("null"),
+                JsonValue::Bool(flag) => out.push_str(if *flag { "true" } else { "false" }),
+                JsonValue::Number(number) => {
+                    if number.fract() == 0.0 && number.abs() < TWO_TO_53 {
+                        // Exact: integral and below 2^53.
+                        #[allow(clippy::cast_possible_truncation)]
+                        out.push_str(&(*number as i64).to_string());
+                    } else {
+                        out.push_str(&wire::to_swift_json(number)?);
+                    }
+                }
+                JsonValue::String(text) => out.push_str(&wire::to_swift_json(text.as_str())?),
+                JsonValue::Array(items) => {
+                    out.push('[');
+                    stack.push(Write::Text("]"));
+                    for (index, item) in items.iter().enumerate().rev() {
+                        stack.push(Write::Value(item));
+                        if index > 0 {
+                            stack.push(Write::Text(","));
+                        }
+                    }
+                }
+                JsonValue::Object(members) => {
+                    out.push('{');
+                    stack.push(Write::Text("}"));
+                    // One pass with a set of keys seen, so an object of many
+                    // members (an agent's id is echoed as read) stays linear.
+                    let mut seen = std::collections::HashSet::new();
+                    let kept: Vec<&(String, JsonValue)> = members
+                        .iter()
+                        .filter(|(key, _)| seen.insert(key.as_str()))
+                        .collect();
+                    for (index, (key, item)) in kept.into_iter().enumerate().rev() {
+                        stack.push(Write::Value(item));
+                        stack.push(Write::Key(key));
+                        if index > 0 {
+                            stack.push(Write::Text(","));
+                        }
+                    }
+                }
+            },
+        }
+    }
+    Ok(out)
 }
 
 /// An open container while reading.
@@ -630,6 +760,150 @@ mod tests {
         assert!(read(b"{\"a\":\"\xED\xA0\x80\"}").is_none());
         // Foundation would detect UTF-16 here; the CLI never writes it.
         assert!(read(b"{\x00}\x00").is_none());
+    }
+
+    fn field(text: &str) -> JsonValue {
+        let mut root = read_str(&format!(r#"{{"f":{text}}}"#)).unwrap();
+        match &mut root {
+            JsonValue::Object(members) => members.remove(0).1,
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn swift_int_reads_like_nsnumber() {
+        // Measured with Swift 5.9.2 on macOS 27.2 (`as? Int`).
+        for (text, int) in [
+            ("1", Some(1)),
+            ("1.0", Some(1)),
+            ("1e2", Some(100)),
+            ("1.5", None),
+            ("true", Some(1)),
+            ("false", Some(0)),
+            ("-3", Some(-3)),
+            ("1e19", None),
+            ("\"1\"", None),
+            ("null", None),
+            ("-9223372036854775808", Some(i64::MIN)),
+            ("100000000000000000000", None),
+            ("[1]", None),
+        ] {
+            assert_eq!(field(text).as_swift_int(), int, "{text}");
+        }
+    }
+
+    #[test]
+    fn swift_int_value_truncates_and_saturates() {
+        // Measured with Swift 5.9.2 on macOS 27.2 (`(as? NSNumber)?.intValue`).
+        for (text, int) in [
+            ("1", Some(1)),
+            ("1.5", Some(1)),
+            ("1.9", Some(1)),
+            ("-1.9", Some(-1)),
+            ("true", Some(1)),
+            ("false", Some(0)),
+            ("1e19", Some(i64::MAX)),
+            ("-1e19", Some(i64::MIN)),
+            ("\"5\"", None),
+            ("null", None),
+            ("{}", None),
+        ] {
+            assert_eq!(field(text).as_swift_int_value(), int, "{text}");
+        }
+    }
+
+    #[test]
+    fn an_array_with_one_non_object_is_not_an_object_array() {
+        assert_eq!(
+            field(r#"[{"a":1},{}]"#).as_object_array().map(|a| a.len()),
+            Some(2)
+        );
+        assert_eq!(field("[]").as_object_array().map(|a| a.len()), Some(0));
+        assert!(field(r#"[{"a":1},5]"#).as_object_array().is_none());
+        assert!(field(r#"[{"a":1},null]"#).as_object_array().is_none());
+        assert!(field(r#"{"a":1}"#).as_object_array().is_none());
+    }
+
+    fn string(text: &str) -> JsonValue {
+        JsonValue::String(text.to_owned())
+    }
+
+    #[test]
+    fn write_escapes_like_swift() {
+        let value = JsonValue::Object(vec![("cwd".to_owned(), string("/tmp/a b\n\u{1}é\"\\"))]);
+        assert_eq!(
+            write(&value).unwrap(),
+            "{\"cwd\":\"\\/tmp\\/a b\\n\\u0001é\\\"\\\\\"}"
+        );
+    }
+
+    #[test]
+    fn write_keeps_member_order() {
+        let value = JsonValue::Object(vec![
+            ("jsonrpc".to_owned(), string("2.0")),
+            ("id".to_owned(), JsonValue::Number(3.0)),
+            ("method".to_owned(), string("m")),
+            (
+                "params".to_owned(),
+                JsonValue::Array(vec![
+                    JsonValue::Null,
+                    JsonValue::Bool(true),
+                    JsonValue::Number(-1.5),
+                    JsonValue::Number(1e20),
+                    JsonValue::Object(Vec::new()),
+                    JsonValue::Array(Vec::new()),
+                ]),
+            ),
+        ]);
+        assert_eq!(
+            write(&value).unwrap(),
+            r#"{"jsonrpc":"2.0","id":3,"method":"m","params":[null,true,-1.5,1e+20,{},[]]}"#
+        );
+    }
+
+    #[test]
+    fn write_keeps_the_first_of_two_equal_keys() {
+        let value = read_str(r#"{"a":1,"b":2,"a":3}"#).unwrap();
+        assert_eq!(write(&value).unwrap(), r#"{"a":1,"b":2}"#);
+    }
+
+    #[test]
+    fn a_wide_object_is_written_in_one_pass() {
+        // An agent's id is echoed as read, so its width is the agent's to
+        // choose; a check per member against every other one took minutes
+        // at a few hundred thousand keys.
+        let members: Vec<String> = (0..200_000)
+            .map(|index| format!(r#""k{index}":0"#))
+            .collect();
+        let line = format!("{{{},\"k0\":1}}", members.join(","));
+        let value = read_str(&line).unwrap();
+        let expected = format!("{{{}}}", members.join(","));
+        assert_eq!(write(&value).unwrap(), expected);
+    }
+
+    #[test]
+    fn a_deep_value_is_written_without_the_call_stack() {
+        let worker = std::thread::Builder::new()
+            .stack_size(64 * 1024)
+            .spawn(|| {
+                let line = format!("{}{}", "[".repeat(512), "]".repeat(512));
+                let deep = read_str(&line).map(|value| write(&value));
+                let objects = format!("{}1{}", r#"{"a":"#.repeat(512), "}".repeat(512));
+                let deep_objects = read_str(&objects).map(|value| write(&value));
+                (deep, line, deep_objects, objects)
+            })
+            .unwrap();
+        let (deep, line, deep_objects, objects) = worker.join().unwrap();
+        assert_eq!(deep.unwrap().unwrap(), line);
+        assert_eq!(deep_objects.unwrap().unwrap(), objects);
+    }
+
+    #[test]
+    fn write_then_read_round_trips() {
+        let text = r#"{"s":"a\/b \u0001 😀","n":[0,-7,1.25,9007199254740993],"o":{"t":true,"f":false,"z":null}}"#;
+        let value = read_str(text).unwrap();
+        let written = write(&value).unwrap();
+        assert_eq!(read_str(&written).unwrap(), value);
     }
 
     #[test]

@@ -11,6 +11,7 @@ use powerup_core::{probe, CoreError};
 
 uniffi::setup_scaffolding!();
 
+mod acp;
 mod device;
 mod harness;
 mod mapping;

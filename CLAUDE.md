@@ -48,8 +48,10 @@ open build/PowerUp.app # ALWAYS launch as a bundle — TCC permissions track
 The Rust core (stage 2, `rust/`): `(cd rust && cargo test)`. Every Swift
 build links it, so Rust (rustup) and a full Xcode are build requirements;
 `swift test` also runs the bridge tests. Since slice 2.3 the core also runs
-the Claude adapter's rules and AppState's session rules (DESIGN v2.12);
-`cargo test` plays `Tests/Fixtures/harness/`, `session/` and `status/`.
+the Claude adapter's rules and AppState's session rules (DESIGN v2.12),
+and since slice 2.4 the ACP adapter's rules (DESIGN v2.13); `cargo test`
+plays `Tests/Fixtures/harness/`, `session/` and `status/`, and needs
+Python 3 for the mock ACP agent test (skipped without it, except on CI).
 Rules (panic, fixtures, ledger, licenses) are in AGENTS.md, "The Rust
 core".
 
@@ -92,7 +94,8 @@ core".
 - Don't spawn real ACP agents or npx bridges (opencode, `claude-agent-acp`,
   `codex-acp`) from tests or ad-hoc verification — they hit the network and
   run under the user's real agent logins. ACPAdapter is tested against the
-  scripted mock agent (see `ACPAdapterTests`).
+  scripted mock agent (`Tests/Fixtures/harness/acp-mock-agent.py`, run by
+  `ACPAdapterTests`; `cargo test` runs it too, `tests/acp_mock_agent.rs`).
 
 ## Agent skills
 
