@@ -112,6 +112,12 @@ The per-operating-system code the core cannot contain: device input, speech
 recognition, text to speech, audio devices, the injector.
 _Avoid_: driver, provider, native layer
 
+**Effect**:
+What the core asks a platform adapter to do: start the harness, append a
+transcript entry, inject text. The core decides; the platform only carries
+it out, in order.
+_Avoid_: command, callback, side effect (when meaning one of these)
+
 **Harness**:
 The AI coding agent PowerUp drives: Claude Code built in, or any agent
 reached over the Agent Client Protocol.

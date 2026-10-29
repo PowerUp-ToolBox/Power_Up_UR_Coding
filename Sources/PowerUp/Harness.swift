@@ -25,9 +25,10 @@ struct HarnessConfiguration: Equatable {
 // MARK: - HarnessEvent
 
 /// The normalized event stream every harness adapter produces — the only
-/// vocabulary `AppState` consumes. A superset of what the Claude adapter emits
-/// today: `permissionRequest` and `notification` are reserved for adapters
-/// that surface them (see DEVELOPMENT.md WS-B); nothing emits them yet.
+/// vocabulary `AppState` consumes. A superset of what the Claude adapter emits:
+/// `permissionRequest` and `notification` are reserved for adapters that
+/// surface them (see DEVELOPMENT.md WS-B). ACP agents emit `permissionRequest`;
+/// the Claude adapter emits neither, so nothing on its path may wait for one.
 enum HarnessEvent: Equatable {
     case sessionReady(sessionID: String, model: String)
     case replyDelta(String)                              // streaming text chunk
