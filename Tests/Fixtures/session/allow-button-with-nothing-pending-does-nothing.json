@@ -1,0 +1,38 @@
+{
+  "formatVersion": 1,
+  "name": "allow-button-with-nothing-pending-does-nothing",
+  "description": "The permission banner's Allow and Deny buttons do nothing at all when no request is waiting: no Yes or No is sent, nothing is logged.",
+  "reason": "A click can race the request being answered elsewhere (a pad press, the turn ending). Falling through to Approve's no-request branch would send the word Yes as a prompt the person never meant.",
+  "source": "AppState.answerPendingPermission (doc comment: 'no-ops when nothing is pending')",
+  "verifiedBy": ["swift", "rust"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "builtin",
+    "project": true
+  },
+  "script": [
+    { "call": "startSessionIfNeeded", "reason": "App launch." },
+    {
+      "harnessEvent": { "type": "sessionReady", "sessionID": "session-1", "model": "claude-sonnet-4-5" },
+      "reason": "The CLI's system/init."
+    },
+    {
+      "call": "answerPendingPermission",
+      "allow": true,
+      "reason": "Allow clicked after the request went away.",
+      "expectNoChange": true
+    },
+    {
+      "call": "answerPendingPermission",
+      "allow": false,
+      "reason": "Deny clicked the same way.",
+      "expectNoChange": true
+    }
+  ],
+  "expect": {
+    "harnessCalls": [ { "type": "start" } ],
+    "transcript": [ { "kind": "system", "text": "Session started (claude-sonnet-4-5)" } ],
+    "pendingPermission": false,
+    "errorShown": false
+  }
+}

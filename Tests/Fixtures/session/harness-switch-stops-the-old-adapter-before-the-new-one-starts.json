@@ -4,7 +4,7 @@
   "description": "Choosing another harness in Settings stops the running one at once; the new one starts with the next message. ACP ids never replace the stored Claude id, so switching back resumes the Claude conversation.",
   "reason": "Two harnesses running side by side would both work in the same folder and both talk to PowerUp. Starting lazily means a Settings change alone never launches anything.",
   "source": "DESIGN.md v2.0 AppState 'syncHarnessSelection() … stops the outgoing session once per change; the new harness starts lazily on next send'; DESIGN.md v2.1 B 'sessionReady records ids … (claude kind only)'",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "claude",
     "controlMode": "builtin",

@@ -1,0 +1,41 @@
+{
+  "formatVersion": 1,
+  "name": "error-turn-is-not-spoken-or-replayable",
+  "description": "A turn that ends with an error appends an error entry naming the CLI's subtype and the result text, and leaves nothing for Replay Last Reply. A successful turn's result text is what Replay speaks.",
+  "reason": "An error result is not an answer: reading it aloud as one, or replaying it later, would present a failure as Claude's reply.",
+  "source": "AppState.handleHarnessEvent(.turnCompleted); DESIGN.md v1.0 (the spoken reply is the turn's result text)",
+  "verifiedBy": ["swift", "rust"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "builtin",
+    "project": true
+  },
+  "script": [
+    { "call": "startSessionIfNeeded", "reason": "App launch." },
+    {
+      "harnessEvent": { "type": "sessionReady", "sessionID": "session-1", "model": "claude-sonnet-4-5" },
+      "reason": "The CLI's system/init."
+    },
+    { "call": "sendUserText", "text": "Run the tests.", "reason": "A turn is running." },
+    {
+      "harnessEvent": { "type": "turnCompleted", "resultText": "Rate limit reached.", "costUSD": null, "isError": true, "detail": "error_during_execution" },
+      "reason": "The turn fails.",
+      "expect": { "lastAssistantReply": null, "errorShown": true }
+    },
+    { "call": "sendUserText", "text": "Try again.", "reason": "Another turn." },
+    {
+      "harnessEvent": { "type": "turnCompleted", "resultText": "  All tests pass.\n", "costUSD": 0.02, "isError": false, "detail": "success" },
+      "reason": "This one succeeds: its trimmed result text is the reply Replay speaks."
+    }
+  ],
+  "expect": {
+    "transcript": [
+      { "kind": "system", "text": "Session started (claude-sonnet-4-5)" },
+      { "kind": "user", "text": "Run the tests." },
+      { "kind": "error", "text": "Claude ended the turn with an error (error_during_execution).\nRate limit reached." },
+      { "kind": "user", "text": "Try again." }
+    ],
+    "lastAssistantReply": "All tests pass.",
+    "errorShown": true
+  }
+}

@@ -4,7 +4,7 @@
   "description": "On the built-in Claude harness at Ultra effort (\"max\"), every outgoing prompt is sent with the \"ultracode\" keyword and a blank line in front of it. The transcript keeps the person's own words.",
   "reason": "The claude CLI has no flag for dynamic multi-agent workflows; the documented opt-in is the \"ultracode\" prompt keyword. Ultra effort means the person wants those workflows, so PowerUp adds the keyword on the wire without putting words in their mouth on screen.",
   "source": "DESIGN.md v2.1 A 'Wire behavior'; AppState.outgoingText(for:)",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "claude",
     "controlMode": "builtin",

@@ -193,3 +193,149 @@ extension ConnectedController {
         .object(["id": .string(id), "profileID": .string(profileID), "displayName": .string(displayName)])
     }
 }
+
+// MARK: - Value descriptors (Tests/Fixtures/README.md, `harness/`)
+
+extension ClaudeEvent {
+    /// `{"event": <Swift case name>}` plus the case's fields under their Swift
+    /// labels. Exhaustive, so a new case is a compile error here. Numbers go
+    /// through `JSONValue(encoding:)`, so a cost of 1.0 compares equal to a
+    /// table's `1`.
+    var fixtureDescriptor: JSONValue {
+        let fields: [String: JSONValue]
+        switch self {
+        case .ready(let sessionID, let model):
+            fields = ["event": .string("ready"), "sessionID": .string(sessionID), "model": .string(model)]
+        case .textDelta(let text):
+            fields = ["event": .string("textDelta"), "text": .string(text)]
+        case .assistantMessage(let text):
+            fields = ["event": .string("assistantMessage"), "text": .string(text)]
+        case .toolUse(let name, let detail):
+            fields = ["event": .string("toolUse"), "name": .string(name), "detail": .string(detail)]
+        case .turnCompleted(let resultText, let costUSD, let isError, let subtype):
+            fields = ["event": .string("turnCompleted"),
+                      "resultText": resultText.map(JSONValue.string) ?? .null,
+                      "costUSD": costUSD.map(JSONValue.number) ?? .null,
+                      "isError": .bool(isError),
+                      "subtype": .string(subtype)]
+        case .controlResult(let action, let ok, let detail, let value):
+            fields = ["event": .string("controlResult"), "action": .string(action), "ok": .bool(ok),
+                      "detail": .string(detail), "value": value.map(JSONValue.string) ?? .null]
+        case .processError(let message):
+            fields = ["event": .string("processError"), "message": .string(message)]
+        case .terminated(let exitCode):
+            fields = ["event": .string("terminated"), "exitCode": .integer(Int64(exitCode))]
+        }
+        return (try? JSONValue(encoding: JSONValue.object(fields))) ?? .object(fields)
+    }
+}
+
+/// A line input: a string (the line as UTF-8, no newline), or
+/// `{"hex": "<bytes>"}` for bytes that are not text.
+enum FixtureLine {
+    static func bytes(_ descriptor: JSONValue) throws -> Data {
+        if let text = descriptor.stringValue { return Data(text.utf8) }
+        guard let hex = descriptor["hex"]?.stringValue, hex.count.isMultiple(of: 2) else {
+            throw FixtureValueError(description: "not a line input: \(descriptor)")
+        }
+        var data = Data()
+        var index = hex.startIndex
+        while index < hex.endIndex {
+            let next = hex.index(index, offsetBy: 2)
+            guard let byte = UInt8(hex[index..<next], radix: 16) else {
+                throw FixtureValueError(description: "bad hex in line input: \(hex)")
+            }
+            data.append(byte)
+            index = next
+        }
+        return data
+    }
+}
+
+extension HarnessEvent {
+    /// The `harnessEvent` shape of `session/` scenarios, tagged by `type`,
+    /// with every optional field written (`null` when absent). Exhaustive,
+    /// so a new case is a compile error here.
+    var fixtureDescriptor: JSONValue {
+        func optional(_ text: String?) -> JSONValue { text.map(JSONValue.string) ?? .null }
+        switch self {
+        case .sessionReady(let sessionID, let model):
+            return .object(["type": .string("sessionReady"), "sessionID": .string(sessionID), "model": .string(model)])
+        case .replyDelta(let text):
+            return .object(["type": .string("replyDelta"), "text": .string(text)])
+        case .reply(let text):
+            return .object(["type": .string("reply"), "text": .string(text)])
+        case .toolUse(let name, let detail):
+            return .object(["type": .string("toolUse"), "name": .string(name), "detail": .string(detail)])
+        case .turnCompleted(let resultText, let costUSD, let isError, let detail):
+            return .object(["type": .string("turnCompleted"), "resultText": optional(resultText),
+                            "costUSD": costUSD.map(JSONValue.number) ?? .null, "isError": .bool(isError),
+                            "detail": .string(detail)])
+        case .controlResult(let action, let ok, let detail, let value):
+            return .object(["type": .string("controlResult"), "action": .string(action), "ok": .bool(ok),
+                            "detail": .string(detail), "value": optional(value)])
+        case .permissionRequest(let id, let name, let kind, let detail):
+            return .object(["type": .string("permissionRequest"), "id": .string(id), "name": .string(name),
+                            "kind": .string(kind), "detail": .string(detail)])
+        case .notification(let message):
+            return .object(["type": .string("notification"), "message": .string(message)])
+        case .runtimeError(let message):
+            return .object(["type": .string("runtimeError"), "message": .string(message)])
+        case .ended(let exitCode):
+            return .object(["type": .string("ended"), "exitCode": .integer(Int64(exitCode))])
+        }
+    }
+}
+
+extension ClaudeState {
+    var fixtureName: String {
+        switch self {
+        case .stopped: return "stopped"
+        case .starting: return "starting"
+        case .ready: return "ready"
+        case .working: return "working"
+        }
+    }
+}
+
+extension CoreBridge.ClaudeSnapshot {
+    /// `{state, sessionID, modelName, totalCostUSD}`.
+    var fixtureFields: JSONValue {
+        .object(["state": .string(state.fixtureName),
+                 "sessionID": sessionID.map(JSONValue.string) ?? .null,
+                 "modelName": modelName.map(JSONValue.string) ?? .null,
+                 "totalCostUSD": .number(totalCostUSD)])
+    }
+}
+
+extension CoreBridge.ClaudeAdapterEffect {
+    /// `{"effect": <name>}` plus the effect's fields; a written line is the
+    /// JSON object it holds, and must be exactly one line. Numbers are
+    /// normalized by the caller (`JSONValue(encoding:)`).
+    func fixtureDescriptor() throws -> JSONValue {
+        switch self {
+        case .publish(let snapshot):
+            guard case .object(var fields) = snapshot.fixtureFields else { return .null }
+            fields["effect"] = .string("publish")
+            return .object(fields)
+        case .resolveBinary(let generation, let binaryPathOverride):
+            return .object(["effect": .string("resolveBinary"), "generation": .integer(Int64(generation)),
+                            "binaryPathOverride": binaryPathOverride.map(JSONValue.string) ?? .null])
+        case .spawn(let generation, let executable, let arguments, let projectDir):
+            return .object(["effect": .string("spawn"), "generation": .integer(Int64(generation)),
+                            "executable": .string(executable), "arguments": .array(arguments.map(JSONValue.string)),
+                            "projectDir": .string(projectDir)])
+        case .writeStdin(let line):
+            guard line.last == 0x0A, line.filter({ $0 == 0x0A }).count == 1 else {
+                throw FixtureValueError(description: "a stdin line is not one line: \(String(decoding: line, as: UTF8.self))")
+            }
+            return .object(["effect": .string("writeStdin"), "line": try JSONDecoder().decode(JSONValue.self, from: line)])
+        case .closeStdin:
+            return .object(["effect": .string("closeStdin")])
+        case .terminateAfterGrace(let seconds):
+            return .object(["effect": .string("terminateAfterGrace"), "seconds": .number(seconds)])
+        case .emit(let event):
+            return .object(["effect": .string("emit"), "event": event.fixtureDescriptor])
+        }
+    }
+}

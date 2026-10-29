@@ -4,7 +4,7 @@
   "description": "An armed destructive request is disarmed by another intent. The request is still waiting for an answer, but it is no longer armed.",
   "reason": "Disarming must not answer or drop the request: the agent is still waiting, and the person can still allow it with two fresh presses or deny it.",
   "source": "Epic #92 rule 'the armed state resets on any other intent'; ticket #116; DESIGN.md v2.2 §C (as amended by #116); AppState.handle",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "claude",
     "controlMode": "builtin",

@@ -70,7 +70,18 @@ clearly without them. CI runs the cargo job on macOS, Windows and Linux.
 - **What lives there.** The device layer (intents, actions, mappings,
   profiles, the Controller slot rule and the hold rule) lives in
   `powerup-core` since slice 2.2; the app reaches it only through
-  `CoreBridge.swift` (DESIGN v2.11).
+  `CoreBridge.swift` (DESIGN v2.11). Since slice 2.3 it also holds the
+  Claude adapter's rules (`harness::claude`: the stream-json parser, the
+  stdout line splitter, the stdin lines, the launch argv and the process
+  rules, played against `Tests/Fixtures/harness/`), the session state
+  machine with remote mode (`session`, played against every
+  `Tests/Fixtures/session/` scenario), the status derivation (`status`,
+  against `Tests/Fixtures/status/`) and the destructive-action classifier
+  (`harness::destructive`), reached through `CoreBridgeHarness.swift` and
+  `CoreBridgeSession.swift` (DESIGN v2.12). The core returns effects and
+  the platform carries them out in order (CONTEXT.md, "Effect"):
+  ClaudeService owns the process and pipes, AppState the adapters,
+  config, transcript, speech and remote injector.
 - **Panic rule.** Every public core function is total: it returns its
   value, or a `Result` when it can fail, and never panics. Library code
   never calls `unwrap`, `expect` or `panic!` (clippy denies the first two).
@@ -117,17 +128,17 @@ contract change.
 | File | Purpose |
 | --- | --- |
 | `PowerUpApp.swift` | `@main` entry point, scenes, environment injection |
-| `AppState.swift` | Central state machine; routes inputs through intent handlers |
+| `AppState.swift` | Central glue; routes inputs to the core's session rules and carries out their effects (DESIGN v2.12) |
 | `Intent.swift` | High-level intent abstraction + `IntentMapper` wire conversion |
 | `Models.swift` | Data model contracts (buttons, actions, config, transcript) |
 | `Harness.swift` | `HarnessAdapter` protocol; `HarnessEvent`/configuration contracts |
-| `ClaudeService.swift` | `claude` CLI subprocess driver; stream-json parser |
+| `ClaudeService.swift` | `claude` CLI subprocess adapter (spawn, pipes, kill grace); parsing and the adapter rules run in the core |
 | `ACPAdapter.swift` | ACP adapter for external harnesses (opencode, Codex, …) |
 | `ControllerService.swift` | DualSense input, light bar, haptics, battery |
 | `SpeechService.swift` | Push-to-talk STT (AVAudioEngine + SFSpeechRecognizer) |
 | `TTSService.swift` | Text-to-speech with language-aware voice selection |
 | `SummaryService.swift` | Lightweight claude process that summarizes replies for TTS |
-| `DestructiveActionClassifier.swift` | Pure classifier for actions needing confirmation |
+| `DestructiveActionClassifier.swift` | Thin wrapper; the destructive-action rule and pattern list live in the core |
 | `ControllerSlot.swift` | Controller slot (`ControllerSlotSelector`) and hold (`HoldTracker`) value types; the rules run in the Rust core |
 | `ControllerPicker.swift` | Pure rows and caption for the Settings → Devices Controller picker |
 | `ViewLogic.swift` | Pure view rules extracted from MainView/ComponentViews (#126; DESIGN v2.7 §F) |
@@ -139,7 +150,9 @@ contract change.
 | `ConfigStore.swift` | Persistent config (JSON, debounced, repairs corruption) |
 | `TranscriptStore.swift` | Per-project transcript persistence (JSON Lines) |
 | `MainView.swift` / `ComponentViews.swift` / `SettingsView.swift` / `MappingView.swift` | SwiftUI views |
-| `CoreBridge.swift` | The only file that imports the Rust core: launch check and the device-layer wrappers (DESIGN v2.10, v2.11) |
+| `CoreBridge.swift` | Imports the Rust core (with the two `CoreBridge*.swift` files, the only files that do): launch check and the device-layer wrappers (DESIGN v2.10, v2.11) |
+| `CoreBridgeHarness.swift` | Bridge wrappers for the Claude harness: line parser, `LineBuffer`, stdin lines, argv, the `ClaudeAdapter` object (DESIGN v2.12) |
+| `CoreBridgeSession.swift` | Bridge wrappers for the session: the `Session` object and its effects, status derivation, classifier, cycles (DESIGN v2.12) |
 
 The Rust core lives in `rust/` (see "The Rust core" above); its bridge tests
 are in `Tests/PowerUpCoreTests/`.
@@ -163,7 +176,9 @@ are in `Tests/PowerUpCoreTests/`.
   or a `HookInstaller` call without `settingsURL:` anywhere in
   `Tests/PowerUpTests/`.
 - Don't spawn real `claude` sessions from tests; the stream parser is
-  testable via `ClaudeService.events(fromLine:)`.
+  testable via `ClaudeService.events(fromLine:)` (a wrapper over the core;
+  `cargo test` plays `Tests/Fixtures/harness/`). An end-to-end test points
+  `config.claudePath` at a fake CLI script it writes (`ClaudeFakeCLITests`).
 - Don't spawn real ACP agents or npx bridges (opencode, `claude-agent-acp`,
   `codex-acp`) from tests or ad-hoc verification — they hit the network and
   run under the user's real agent logins. ACPAdapter is tested against the
@@ -246,8 +261,12 @@ another one.
   `Tests/Fixtures/session/`, named `<name>.json`, rather than writing a
   bespoke test. The format is documented in `Tests/Fixtures/README.md`.
   `SessionScenarioTests` runs every scenario through the seam. The parser is
-  strict, so an unknown key is a load error. The Rust core will read the
-  same files, so keep them plain JSON with the header and a `reason`.
+  strict, so an unknown key is a load error. The Rust core plays the same
+  files on its session machine (`cargo test`, `tests/session.rs`), and since
+  slice 2.3 AppState runs those very rules through the bridge, so the Swift
+  runner exercises the core too. Keep them plain JSON with the header and a
+  `reason`, list `"rust"` in `verifiedBy`, and make a new one pass in both.
+  `lastAssistantReply` checks the reply Replay speaks.
 - **Rule: orchestration changes ship with a seam test.** Any change to an
   AppState rule, including a bug fix, comes with a test through
   `AppStateTestEnvironment` that fails without the change.

@@ -4,7 +4,7 @@
   "description": "In remote mode with a project folder chosen, only Claude sessions working in that folder or below it are heard. Sessions in other folders, a sibling folder whose name merely starts the same, and hooks with no working directory are dropped entirely: no transcript line, no turn, no status change.",
   "reason": "Hooks fire for every Claude session on the machine. With several agents running in other repositories, all of their replies were logged and read aloud in PowerUp even though the person had picked one folder.",
   "source": "DESIGN.md v2.8 addendum A (remote read-back is scoped to the project folder); AppState.handleRemoteEvent",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "controlMode": "remote",
     "project": true,

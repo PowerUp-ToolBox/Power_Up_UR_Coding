@@ -4,7 +4,7 @@
   "description": "In remote mode at Ultra effort (\"max\"), a prompt is typed into the remote session exactly as the person said it. PowerUp starts no session of its own.",
   "reason": "Remote text belongs to somebody else's session verbatim. That session runs at whatever effort it was started with, so PowerUp's own effort setting must not change what gets typed there.",
   "source": "DESIGN.md v2.1 A 'ACP harnesses and remote mode are NEVER prefixed'; AppState.sendUserText (remote branch)",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "claude",
     "controlMode": "remote",

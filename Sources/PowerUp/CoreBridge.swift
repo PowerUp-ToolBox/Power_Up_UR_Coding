@@ -2,13 +2,15 @@ import Foundation
 import os
 import PowerUpCore
 
-/// The Rust core's bridge as the app sees it (ADR 0012, DESIGN v2.11). This
-/// is the only app file that imports `PowerUpCore`: the generated types are
+/// The Rust core's bridge as the app sees it (ADR 0012, DESIGN v2.11,
+/// v2.12). This file and the `CoreBridge*.swift` files beside it are the
+/// only app files that import `PowerUpCore`: the generated types are
 /// named `CoreAction`, `CoreIntent`, … and spelled the uniffi way
 /// (`toggleTts`, `profileId`), so they stay behind these wrappers and the
 /// app keeps its own `Action`, `Intent` and friends as thin conversions.
 ///
-/// Every call is synchronous, pure and safe from any thread. A bridge error
+/// The functions here are synchronous, pure and safe from any thread; the
+/// objects of slice 2.3 say where they may be called. A bridge error
 /// is a core bug — the core never fails on these inputs — so each wrapper
 /// logs it (subsystem `com.powerup.claudepad`, category `core`) and returns
 /// the inert answer instead of throwing into the app.
@@ -19,7 +21,7 @@ enum CoreBridge {
         case failed(String)
     }
 
-    private static let log = Logger(subsystem: "com.powerup.claudepad", category: "core")
+    static let log = Logger(subsystem: "com.powerup.claudepad", category: "core")
 
     static func check() -> Status {
         do {
@@ -156,7 +158,7 @@ enum CoreBridge {
     }
 
     /// Runs one bridge call; a failure is logged and answered with `fallback`.
-    private static func call<T>(_ name: String, fallback: T, _ body: () throws -> T) -> T {
+    static func call<T>(_ name: String, fallback: T, _ body: () throws -> T) -> T {
         do {
             return try body()
         } catch {

@@ -4,7 +4,7 @@
   "description": "Cycle Effort pressed while no session is running starts nothing; the new effort goes in on the command line of the next start.",
   "reason": "There is no process to restart, and a settings press must never spawn a session on its own.",
   "source": "DESIGN.md v1.2 E '.cycleEffort' and 'Session spawn passes effort: config.effort through'; AppState.cycleEffort (stopped branch) / startSession",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "claude",
     "controlMode": "builtin",

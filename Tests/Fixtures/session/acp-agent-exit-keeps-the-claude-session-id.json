@@ -4,7 +4,7 @@
   "description": "An ACP agent that exits before its session is ready (for example, it fails its handshake) is reported as an error and is not relaunched. The stored Claude session id is untouched, so switching back to the built-in harness resumes that conversation.",
   "reason": "ACP sessions always start fresh, so an ACP launch is never a resume and the resume retry cannot apply to it. The retry used to fire anyway when a Claude id was stored: it wiped the person's Claude conversation id because a different agent had crashed, and relaunched the agent once.",
   "source": "DESIGN.md v2.0 AppState 'passes resumeSessionID: nil for ACP'; DESIGN.md 'retry ONCE without resumeSessionID (covers stale session ids)'; AppState.startSession, AppState.handleTermination",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "acp",
     "acpAgent": "custom",

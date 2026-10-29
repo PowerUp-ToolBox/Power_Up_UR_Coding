@@ -4,7 +4,7 @@
   "description": "Cycle Model sends a live set_model for the next alias. The chip shows the requested alias at once, but the live model name stays on what the harness last reported until the harness acknowledges the change, and then follows the name its next init echoes.",
   "reason": "The live model name is what the session is really running, reported to protocol clients as liveModel. Copying the requested alias into it would claim a switch the harness has not made, and an alias such as \"opus\" is not the model's full name.",
   "source": "DESIGN.md v1.2 E '.cycleModel', v1.3 C (set_model ack refreshes the model at once; chip rules) and v2.0 harnessReportedModel; AppState.cycleModel / modelChipLabel, ClaudeService.apply(.controlResult)",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "claude",
     "controlMode": "builtin",

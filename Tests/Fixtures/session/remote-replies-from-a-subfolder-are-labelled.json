@@ -1,0 +1,35 @@
+{
+  "formatVersion": 1,
+  "name": "remote-replies-from-a-subfolder-are-labelled",
+  "description": "In remote mode a reply from a session working in a subfolder of the project is logged with a [folder] label, while Replay Last Reply keeps the reply without it. A reply from the project folder itself has no label.",
+  "reason": "With several sessions in one project the label tells their replies apart on screen, but reading the label aloud on Replay would speak a folder name as if Claude had said it.",
+  "source": "AppState.handleRemoteEvent(.stop) ('Unprefixed, so Replay Last Reply speaks the reply and not the label') and remoteCwdPrefix",
+  "verifiedBy": ["swift", "rust"],
+  "config": {
+    "controlMode": "remote",
+    "project": true
+  },
+  "script": [
+    {
+      "hookEvent": { "type": "stop", "sessionID": "session-sub", "cwd": "$project/sub", "text": "Sub module built." },
+      "reason": "A reply from a session in a subfolder.",
+      "expect": {
+        "transcript": [ { "kind": "assistant", "text": "[sub] Sub module built." } ],
+        "lastAssistantReply": "Sub module built."
+      }
+    },
+    {
+      "hookEvent": { "type": "stop", "sessionID": "session-root", "cwd": "$project", "text": "Root built." },
+      "reason": "A reply from the project folder itself."
+    }
+  ],
+  "expect": {
+    "transcript": [
+      { "kind": "assistant", "text": "[sub] Sub module built." },
+      { "kind": "assistant", "text": "Root built." }
+    ],
+    "lastAssistantReply": "Root built.",
+    "injectorCalls": [],
+    "errorShown": false
+  }
+}

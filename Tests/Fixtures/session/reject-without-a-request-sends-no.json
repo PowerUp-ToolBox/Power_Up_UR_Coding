@@ -1,0 +1,37 @@
+{
+  "formatVersion": 1,
+  "name": "reject-without-a-request-sends-no",
+  "description": "In built-in mode with no permission request waiting, Reject sends the word No to the harness as an ordinary user turn, logged as the person's own message.",
+  "reason": "Claude asks its questions in the reply, so Reject answers them in words. Only a waiting permission request (built-in) or remote mode (Escape) turns Reject into something else.",
+  "source": "DESIGN.md v1.0 '○ → reject: \"No\" as a user turn'; AppState.reject",
+  "verifiedBy": ["swift", "rust"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "builtin",
+    "project": true
+  },
+  "script": [
+    { "call": "startSessionIfNeeded", "reason": "App launch." },
+    {
+      "harnessEvent": { "type": "sessionReady", "sessionID": "session-1", "model": "claude-sonnet-4-5" },
+      "reason": "The CLI's system/init."
+    },
+    {
+      "intent": "reject",
+      "reason": "Nothing is waiting for an answer, so Reject says No."
+    }
+  ],
+  "expect": {
+    "harnessCalls": [
+      { "type": "start" },
+      { "type": "send", "text": "No" }
+    ],
+    "transcript": [
+      { "kind": "system", "text": "Session started (claude-sonnet-4-5)" },
+      { "kind": "user", "text": "No" }
+    ],
+    "pendingPermission": false,
+    "injectorCalls": [],
+    "errorShown": false
+  }
+}

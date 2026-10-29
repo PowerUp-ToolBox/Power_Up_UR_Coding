@@ -4,7 +4,7 @@
   "description": "With an ACP agent as the harness, a prompt is sent exactly as the person said it, even when the configured effort is Ultra (\"max\"). The agent starts fresh with its own command.",
   "reason": "\"ultracode\" is a Claude Code keyword. An unrelated agent would read it as part of the request, so a foreign keyword must never reach it.",
   "source": "DESIGN.md v2.1 A 'ACP harnesses and remote mode are NEVER prefixed'; DESIGN.md v2.0 'passes resumeSessionID: nil for ACP'; AppState.outgoingText(for:), AppState.startSession",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "acp",
     "acpAgent": "custom",

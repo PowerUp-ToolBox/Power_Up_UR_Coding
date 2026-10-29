@@ -4,7 +4,7 @@
   "description": "Cycle Model requests the next alias, the harness rejects it, and PowerUp reports the error and puts the model setting (and so the chip) back on the last model the harness confirmed. The live model name never moves.",
   "reason": "The chip is optimistic. Without the rollback a rejected switch would leave it naming a model the session is not running.",
   "source": "DESIGN.md v1.2 E '.controlResult' (!ok → error entry, errorHaptic, revert to the last confirmed value); AppState.handleControlResult",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "claude",
     "controlMode": "builtin",

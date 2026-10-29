@@ -72,6 +72,7 @@ are set in `rust/deny.toml`.
 | toml_parser | 1.1.5+spec-1.1.0 | MIT OR Apache-2.0 | https://github.com/toml-rs/toml |
 | toml_writer | 1.1.3+spec-1.1.0 | MIT OR Apache-2.0 | https://github.com/toml-rs/toml |
 | unicode-ident | 1.0.27 | (MIT OR Apache-2.0) AND Unicode-3.0 | https://github.com/dtolnay/unicode-ident |
+| unicode-segmentation | 1.13.3 | MIT OR Apache-2.0 | https://github.com/unicode-rs/unicode-segmentation |
 | unicode-width | 0.2.3 | MIT OR Apache-2.0 | https://github.com/unicode-rs/unicode-width |
 | uniffi | 0.32.2 | MPL-2.0 | https://github.com/mozilla/uniffi-rs |
 | uniffi_bindgen | 0.32.2 | MPL-2.0 | https://github.com/mozilla/uniffi-rs |

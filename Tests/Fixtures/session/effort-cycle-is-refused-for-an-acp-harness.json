@@ -1,0 +1,35 @@
+{
+  "formatVersion": 1,
+  "name": "effort-cycle-is-refused-for-an-acp-harness",
+  "description": "In built-in mode with an ACP agent as the harness, Cycle Effort says the harness has no effort setting and changes nothing: no restart, no stop.",
+  "reason": "Effort changes by relaunching the Claude CLI with --effort and --resume. An ACP agent has no such flag and cannot resume, so restarting it would only lose the conversation for nothing.",
+  "source": "DESIGN.md v2.0 'cycleEffort refuses when !harness.supportsEffort'; AppState.cycleEffort",
+  "verifiedBy": ["swift", "rust"],
+  "config": {
+    "harnessKind": "acp",
+    "acpAgent": "custom",
+    "acpCustomCommand": "scripted-agent --acp",
+    "controlMode": "builtin",
+    "project": true
+  },
+  "script": [
+    { "call": "startSessionIfNeeded", "reason": "App launch starts the agent." },
+    {
+      "harnessEvent": { "type": "sessionReady", "sessionID": "acp-session-1", "model": "scripted-model" },
+      "reason": "The agent is up."
+    },
+    {
+      "intent": "cycleEffort",
+      "reason": "The agent cannot change effort."
+    }
+  ],
+  "expect": {
+    "harnessCalls": [ { "adapter": "acp", "type": "start", "effort": "default" } ],
+    "transcript": [
+      { "kind": "system", "text": "Session started (scripted-model)" },
+      { "kind": "system", "text": "This harness doesn't have an effort setting." }
+    ],
+    "injectorCalls": [],
+    "errorShown": false
+  }
+}

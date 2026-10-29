@@ -5,13 +5,16 @@
 //! of unwinding into the app (stage 2.1, "total surface").
 
 use std::panic::{self, AssertUnwindSafe};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use powerup_core::{probe, CoreError};
 
 uniffi::setup_scaffolding!();
 
 mod device;
+mod harness;
 mod mapping;
+mod session;
 
 /// An error a core call reports to Swift.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Error)]
@@ -58,6 +61,15 @@ fn contain<T>(call: impl FnOnce() -> Result<T, CoreError>) -> Result<T, CoreBrid
     }
 }
 
+/// Locks an object's state. A panic caught by [`contain`] while the lock was
+/// held poisons it. The next call takes the state as the panicking call left
+/// it: a core bug may have left one call's update half done, which costs at
+/// most that session, whereas refusing the lock would fail every later call
+/// and brick the object for the rest of the app run.
+fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
 /// Bridge probe: returns `text` unchanged.
 #[uniffi::export]
 pub fn probe_echo(text: String) -> Result<String, CoreBridgeError> {
@@ -88,6 +100,25 @@ mod tests {
                 message: "boom".to_string()
             })
         );
+    }
+
+    #[test]
+    fn objects_survive_a_poisoned_lock() {
+        let state = Mutex::new(vec![1]);
+        let caught = contain(|| -> Result<(), CoreError> {
+            let mut held = locked(&state);
+            held.push(2);
+            panic!("boom while holding the lock")
+        });
+        assert_eq!(
+            caught,
+            Err(CoreBridgeError::Panicked {
+                message: "boom while holding the lock".to_string()
+            })
+        );
+        assert!(state.is_poisoned());
+        locked(&state).push(3);
+        assert_eq!(*locked(&state), vec![1, 2, 3]);
     }
 
     #[test]

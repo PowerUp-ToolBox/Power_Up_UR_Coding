@@ -4,7 +4,7 @@
   "description": "Switching to another project folder restarts the session in that folder with that folder's own conversation: a folder never used before starts fresh, and switching back resumes the first folder's conversation. Each folder keeps its own transcript history.",
   "reason": "Every project folder is its own conversation. Resuming one folder's session id in another folder would mix two unrelated pieces of work in one conversation.",
   "source": "DESIGN.md v2.1 B 'Multiple conversations (several folders)'; AppState.switchProject(to:), AppState.adoptProject",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "claude",
     "controlMode": "builtin",

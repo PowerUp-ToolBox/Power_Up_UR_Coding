@@ -3,9 +3,11 @@
 Language-neutral test data that every implementation of PowerUp's rules is
 checked against (PLAN-any-device-any-os.md, ADR 0012): the Swift app's XCTest
 suites play every file, and the Rust core's `cargo test` plays the areas whose
-rules it owns so far (`mapping/` and `device/`, since slice 2.2) and checks
-the format of the rest, picking up more as later slices port them. Each
-implementation loads these files from its own source location. Swift resolves
+rules it owns so far (`mapping/` and `device/`, since slice 2.2, and
+`harness/`, `status/` and `session/`, since slice 2.3) and checks the
+format of the rest, picking up
+more as later slices port them. Each implementation loads these files from
+its own source location. Swift resolves
 them relative to `#filePath`, because SwiftPM accepts no resources outside a
 target. Do not copy them into a target.
 
@@ -23,7 +25,7 @@ case table's `verifiedBy` sentence.
 ## Conventions
 
 - One subdirectory per area: `session/` (scenarios), `text-safety/`,
-  `status/`, `mapping/` and `device/` (case tables).
+  `status/`, `mapping/`, `device/` and `harness/` (case tables).
 - Plain JSON only, with no comments and no implementation-specific shapes.
 - Every file starts with a header and gives a `reason` for each thing it
   pins. There are two formats:
@@ -31,7 +33,7 @@ case table's `verifiedBy` sentence.
     `description`, `reason` (why the rule exists), `source` (where the rule
     is written down) and `verifiedBy` (the implementations that run it, for
     example `["swift"]`). See [`session/`](#session-session-scenarios-format-1).
-  - Case tables (`text-safety/`, `status/`, `mapping/`, `device/`) use `description`,
+  - Case tables (`text-safety/`, `status/`, `mapping/`, `device/`, `harness/`) use `description`,
     `function`, `verifiedBy`, `capturedAgainst` and a `cases` list in which
     every case has a `reason`. See [case tables](#text-safety-and-status-case-tables).
 - Add `capturedAgainst` when the data was recorded from a real tool (for
@@ -46,6 +48,8 @@ remote mode does to text before it is typed or shown (`text-safety/`, epic
 #94). The Swift loader is `TextSafetyFixtures` in
 `Tests/PowerUpTests/TextSafetyFixtureTests.swift`; `TextSafetyFixtureTests`,
 `CmuxReportingFixtureTests` and `StatusDerivationTests` run the files.
+The Rust core plays `status/` in `rust/powerup-core/tests/status.rs`
+(slice 2.3); `text-safety/` waits for slice 2.5.
 
 ```json
 {
@@ -120,6 +124,92 @@ The Swift runners are `Tests/PowerUpTests/MappingFixtureTests.swift` and
 `rust/powerup-core/tests/mapping.rs` and `tests/device.rs` (their helpers
 are in `tests/support`).
 
+## `harness/`: case tables for the Claude adapter
+
+The built-in Claude harness's wire rules (spec #98, slice 2.3):
+`claude-lines.json` holds how the `claude` CLI's stdout bytes become lines,
+`claude-stream.json` what one line of its stream-json output parses into,
+`claude-stdin.json` what each call writes on its stdin,
+`claude-launch.json` the argv a launch passes, and `claude-adapter.json`
+the adapter's process rules: what each call, stdout event and exit does,
+as the effects the platform carries out. `destructive-actions.json` holds
+whether a harness permission request is destructive, so a second Approve
+must confirm it. All are ordinary case tables, with these descriptors:
+
+| Descriptor | Shape |
+| --- | --- |
+| line input | a string (the line as UTF-8, without its newline), or `{"hex": "<bytes>"}` for bytes that are not text, such as invalid UTF-8 |
+| claude event | `{"event": <ClaudeEvent case name>}` plus Swift's field names: `ready {sessionID, model}`, `textDelta {text}`, `assistantMessage {text}`, `toolUse {name, detail}`, `turnCompleted {resultText, costUSD, isError, subtype}` (`resultText` and `costUSD` may be `null`), `controlResult {action, ok, detail, value}` (`value` may be `null`), `processError {message}`, `terminated {exitCode}` |
+| harness event | the `harnessEvent` shape of [`session/`](#script-an-ordered-list-of-steps) scenarios, tagged by `type` (`sessionReady {sessionID, model}` … `ended {exitCode}`), with every optional field written (`null` when absent) |
+| adapter effect | `{"effect": "publish", "state", "sessionID", "modelName", "totalCostUSD"}` (state is `stopped`, `starting`, `ready` or `working`), `{"effect": "resolveBinary", "generation", "binaryPathOverride"}`, `{"effect": "spawn", "generation", "executable", "arguments", "projectDir"}`, `{"effect": "writeStdin", "line": <the JSON object of the line>}`, `{"effect": "closeStdin"}`, `{"effect": "terminateAfterGrace", "seconds"}`, `{"effect": "emit", "event": <harness event>}` |
+
+`claude-stream.json` takes a line input and expects a list of claude
+events, in order; an empty list means the line is ignored. Numbers are
+compared as numbers, so a cost of `1` matches `1.0`. The parser reports a
+control response's raw `request_id` as `action` and a `null` value; the
+adapter swaps in the subtype and value it recorded. Deep lines are kept in
+the file as plain strings of brackets.
+
+`claude-stdin.json` takes `{call, text?, model?, mode?, requestID?}`, where
+`call` is `send`, `interrupt`, `setModel` or `setPermissionMode`, and
+expects the JSON object of the line written, compared as JSON (key order and
+escaping are the writer's), or `null` when the call writes nothing. Every
+line written ends with one newline and holds no other.
+
+`claude-lines.json` takes `{chunks, flush}`, a list of line inputs read
+from the pipe in order and whether the stream then ends, and expects
+`{lines, remainder}`: one list of strings per chunk (the lines that chunk
+finishes, newline removed) and what the end-of-stream flush gives (`null`
+when there is no flush or nothing was buffered). Both runners also check
+that a second flush gives nothing. The 16 MiB runaway-line guard is too
+large for a case and is a unit test on each side.
+
+`claude-launch.json` takes `{model, permissionMode, effort,
+resumeSessionID}` (`resumeSessionID` may be `null`) and expects the
+argument list, in order.
+
+`claude-adapter.json` takes `{steps}` and plays them in order on a fresh
+adapter whose request ids are `R-1`, `R-2`, …; it expects `{effects,
+snapshot}`: one list of adapter effects per step, and the published state
+after the last step (`{state, sessionID, modelName, totalCostUSD}`). Each
+step is an object with exactly one of these shapes, every field required:
+
+- `{"start": {projectDir, model, permissionMode, effort, resumeSessionID, binaryPathOverride}}`
+  (the last two may be `null`)
+- `{"binaryResolved": <path or null>}`, `{"spawned": true}`,
+  `{"spawnFailed": {executable, description}}`, all for the current launch
+- `{"send": <text>, "processRunning": <bool>}`,
+  `{"interrupt": true, "processRunning": <bool>}`,
+  `{"setModel": <model>, "processRunning": <bool>}`,
+  `{"setPermissionMode": <mode>, "processRunning": <bool>}`, where
+  `processRunning` is the platform's answer for the current process
+- `{"stop": true}`
+- `{"line": <line input>}`: parsed as in `claude-stream.json`, then fed
+  event by event to the current launch; the step's effects are the
+  concatenation. `{"retiredLine": <line input>}` comes from the launch
+  before it
+- `{"terminated": {exitCode, clean, stderrTail}}` for the current launch and
+  `{"retiredTerminated": {…}}` for the one before it
+- `{"writeFailed": <description>}`
+
+`destructive-actions.json` takes `{kind, title, detail}` (all strings)
+and expects a bool. It has one case per pattern, each named `pattern`
+followed by the pattern in quotes, and the Swift runner checks that count
+against the pattern list.
+
+The expectations of `claude-adapter.json` were written from
+`ClaudeService.swift` rather than captured, since the Swift adapter needed a
+real process. Since slice 2.3 (#152) `ClaudeService` carries out the core's
+adapter effects, and the Swift runner plays the table through the bridge's
+`CoreBridge.ClaudeAdapter`. `Tests/PowerUpTests/ClaudeFakeCLITests.swift`
+drives the same adapter end to end, through a real pipe to a fake `claude`
+script the test writes.
+
+The Swift runner is `Tests/PowerUpTests/HarnessFixtureTests.swift` (its
+descriptor helpers are in `FixtureValues.swift`; `destructive-actions.json`
+is played by `DestructiveActionClassifierTests`), and the Rust runner is
+`rust/powerup-core/tests/harness.rs` (its helpers are in `tests/support`).
+
 ## `session/`: session scenarios (format 1)
 
 Each file is one rule of the session state machine (epic #92), played
@@ -129,7 +219,12 @@ injector standing in for the remote session, and a scripted clock. The file is n
 `<name>.json`. To pin a new session rule, add a scenario here rather than
 writing a bespoke test. The Swift runner is
 `Tests/PowerUpTests/SessionScenario.swift`, and the table test is
-`SessionScenarioTests`.
+`SessionScenarioTests`. The Rust core plays every scenario on its session
+machine (slice 2.3): the runner is `rust/powerup-core/tests/support/scenario.rs`
+and the table test `rust/powerup-core/tests/session.rs`, which also checks
+that every scenario lists `"rust"` in `verifiedBy`. A new scenario must pass
+in both, so write it against the Swift app first (its behaviour is the
+reference) and then run `cargo test`.
 
 ```json
 {
@@ -138,7 +233,7 @@ writing a bespoke test. The Swift runner is
   "description": "What happens, in one or two sentences.",
   "reason": "Why the rule exists (the failure it prevents).",
   "source": "DESIGN.md section / code location",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": { "harnessKind": "claude", "project": true, "lastSessionID": "stale-session-id" },
   "script": [
     { "call": "startSessionIfNeeded", "reason": "App launch." },
@@ -257,6 +352,7 @@ drops it at once, as the ACP adapter does.
 | `modelChip` | the model chip's label: the configured model when it is an explicit alias, otherwise `liveModel`, otherwise `"default"` |
 | `remoteTurnActive` | remote mode: a remote turn is in flight (the focused session's, when a focus is set). This is what lights the working status in remote mode |
 | `remoteFocus` | remote mode: the focused session id, or `null` when every session is heard |
+| `lastAssistantReply` | the reply Replay Last Reply speaks (a string, or `null` when there is none yet): a successful built-in turn's result text, or a focused remote session's Stop reply without its folder label |
 | `injectorCalls` | everything remote mode delivered into the remote session, in order and with an exact count: `text {text, submit}` (text after line breaks are flattened; `submit` presses Enter after it) or `key {key}`, where key is `enter`, `escape` or `shiftTab` |
 
 A failure names the scenario and its first mismatched expectation. For

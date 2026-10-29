@@ -1,0 +1,53 @@
+{
+  "formatVersion": 1,
+  "name": "remote-unfocused-session-is-logged-not-spoken",
+  "description": "With the focus on one remote session, another session's reply and notifications are still logged (its reply with a folder label), but they are not spoken and do not become the reply Replay speaks. The focused session's reply does. An empty notification reads 'Claude needs your attention.'.",
+  "reason": "Focus exists so one session can be listened to while others keep working. Muting the others entirely would hide what they did; speaking them would defeat the focus.",
+  "source": "DESIGN.md v2.2 B (remote session focus); AppState.handleRemoteEvent (isFocused gating)",
+  "verifiedBy": ["swift", "rust"],
+  "config": {
+    "controlMode": "remote",
+    "controllerConnected": true
+  },
+  "script": [
+    {
+      "hookEvent": { "type": "userPromptSubmit", "sessionID": "session-alpha", "cwd": "/work/alpha", "text": "Fix the build." },
+      "reason": "Session alpha is working."
+    },
+    {
+      "hookEvent": { "type": "userPromptSubmit", "sessionID": "session-beta", "cwd": "/work/beta", "text": "Write the docs." },
+      "reason": "Session beta is working."
+    },
+    {
+      "intent": "cycleFocus",
+      "reason": "All → alpha (folders in name order).",
+      "expect": { "remoteFocus": "session-alpha" }
+    },
+    {
+      "hookEvent": { "type": "stop", "sessionID": "session-beta", "cwd": "/work/beta", "text": "Docs written." },
+      "reason": "The unfocused session replies: logged, not spoken.",
+      "expect": { "lastAssistantReply": null }
+    },
+    {
+      "hookEvent": { "type": "notification", "sessionID": "session-beta", "cwd": "/work/beta" },
+      "reason": "An unfocused notification without a message is logged with the stock text."
+    },
+    {
+      "hookEvent": { "type": "stop", "sessionID": "session-alpha", "cwd": "/work/alpha", "text": "Build fixed." },
+      "reason": "The focused session replies: this one is spoken and replayable."
+    }
+  ],
+  "expect": {
+    "transcript": [
+      { "kind": "system", "text": "Focus → alpha — only this session is spoken now." },
+      { "kind": "assistant", "text": "[beta] Docs written." },
+      { "kind": "system", "text": "Claude needs your attention." },
+      { "kind": "assistant", "text": "[alpha] Build fixed." }
+    ],
+    "lastAssistantReply": "Build fixed.",
+    "remoteFocus": "session-alpha",
+    "remoteTurnActive": false,
+    "status": "idle",
+    "injectorCalls": []
+  }
+}

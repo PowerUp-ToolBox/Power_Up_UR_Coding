@@ -4,7 +4,7 @@
   "description": "While the agent waits on a permission request, the person interrupts the turn. The interrupt is sent, the pending request is cleared at once, and no permission answer (allow or deny) is sent for it.",
   "reason": "Interrupting cancels the turn the request belongs to; the adapter cancels the agent's side of it. A banner left behind would invite a press that answers nothing (or, after a second press, 'approves' a cancelled destructive action).",
   "source": "Epic #92 rule 'interrupt clears pending permission'; docs/harnesses.md 'A request left hanging when the turn ends or you interrupt is cancelled automatically'; DESIGN.md v2.0 ACPAdapter 'unanswered requests are cancelled on stop/interrupt'; AppState.interruptClaude",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "claude",
     "controlMode": "builtin",

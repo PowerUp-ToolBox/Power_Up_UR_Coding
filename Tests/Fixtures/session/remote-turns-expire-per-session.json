@@ -4,7 +4,7 @@
   "description": "Session alpha starts a turn at minute 0 and session beta at minute 10, and neither is heard from again. At minute 15 alpha expires but beta is still within its fifteen minutes, so the status stays thinking; at minute 25 beta expires too and the status goes idle.",
   "reason": "Each session's turn has its own expiry clock. Expiring one session's silent turn must not end another session's live one.",
   "source": "DESIGN.md v1.10 'remoteActiveTurns maps session id → last sign of life' and 'Expiry'; AppState.refreshRemoteTurnActive",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "controlMode": "remote",
     "controllerConnected": true

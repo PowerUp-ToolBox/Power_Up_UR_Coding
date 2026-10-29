@@ -5,6 +5,33 @@ import XCTest
 /// somebody's branch — so the destructive list is pinned case by case.
 final class DestructiveActionClassifierTests: XCTestCase {
 
+    private struct TableInput: Decodable {
+        let kind: String
+        let title: String
+        let detail: String
+    }
+
+    /// Tests/Fixtures/harness/destructive-actions.json: every pattern, the
+    /// kind rule and the edges, shared with the Rust core
+    /// (rust/powerup-core/tests/harness.rs).
+    func testDestructiveTable() throws {
+        let fileName = "destructive-actions.json"
+        let file = try TextSafetyFixtures.load(fileName, area: "harness",
+                                               input: TableInput.self, expected: Bool.self)
+        TextSafetyFixtures.assertWellFormed(file, fileName)
+        XCTAssertEqual(file.cases.filter { $0.name.hasPrefix("pattern ") }.count,
+                       DestructiveActionClassifier.patterns.count,
+                       "one case per pattern")
+        for fixtureCase in file.cases {
+            let input = fixtureCase.input
+            let actual = DestructiveActionClassifier.isDestructive(kind: input.kind, title: input.title,
+                                                                   detail: input.detail)
+            if let failure = TextSafetyFixtures.mismatch(in: fileName, fixtureCase, actual: actual) {
+                XCTFail(failure)
+            }
+        }
+    }
+
     func testDeleteKindIsAlwaysDestructive() {
         XCTAssertTrue(DestructiveActionClassifier.isDestructive(kind: "delete", title: "Remove file", detail: ""))
         XCTAssertTrue(DestructiveActionClassifier.isDestructive(kind: "DELETE", title: "", detail: ""))

@@ -1,0 +1,51 @@
+{
+  "formatVersion": 1,
+  "name": "a-new-launch-forgets-expected-exits-of-the-old-one",
+  "description": "PowerUp stops its own session by switching to remote mode, then switches back and sends a message, which relaunches the session resuming the stored id. That resume fails at once: the failure is still retried as a fresh session, even though the stop PowerUp caused never reported an exit.",
+  "reason": "PowerUp counts the exits it causes so they are not taken for crashes. A relaunch retires the old process, whose exit then never arrives, so a count left over from it would swallow the next real exit and turn off the resume retry.",
+  "source": "AppState.startSession (comment: 'Any still-pending expected termination can therefore never arrive — clear the counter'); AppState.handleTermination",
+  "verifiedBy": ["swift", "rust"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "builtin",
+    "project": true,
+    "lastSessionID": "session-1"
+  },
+  "script": [
+    { "call": "startSessionIfNeeded", "reason": "App launch resumes the stored conversation." },
+    {
+      "intent": "toggleControlMode",
+      "reason": "Remote mode stops PowerUp's own session; PowerUp expects its exit."
+    },
+    {
+      "intent": "toggleControlMode",
+      "reason": "Back to built-in mode. Nothing starts until the next message."
+    },
+    {
+      "call": "sendUserText",
+      "text": "Carry on.",
+      "reason": "The message relaunches the session, resuming the stored id again."
+    },
+    {
+      "harnessEvent": { "type": "ended", "exitCode": 1 },
+      "reason": "The resume fails before any init. This is the new launch's exit, not the one PowerUp expected."
+    }
+  ],
+  "expect": {
+    "harnessCalls": [
+      { "type": "start", "resumeSessionID": "session-1" },
+      { "type": "stop" },
+      { "type": "start", "resumeSessionID": "session-1" },
+      { "type": "send", "text": "Carry on." },
+      { "type": "start", "resumeSessionID": null }
+    ],
+    "transcript": [
+      { "kind": "system", "text": "Remote control mode — buttons and voice now drive your existing Claude session." },
+      { "kind": "system", "text": "Built-in session mode — PowerUp runs its own Claude session again." },
+      { "kind": "user", "text": "Carry on." },
+      { "kind": "system", "text": "Couldn't resume the previous session — starting a fresh one." }
+    ],
+    "lastSessionID": null,
+    "errorShown": false
+  }
+}

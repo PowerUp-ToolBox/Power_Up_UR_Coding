@@ -47,7 +47,10 @@ open build/PowerUp.app # ALWAYS launch as a bundle — TCC permissions track
 
 The Rust core (stage 2, `rust/`): `(cd rust && cargo test)`. Every Swift
 build links it, so Rust (rustup) and a full Xcode are build requirements;
-`swift test` also runs the bridge tests. Rules (panic, fixtures, ledger, licenses) are in AGENTS.md, "The Rust
+`swift test` also runs the bridge tests. Since slice 2.3 the core also runs
+the Claude adapter's rules and AppState's session rules (DESIGN v2.12);
+`cargo test` plays `Tests/Fixtures/harness/`, `session/` and `status/`.
+Rules (panic, fixtures, ledger, licenses) are in AGENTS.md, "The Rust
 core".
 
 ## Hard constraints
@@ -83,7 +86,9 @@ core".
   Orchestration changes ship with a test through it (CONTRIBUTING.md,
   "Testing AppState"). Shared JSON fixtures live in `Tests/Fixtures/`.
 - Don't spawn real `claude` sessions from tests; the stream parser is
-  testable via `ClaudeService.events(fromLine:)`.
+  testable via `ClaudeService.events(fromLine:)` (a wrapper over the core;
+  `cargo test` plays `Tests/Fixtures/harness/`). An end-to-end test points
+  `config.claudePath` at a fake CLI script it writes (`ClaudeFakeCLITests`).
 - Don't spawn real ACP agents or npx bridges (opencode, `claude-agent-acp`,
   `codex-acp`) from tests or ad-hoc verification — they hit the network and
   run under the user's real agent logins. ACPAdapter is tested against the

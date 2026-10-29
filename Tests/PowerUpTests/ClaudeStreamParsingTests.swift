@@ -3,7 +3,10 @@ import XCTest
 
 /// Pins the stream-json wire protocol quirks that were verified live against
 /// claude CLI v2.1.243 (see DESIGN.md). If a CLI update changes any of these
-/// shapes, these tests are the first thing that should notice.
+/// shapes, these tests are the first thing that should notice. Since slice
+/// 2.3 the parser and the line splitter run in the Rust core, so these tests
+/// play the lines through the bridge (`ClaudeService.events(fromLine:)` and
+/// `IOChannel` are thin wrappers over it).
 final class ClaudeStreamParsingTests: XCTestCase {
 
     private func parse(_ json: String) -> [ClaudeEvent] {
@@ -154,6 +157,30 @@ final class ClaudeStreamParsingTests: XCTestCase {
     func testEmptyLinesAreDropped() {
         let io = IOChannel()
         XCTAssertEqual(io.ingestStdout(Data("\n\n{\"x\":1}\n\n".utf8)).count, 1)
+    }
+
+    /// HK-053: a line that grows past 16 MiB without a newline is dropped
+    /// instead of growing the buffer without bound. Whatever of it arrives
+    /// after the drop becomes a garbage line of its own, which the parser
+    /// ignores, and the next real line still parses.
+    func testRunawayLineIsDiscarded() {
+        let megabyte = Data(repeating: UInt8(ascii: "x"), count: 1024 * 1024)
+
+        let dropped = IOChannel()
+        for _ in 0..<16 { XCTAssertEqual(dropped.ingestStdout(megabyte), []) }
+        XCTAssertEqual(dropped.ingestStdout(megabyte), [])
+        XCTAssertNil(dropped.flushStdoutRemainder(), "a tail past 16 MiB must be dropped")
+
+        let kept = IOChannel()
+        for _ in 0..<16 { XCTAssertEqual(kept.ingestStdout(megabyte), []) }
+        XCTAssertEqual(kept.flushStdoutRemainder()?.count, 16 * 1024 * 1024, "exactly 16 MiB is kept")
+
+        let io = IOChannel()
+        for _ in 0..<17 { XCTAssertEqual(io.ingestStdout(megabyte), []) }
+        let initLine = #"{"type":"system","subtype":"init","session_id":"s","model":"m"}"#
+        let lines = io.ingestStdout(Data("xxx\n\(initLine)\n".utf8))
+        XCTAssertEqual(lines.map { String(decoding: $0, as: UTF8.self) }, ["xxx", initLine])
+        XCTAssertEqual(lines.flatMap { ClaudeService.events(fromLine: $0) }, [.ready(sessionID: "s", model: "m")])
     }
 
     func testStderrTailIsBoundedAndPrefixed() {

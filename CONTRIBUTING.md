@@ -69,7 +69,18 @@ The rules for core work:
 - **What lives there.** The device layer (intents, actions, mappings,
   profiles, the Controller slot rule and the hold rule) lives in
   `powerup-core` since slice 2.2; the app reaches it only through
-  `CoreBridge.swift` (DESIGN v2.11).
+  `CoreBridge.swift` (DESIGN v2.11). Since slice 2.3 it also holds the
+  Claude adapter's rules (`harness::claude`: the stream-json parser, the
+  stdout line splitter, the stdin lines, the launch argv and the process
+  rules, played against `Tests/Fixtures/harness/`), the session state
+  machine with remote mode (`session`, played against every
+  `Tests/Fixtures/session/` scenario), the status derivation (`status`,
+  against `Tests/Fixtures/status/`) and the destructive-action classifier
+  (`harness::destructive`), reached through `CoreBridgeHarness.swift` and
+  `CoreBridgeSession.swift` (DESIGN v2.12). The core returns effects and
+  the platform carries them out in order (CONTEXT.md, "Effect"):
+  ClaudeService owns the process and pipes, AppState the adapters,
+  config, transcript, speech and remote injector.
 - **Panic rule.** Every public core function is total: it returns its
   value, or a `Result` when it can fail, and never panics. Library code
   never calls `unwrap`, `expect` or `panic!` (clippy denies the first two).
@@ -121,7 +132,10 @@ category `core`) at launch.
 - **Never** run `cmux send`/`send-key` against real workspaces. Read-only cmux
   commands are fine; live round-trips go through a disposable workspace only.
 - Don't spawn real `claude` processes in tests. The stream parser is testable
-  directly via `ClaudeService.events(fromLine:)` — and the existing parser
+  directly via `ClaudeService.events(fromLine:)` (a wrapper over the core;
+  `cargo test` plays `Tests/Fixtures/harness/`), and an end-to-end test
+  points `config.claudePath` at a fake CLI script it writes
+  (`ClaudeFakeCLITests`) — and the existing parser
   tests pin CLI quirks that were verified live; if the CLI changes behavior,
   update the tests *and* DESIGN.md together.
 
@@ -240,8 +254,10 @@ writing a bespoke test. `SessionScenarioTests` finds every file there and
 plays it through the same seam with a `FakeHarnessAdapter`. A broken rule
 fails with the scenario's name and its first mismatched expectation. The
 format, the step vocabulary and the expectation keys are documented in
-`Tests/Fixtures/README.md`. The Rust core will later run the same files, so
-keep them plain JSON. CI fails if `Tests/Fixtures` is empty.
+`Tests/Fixtures/README.md`. The Rust core runs the same files on its
+session machine (`cargo test` in `rust/`), so keep them plain JSON, list
+`"rust"` in `verifiedBy`, and make a new scenario pass in both. CI fails if
+`Tests/Fixtures` is empty.
 
 **The rule: orchestration changes ship with a seam test.** A change to a rule
 in AppState must come with a test through `AppStateTestEnvironment`, and so

@@ -4,7 +4,7 @@
   "description": "Cycle Permission Mode steps a running session through acceptEdits → plan → default and back to acceptEdits, sending each mode to the harness live. However often it is pressed, it never lands on bypassPermissions.",
   "reason": "bypassPermissions approves everything without asking. A stray button press, or a protocol client, must never be able to switch safety off; only the Settings window can choose it.",
   "source": "DESIGN.md v1.7 'Safety invariants' 1; AppConfig.permissionModeCycle; AppState.cyclePermissionMode",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "claude",
     "controlMode": "builtin",

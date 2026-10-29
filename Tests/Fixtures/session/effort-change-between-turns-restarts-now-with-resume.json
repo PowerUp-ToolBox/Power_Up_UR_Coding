@@ -4,7 +4,7 @@
   "description": "Cycle Effort pressed while the session is idle between turns restarts the harness at once with the new effort, resuming the same session.",
   "reason": "With no turn in flight there is nothing to cut off, so waiting would only leave the next prompt running on the old effort.",
   "source": "DESIGN.md v1.2 E '.cycleEffort' ('Otherwise restart now with --resume current sessionID'); AppState.cycleEffort / restartForEffort",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "claude",
     "controlMode": "builtin",

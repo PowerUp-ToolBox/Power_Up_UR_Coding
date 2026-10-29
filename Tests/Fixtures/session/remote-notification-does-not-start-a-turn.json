@@ -4,7 +4,7 @@
   "description": "A Notification arrives from a remote session that has no turn in flight. It is logged, but the status stays idle: a notification refreshes a turn that exists and never creates one.",
   "reason": "Claude sends notifications outside turns too (for example an idle-input reminder). Treating one as a turn start would light the working status with nothing to ever clear it but the expiry.",
   "source": "DESIGN.md v1.10 'a notification refreshes an existing entry's timestamp (a turn waiting on the user is alive) but never creates one'; AppState.handleRemoteEvent(.notification)",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "controlMode": "remote",
     "controllerConnected": true

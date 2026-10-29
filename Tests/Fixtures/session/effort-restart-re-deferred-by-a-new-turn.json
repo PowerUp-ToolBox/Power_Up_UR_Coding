@@ -4,7 +4,7 @@
   "description": "An effort change is queued mid-turn. The turn completes, but the next prompt starts a new turn before the deferred restart gets to run, so the restart is postponed again and happens only after that second turn completes, still resuming the same session.",
   "reason": "The deferred restart hops off the event delivery before it runs. A prompt that was already on its way (a second voice prompt, a protocol client's sendPrompt) can start a turn in that gap; restarting then would cut that answer off.",
   "source": "DESIGN.md v1.2 E '.cycleEffort'; AppState.handleHarnessEvent(.turnCompleted) 'A queued turn started already — wait for that one too.'",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "claude",
     "controlMode": "builtin",

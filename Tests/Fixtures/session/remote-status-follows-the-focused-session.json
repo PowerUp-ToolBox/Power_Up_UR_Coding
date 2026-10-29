@@ -4,7 +4,7 @@
   "description": "Two remote sessions are known; alpha is working and beta is idle. With no focus the status is thinking. Focusing alpha keeps it thinking; focusing beta shows idle even though alpha is still working, and alpha's heartbeats do not change that; cycling back to all sessions shows thinking again.",
   "reason": "With a session focus set, only the focused session drives the working light, so the status light reflects the session the person is listening to rather than any session on the machine.",
   "source": "DESIGN.md v2.2 B 'Remote session focus' (only the focused session's turn drives remoteTurnActive; All → each session by cwd basename → All); AppState.cycleFocus, AppState.refreshRemoteTurnActive",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "controlMode": "remote",
     "controllerConnected": true

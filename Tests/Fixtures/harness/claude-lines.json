@@ -1,0 +1,252 @@
+{
+  "description": "How the claude CLI's stdout bytes become lines (HK-052). Each chunk is appended to a buffer and every complete line it finishes comes out, split on the byte 0x0A only: a carriage return stays part of its line, and empty lines are dropped. The bytes after the last newline wait for the next chunk, and come out only when the stream ends (the flush); a flush with nothing buffered gives nothing, and a flush empties the buffer, so a second one gives nothing either. A tail that grows past 16 MiB without a newline is dropped (HK-053), which a unit test proves rather than a case.",
+  "function": "IOChannel.ingestStdout(_:) / flushStdoutRemainder() ↔ powerup_core::harness::claude::lines::LineBuffer — input {chunks: [line input], flush: bool}; expected {lines: [[string]] (the lines each chunk finishes, one list per chunk), remainder: string|null (what the flush gives; null when there is no flush or nothing buffered)}",
+  "verifiedBy": "Tests/PowerUpTests/HarnessFixtureTests.swift testClaudeLinesTable plays it through IOChannel, which splits through the bridge (CoreBridge.LineBuffer) since slice 2.3. Rust: rust/powerup-core/tests/harness.rs claude_lines_cases runs LineBuffer; the 16 MiB guard is lines.rs a_runaway_line_is_discarded_without_growing and ClaudeStreamParsingTests.testRunawayLineIsDiscarded.",
+  "capturedAgainst": "The Swift app (ClaudeService.launchArguments and IOChannel) of PowerUp at ae3de75 (launchArguments extracted unchanged), built with Swift 5.9.2 (Xcode 15.2) and run on macOS 27.2; the flags themselves were verified live against claude CLI v2.1.243 (DESIGN.md v1.1 A)",
+  "cases": [
+    {
+      "name": "a partial line waits for more data",
+      "input": {
+        "chunks": [
+          "{\"type\":\"sys",
+          "tem\"}\n{\"a\":1}\n{\"partial"
+        ],
+        "flush": true
+      },
+      "expected": {
+        "lines": [
+          [],
+          [
+            "{\"type\":\"system\"}",
+            "{\"a\":1}"
+          ]
+        ],
+        "remainder": "{\"partial"
+      },
+      "reason": "Splitting per chunk would hand half a JSON object to the parser; the tail waits (HK-052)."
+    },
+    {
+      "name": "empty lines are dropped",
+      "input": {
+        "chunks": [
+          "\n\n{\"x\":1}\n\n"
+        ],
+        "flush": true
+      },
+      "expected": {
+        "lines": [
+          [
+            "{\"x\":1}"
+          ]
+        ],
+        "remainder": null
+      },
+      "reason": "Blank lines carry nothing (HK-052)."
+    },
+    {
+      "name": "a carriage return stays in its line",
+      "input": {
+        "chunks": [
+          "a\r\nb\r\n"
+        ],
+        "flush": true
+      },
+      "expected": {
+        "lines": [
+          [
+            "a\r",
+            "b\r"
+          ]
+        ],
+        "remainder": null
+      },
+      "reason": "Only 0x0A splits; the parser accepts the trailing \\r as JSON whitespace (HK-052)."
+    },
+    {
+      "name": "a lone carriage return does not split",
+      "input": {
+        "chunks": [
+          "a\rb\n"
+        ],
+        "flush": true
+      },
+      "expected": {
+        "lines": [
+          [
+            "a\rb"
+          ]
+        ],
+        "remainder": null
+      },
+      "reason": "A CR alone is not a line break (HK-052)."
+    },
+    {
+      "name": "a line of a carriage return alone is kept",
+      "input": {
+        "chunks": [
+          "\r\n"
+        ],
+        "flush": true
+      },
+      "expected": {
+        "lines": [
+          [
+            "\r"
+          ]
+        ],
+        "remainder": null
+      },
+      "reason": "Only a line with no bytes at all is dropped (HK-052)."
+    },
+    {
+      "name": "several lines in one chunk",
+      "input": {
+        "chunks": [
+          "{\"n\":1}\n{\"n\":2}\n{\"n\":3}\n"
+        ],
+        "flush": true
+      },
+      "expected": {
+        "lines": [
+          [
+            "{\"n\":1}",
+            "{\"n\":2}",
+            "{\"n\":3}"
+          ]
+        ],
+        "remainder": null
+      },
+      "reason": "One read can carry many lines; they come out in order (HK-052)."
+    },
+    {
+      "name": "one line split over three chunks",
+      "input": {
+        "chunks": [
+          "{\"type\"",
+          ":\"res",
+          "ult\"}\n"
+        ],
+        "flush": true
+      },
+      "expected": {
+        "lines": [
+          [],
+          [],
+          [
+            "{\"type\":\"result\"}"
+          ]
+        ],
+        "remainder": null
+      },
+      "reason": "A line comes out only when its newline arrives (HK-052)."
+    },
+    {
+      "name": "a character split between chunks is joined",
+      "input": {
+        "chunks": [
+          {
+            "hex": "7b2261223a22c3"
+          },
+          {
+            "hex": "a9227d0a"
+          }
+        ],
+        "flush": true
+      },
+      "expected": {
+        "lines": [
+          [],
+          [
+            "{\"a\":\"é\"}"
+          ]
+        ],
+        "remainder": null
+      },
+      "reason": "Splitting is on bytes, so a multi-byte character cut by the pipe is whole again in its line (HK-052)."
+    },
+    {
+      "name": "the flush gives the unterminated tail",
+      "input": {
+        "chunks": [
+          "{\"type\":\"result\"}"
+        ],
+        "flush": true
+      },
+      "expected": {
+        "lines": [
+          []
+        ],
+        "remainder": "{\"type\":\"result\"}"
+      },
+      "reason": "A last line without a newline is still read when the process exits (HK-052)."
+    },
+    {
+      "name": "without a flush the tail stays buffered",
+      "input": {
+        "chunks": [
+          "done\nhalf"
+        ],
+        "flush": false
+      },
+      "expected": {
+        "lines": [
+          [
+            "done"
+          ]
+        ],
+        "remainder": null
+      },
+      "reason": "Nothing comes out of the buffer until the stream ends (HK-052)."
+    },
+    {
+      "name": "a flush with nothing buffered gives nothing",
+      "input": {
+        "chunks": [],
+        "flush": true
+      },
+      "expected": {
+        "lines": [],
+        "remainder": null
+      },
+      "reason": "An empty stream has no remainder (HK-052)."
+    },
+    {
+      "name": "a flush after a complete line gives nothing",
+      "input": {
+        "chunks": [
+          "{\"a\":1}\n"
+        ],
+        "flush": true
+      },
+      "expected": {
+        "lines": [
+          [
+            "{\"a\":1}"
+          ]
+        ],
+        "remainder": null
+      },
+      "reason": "A newline-terminated stream leaves nothing behind (HK-052)."
+    },
+    {
+      "name": "an empty chunk gives nothing",
+      "input": {
+        "chunks": [
+          "",
+          "x\n"
+        ],
+        "flush": true
+      },
+      "expected": {
+        "lines": [
+          [],
+          [
+            "x"
+          ]
+        ],
+        "remainder": null
+      },
+      "reason": "A zero-length read finishes no line (HK-052)."
+    }
+  ]
+}

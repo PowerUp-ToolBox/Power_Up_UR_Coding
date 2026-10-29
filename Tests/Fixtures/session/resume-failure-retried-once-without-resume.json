@@ -4,7 +4,7 @@
   "description": "Launch resumes the folder's saved session; the CLI rejects the stale id and exits before system/init, so PowerUp starts again once without the resume flag and the fresh session takes over.",
   "reason": "A stale session id (deleted or expired conversation) makes `claude --resume` exit before init. Without the retry the person is left with no session and no way to tell why.",
   "source": "DESIGN.md core rule 'terminated … retry ONCE without resumeSessionID (covers stale session ids)'; AppState.handleTermination",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "claude",
     "controlMode": "builtin",

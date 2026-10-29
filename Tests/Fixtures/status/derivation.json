@@ -1,7 +1,7 @@
 {
   "description": "The status precedence table of DESIGN v2.6 §B, written out in full: every combination of the four status inputs (16 rows) and the status the pill and the light bar show for it. Precedence: listening > speaking > thinking > (noController | idle). Live activity always outranks the missing controller, because the controller is optional (voice capture can start from the mic button or the keyboard); noController is only the resting state when nothing is happening and no pad is connected. Status names: noController, idle, listening, thinking, speaking.",
   "function": "AppState.derivedStatus(controllerConnected:isPTTActive:isSpeaking:isWorking:) — input {controllerConnected, isPTTActive, isSpeaking, isWorking} in, status name out",
-  "verifiedBy": "DESIGN.md v2.6 addendum §B (precedence) and characterization of the Swift implementation (spec #94, ticket #125); Tests/PowerUpTests/StatusDerivationTests.swift. Pure function, no device or harness involved.",
+  "verifiedBy": "DESIGN.md v2.6 addendum §B (precedence) and characterization of the Swift implementation (spec #94, ticket #125); Tests/PowerUpTests/StatusDerivationTests.swift. Rust: rust/powerup-core/tests/status.rs derivation_cases runs status::derived_status. Pure function, no device or harness involved.",
   "capturedAgainst": "PowerUp macOS app, branch stage-1-text-views-spikes, 2026-10-23",
   "cases": [
     {

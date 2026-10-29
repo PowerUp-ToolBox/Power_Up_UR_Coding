@@ -1,0 +1,42 @@
+{
+  "formatVersion": 1,
+  "name": "remote-focus-forgets-sessions-silent-for-thirty-minutes",
+  "description": "Cycle Session Focus steps only through remote sessions seen in the last 30 minutes. A session silent for longer is forgotten, so the focus goes straight to the session still active, then back to all sessions.",
+  "reason": "Sessions end without telling PowerUp (a closed terminal sends no SessionEnd). Keeping them forever would fill the focus cycle with sessions that no longer exist, each muting the live ones.",
+  "source": "AppState.cycleFocus (remoteSessionMemory = 30 minutes); DESIGN.md v2.2 B",
+  "verifiedBy": ["swift", "rust"],
+  "config": {
+    "controlMode": "remote"
+  },
+  "script": [
+    {
+      "hookEvent": { "type": "userPromptSubmit", "sessionID": "session-alpha", "cwd": "/work/alpha", "text": "Fix the build." },
+      "reason": "Session alpha shows up, then goes silent."
+    },
+    { "advanceClock": 1000, "reason": "Alpha's turn expires on the way; the session itself is still remembered." },
+    {
+      "hookEvent": { "type": "userPromptSubmit", "sessionID": "session-beta", "cwd": "/work/beta", "text": "Write the docs." },
+      "reason": "Session beta shows up 1000 seconds later."
+    },
+    { "advanceClock": 801, "reason": "Alpha has now been silent for 1801 seconds, just past 30 minutes; beta for 801." },
+    {
+      "intent": "cycleFocus",
+      "reason": "Alpha is forgotten, so the first session in the cycle is beta.",
+      "expect": { "remoteFocus": "session-beta" }
+    },
+    {
+      "intent": "cycleFocus",
+      "reason": "Past the last session the focus wraps to all."
+    }
+  ],
+  "expect": {
+    "remoteFocus": null,
+    "transcript": [
+      { "kind": "system", "text": "Focus → beta — only this session is spoken now." },
+      { "kind": "system", "text": "Focus → all sessions." }
+    ],
+    "remoteTurnActive": true,
+    "injectorCalls": [],
+    "errorShown": false
+  }
+}

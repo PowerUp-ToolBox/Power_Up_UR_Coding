@@ -4,7 +4,7 @@
   "description": "Two remote sessions are working when the person interrupts. PowerUp presses Escape in the remote session and clears every remote turn at once, so the status goes idle without waiting for a Stop.",
   "reason": "A turn interrupted with Escape never sends a Stop. Without the reset the status would claim Claude is working until the expiry, fifteen minutes later.",
   "source": "DESIGN.md v1.10 'clearRemoteTurns() empties the table and the flag — used by Interrupt, Reject, remote New Session, and every control-mode switch'; AppState.interruptClaude (remote branch)",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "controlMode": "remote",
     "controllerConnected": true
