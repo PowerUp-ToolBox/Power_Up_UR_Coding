@@ -62,10 +62,10 @@ fn contain<T>(call: impl FnOnce() -> Result<T, CoreError>) -> Result<T, CoreBrid
 }
 
 /// Locks an object's state. A panic caught by [`contain`] while the lock was
-/// held poisons it; the state is still whole (every core call either
-/// finishes its update or panics before touching it), so the next call
-/// takes it as it is instead of failing forever and bricking the object
-/// for the rest of the app run.
+/// held poisons it. The next call takes the state as the panicking call left
+/// it: a core bug may have left one call's update half done, which costs at
+/// most that session, whereas refusing the lock would fail every later call
+/// and brick the object for the rest of the app run.
 fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }

@@ -83,7 +83,8 @@ core".
   Orchestration changes ship with a test through it (CONTRIBUTING.md,
   "Testing AppState"). Shared JSON fixtures live in `Tests/Fixtures/`.
 - Don't spawn real `claude` sessions from tests; the stream parser is
-  testable via `ClaudeService.events(fromLine:)`.
+  testable via `ClaudeService.events(fromLine:)` (a wrapper over the core;
+  `cargo test` plays `Tests/Fixtures/harness/`).
 - Don't spawn real ACP agents or npx bridges (opencode, `claude-agent-acp`,
   `codex-acp`) from tests or ad-hoc verification — they hit the network and
   run under the user's real agent logins. ACPAdapter is tested against the

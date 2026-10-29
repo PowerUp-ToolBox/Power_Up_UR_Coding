@@ -5,7 +5,9 @@ import XCTest
 /// against the Swift app: how stdout bytes become lines, what one line of
 /// the claude CLI parses into, what each call writes on its stdin, and the
 /// argv a launch passes. The Rust core plays the same files
-/// (`rust/powerup-core/tests/harness.rs`), so the two can only agree.
+/// (`rust/powerup-core/tests/harness.rs`), so the two can only agree. The
+/// stream and lines tables run through the bridge since slice 2.3: the app's
+/// parser and line splitter are the core's.
 final class HarnessFixtureTests: XCTestCase {
 
     private static let area = "harness"

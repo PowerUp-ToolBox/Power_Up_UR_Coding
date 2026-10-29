@@ -3,7 +3,10 @@ import XCTest
 
 /// Pins the stream-json wire protocol quirks that were verified live against
 /// claude CLI v2.1.243 (see DESIGN.md). If a CLI update changes any of these
-/// shapes, these tests are the first thing that should notice.
+/// shapes, these tests are the first thing that should notice. Since slice
+/// 2.3 the parser and the line splitter run in the Rust core, so these tests
+/// play the lines through the bridge (`ClaudeService.events(fromLine:)` and
+/// `IOChannel` are thin wrappers over it).
 final class ClaudeStreamParsingTests: XCTestCase {
 
     private func parse(_ json: String) -> [ClaudeEvent] {

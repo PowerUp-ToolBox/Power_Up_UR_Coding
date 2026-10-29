@@ -4,10 +4,11 @@ import Combine
 /// Drives a persistent `claude` CLI subprocess in streaming-JSON mode.
 ///
 /// The process is spawned with three pipes. stdout is consumed with a
-/// `readabilityHandler` (never a blocking read), buffered as raw `Data` and split
-/// on newlines; a trailing partial line waits for the next chunk. Parsed events
-/// are queued on a lock-protected FIFO and drained on the main actor, so ordering
-/// is preserved even though the parse happens on a background queue.
+/// `readabilityHandler` (never a blocking read) and split into lines by the
+/// Rust core's line buffer; a trailing partial line waits for the next chunk.
+/// Each line is parsed by the core (DESIGN v2.12), and the events are queued
+/// on a lock-protected FIFO and drained on the main actor, so ordering is
+/// preserved even though the parse happens on a background queue.
 @MainActor
 final class ClaudeService: ObservableObject {
 
@@ -656,156 +657,13 @@ final class ClaudeService: ObservableObject {
         return result
     }
 
-    /// Parses one stdout line. Anything unrecognised is silently ignored.
-    /// Internal (not private) so the wire-protocol quirks verified against the
-    /// live CLI stay pinned by tests.
+    /// What one stdout line means. The stream-json parser runs in the Rust
+    /// core (DESIGN v2.12): anything unrecognised gives no events, and the
+    /// wire-protocol quirks verified against the live CLI are pinned by
+    /// `Tests/Fixtures/harness/claude-stream.json` in both languages.
+    /// Internal so `ClaudeStreamParsingTests` can play lines through it.
     nonisolated static func events(fromLine line: Data) -> [ClaudeEvent] {
-        guard !line.isEmpty else { return [] }
-        guard let parsed = try? JSONSerialization.jsonObject(with: line, options: []),
-              let root = parsed as? [String: Any],
-              let type = root["type"] as? String else { return [] }
-
-        switch type {
-        case "system":
-            guard (root["subtype"] as? String) == "init" else { return [] }
-            let id = (root["session_id"] as? String) ?? ""
-            let model = (root["model"] as? String) ?? ""
-            guard !id.isEmpty else { return [] }
-            return [.ready(sessionID: id, model: model)]
-
-        case "stream_event":
-            guard let event = root["event"] as? [String: Any],
-                  (event["type"] as? String) == "content_block_delta",
-                  let delta = event["delta"] as? [String: Any],
-                  (delta["type"] as? String) == "text_delta",
-                  let text = delta["text"] as? String,
-                  !text.isEmpty else { return [] }
-            return [.textDelta(text)]
-
-        case "assistant":
-            return assistantEvents(root: root)
-
-        case "control_response":
-            return controlResponseEvents(root: root)
-
-        case "user":
-            // Echoes of our own turns, plus CLI-generated notes such as the
-            // "<local-command-stdout>Set model to …</local-command-stdout>" one
-            // that follows set_model — whose `content` is a plain STRING, not an
-            // array. Nothing here is ever read, so no cast is attempted at all.
-            return []
-
-        case "result":
-            let subtype = (root["subtype"] as? String) ?? "success"
-            let flagged = (root["is_error"] as? Bool) ?? false
-            let resultText = (root["result"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let cost = (root["total_cost_usd"] as? NSNumber)?.doubleValue
-            return [.turnCompleted(resultText: (resultText?.isEmpty == true) ? nil : resultText,
-                                   costUSD: cost,
-                                   isError: flagged || subtype != "success",
-                                   subtype: subtype)]
-
-        default:
-            // rate_limit_event, non-init system messages, and anything unknown.
-            return []
-        }
-    }
-
-    /// Parses `{"type":"control_response","response":{"subtype":…,"request_id":…}}`.
-    ///
-    /// `action` carries the raw request_id at this point; the main actor swaps in
-    /// the subtype we recorded when the request went out (see `apply`).
-    private nonisolated static func controlResponseEvents(root: [String: Any]) -> [ClaudeEvent] {
-        guard let response = root["response"] as? [String: Any],
-              let requestID = response["request_id"] as? String,
-              !requestID.isEmpty else { return [] }
-
-        let subtype = (response["subtype"] as? String) ?? ""
-        let ok = (subtype == "success")
-
-        var detail = ""
-        if !ok {
-            if let error = response["error"] as? String {
-                detail = error
-            } else if let nested = response["response"] as? [String: Any],
-                      let error = nested["error"] as? String {
-                detail = error
-            }
-            if detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                detail = subtype.isEmpty ? "the CLI rejected the request" : subtype
-            }
-        }
-
-        return [.controlResult(action: requestID, ok: ok, detail: condense(detail, maxChars: 200), value: nil)]
-    }
-
-    private nonisolated static func assistantEvents(root: [String: Any]) -> [ClaudeEvent] {
-        guard let message = root["message"] as? [String: Any] else { return [] }
-
-        if let plain = message["content"] as? String {
-            let trimmed = plain.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? [] : [.assistantMessage(trimmed)]
-        }
-
-        guard let blocks = message["content"] as? [Any] else { return [] }
-
-        var textParts: [String] = []
-        var toolEvents: [ClaudeEvent] = []
-
-        for element in blocks {
-            guard let block = element as? [String: Any],
-                  let blockType = block["type"] as? String else { continue }
-            switch blockType {
-            case "text":
-                if let text = block["text"] as? String {
-                    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !trimmed.isEmpty { textParts.append(trimmed) }
-                }
-            case "tool_use":
-                let name = (block["name"] as? String) ?? "Tool"
-                let detail = toolDetail(from: block["input"] as? [String: Any])
-                toolEvents.append(.toolUse(name: name, detail: detail))
-            default:
-                // "thinking", "redacted_thinking", "tool_result", … — skipped.
-                continue
-            }
-        }
-
-        var events: [ClaudeEvent] = []
-        if !textParts.isEmpty {
-            events.append(.assistantMessage(textParts.joined(separator: "\n")))
-        }
-        events.append(contentsOf: toolEvents)
-        return events
-    }
-
-    /// Best short human-readable summary of a tool's input.
-    private nonisolated static func toolDetail(from input: [String: Any]?) -> String {
-        guard let input, !input.isEmpty else { return "" }
-        let preferred = ["file_path", "command", "description", "pattern", "url", "prompt"]
-        for key in preferred {
-            if let value = input[key] as? String {
-                let condensed = condense(value)
-                if !condensed.isEmpty { return condensed }
-            }
-        }
-        for key in input.keys.sorted() {
-            if let value = input[key] as? String {
-                let condensed = condense(value)
-                if !condensed.isEmpty { return condensed }
-            }
-        }
-        return ""
-    }
-
-    private nonisolated static func condense(_ text: String, maxChars: Int = 80) -> String {
-        let flattened = text
-            .replacingOccurrences(of: "\r", with: " ")
-            .replacingOccurrences(of: "\n", with: " ")
-            .replacingOccurrences(of: "\t", with: " ")
-        let collapsed = flattened.split(separator: " ", omittingEmptySubsequences: true).joined(separator: " ")
-        guard collapsed.count > maxChars else { return collapsed }
-        return String(collapsed.prefix(maxChars - 1)) + "…"
+        CoreBridge.claudeEvents(fromLine: line)
     }
 }
 
@@ -839,44 +697,24 @@ private let cachedLoginShellClaudePath: String? = ClaudeService.loginShellLookup
 final class IOChannel: @unchecked Sendable {
 
     private let lock = NSLock()
-    private var stdoutBuffer = Data()
+    /// The stdout line splitter runs in the Rust core (HK-052, HK-053): a
+    /// partial line waits for the next chunk, empty lines are dropped, and
+    /// a tail past 16 MiB is dropped. It locks itself.
+    private let stdoutLines = CoreBridge.LineBuffer()
     private var stderrBuffer = Data()
     private var pending: [ClaudeEvent] = []
 
-    private let maxLineBytes = 16 * 1024 * 1024
     private let maxStderrBytes = 64 * 1024
 
     /// Appends a stdout chunk and returns every complete line it produced. A
     /// trailing partial line stays buffered for the next chunk.
     func ingestStdout(_ data: Data) -> [Data] {
-        lock.lock()
-        defer { lock.unlock() }
-
-        stdoutBuffer.append(data)
-
-        var lines: [Data] = []
-        while let newlineIndex = stdoutBuffer.firstIndex(of: 0x0A) {
-            let line = stdoutBuffer.subdata(in: stdoutBuffer.startIndex..<newlineIndex)
-            let nextStart = stdoutBuffer.index(after: newlineIndex)
-            stdoutBuffer = stdoutBuffer.subdata(in: nextStart..<stdoutBuffer.endIndex)
-            if !line.isEmpty { lines.append(line) }
-        }
-
-        // Runaway line without a newline: drop it rather than grow forever.
-        if stdoutBuffer.count > maxLineBytes {
-            stdoutBuffer.removeAll(keepingCapacity: false)
-        }
-        return lines
+        stdoutLines.ingest(data)
     }
 
     /// Returns any buffered partial line (used once the stream has ended).
     func flushStdoutRemainder() -> Data? {
-        lock.lock()
-        defer { lock.unlock() }
-        guard !stdoutBuffer.isEmpty else { return nil }
-        let remainder = stdoutBuffer
-        stdoutBuffer.removeAll(keepingCapacity: false)
-        return remainder
+        stdoutLines.flushRemainder()
     }
 
     func ingestStderr(_ data: Data) {

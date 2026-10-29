@@ -78,8 +78,11 @@ clearly without them. CI runs the cargo job on macOS, Windows and Linux.
   scenario), the status derivation (`status`, against
   `Tests/Fixtures/status/`) and the destructive-action classifier
   (`harness::destructive`). The machine returns effects for the platform
-  to carry out (CONTEXT.md, "Effect"). The app keeps its Swift copies until
-  the bridge lands.
+  to carry out (CONTEXT.md, "Effect"). Since #151 the app parses claude
+  output and splits its stdout through the bridge
+  (`CoreBridgeHarness.swift`, DESIGN v2.12); the other rules keep their
+  Swift copies until #152 runs ClaudeService and AppState on the core's
+  adapter and session objects (`CoreBridgeSession.swift`).
 - **Panic rule.** Every public core function is total: it returns its
   value, or a `Result` when it can fail, and never panics. Library code
   never calls `unwrap`, `expect` or `panic!` (clippy denies the first two).
@@ -130,7 +133,7 @@ contract change.
 | `Intent.swift` | High-level intent abstraction + `IntentMapper` wire conversion |
 | `Models.swift` | Data model contracts (buttons, actions, config, transcript) |
 | `Harness.swift` | `HarnessAdapter` protocol; `HarnessEvent`/configuration contracts |
-| `ClaudeService.swift` | `claude` CLI subprocess driver; stream-json parser |
+| `ClaudeService.swift` | `claude` CLI subprocess driver (spawn, pipes, kill grace); stream-json parsing and line splitting run in the core |
 | `ACPAdapter.swift` | ACP adapter for external harnesses (opencode, Codex, …) |
 | `ControllerService.swift` | DualSense input, light bar, haptics, battery |
 | `SpeechService.swift` | Push-to-talk STT (AVAudioEngine + SFSpeechRecognizer) |
@@ -174,7 +177,8 @@ are in `Tests/PowerUpCoreTests/`.
   or a `HookInstaller` call without `settingsURL:` anywhere in
   `Tests/PowerUpTests/`.
 - Don't spawn real `claude` sessions from tests; the stream parser is
-  testable via `ClaudeService.events(fromLine:)`.
+  testable via `ClaudeService.events(fromLine:)` (a wrapper over the core;
+  `cargo test` plays `Tests/Fixtures/harness/`).
 - Don't spawn real ACP agents or npx bridges (opencode, `claude-agent-acp`,
   `codex-acp`) from tests or ad-hoc verification — they hit the network and
   run under the user's real agent logins. ACPAdapter is tested against the
