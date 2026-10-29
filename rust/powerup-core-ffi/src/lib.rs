@@ -18,6 +18,7 @@ mod harness;
 mod hooks;
 mod mapping;
 mod session;
+mod text_safety;
 mod transcript;
 
 /// An error a core call reports to Swift.
