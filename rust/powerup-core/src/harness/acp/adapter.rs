@@ -11,7 +11,8 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use super::rpc::{self, number, obj, string};
+use super::permission::{permission_choice, PermissionOption};
+use super::rpc::{self, number, obj, string, ResponseId};
 use super::update::{tool_detail, tool_name};
 use crate::harness::json::{self, JsonValue};
 use crate::harness::{HarnessConfiguration, HarnessEvent, HarnessState};
@@ -105,6 +106,16 @@ enum Pending {
     SetMode(String),
 }
 
+/// An agent's permission request waiting for the user's answer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PendingPermission {
+    /// The request's JSON-RPC id as text: the id of the event the session
+    /// answers by (HK-144).
+    event_id: String,
+    rpc_id: i64,
+    options: Vec<PermissionOption>,
+}
+
 /// The ACP adapter's state between calls.
 #[derive(Debug)]
 pub struct AcpAdapter {
@@ -132,6 +143,9 @@ pub struct AcpAdapter {
     next_request_id: i64,
     /// Our requests waiting for their responses (HK-146, HK-401).
     pending: HashMap<i64, Pending>,
+    /// The agent's permission requests waiting for an answer, in arrival
+    /// order (HK-407).
+    permissions: Vec<PendingPermission>,
     /// Prompts accepted while the session starts or a turn is in flight,
     /// sent first in, first out, one at a time (HK-138).
     queued_prompts: VecDeque<String>,
@@ -163,6 +177,7 @@ impl AcpAdapter {
             project_dir: String::new(),
             next_request_id: 1,
             pending: HashMap::new(),
+            permissions: Vec::new(),
             queued_prompts: VecDeque::new(),
             reply_buffer: String::new(),
             effects: Vec::new(),
@@ -195,6 +210,8 @@ impl AcpAdapter {
         }
         self.generation = self.generation.wrapping_add(1);
         self.pending.clear();
+        // Answered (cancelled) by the stop above when an agent was running.
+        self.permissions.clear();
         self.queued_prompts.clear();
         self.reply_buffer.clear();
         self.stop_requested = false;
@@ -289,6 +306,54 @@ impl AcpAdapter {
         self.finish()
     }
 
+    /// Interrupts the turn (HK-143): every pending permission request is
+    /// answered cancelled first, so the agent never hangs on one, then
+    /// `session/cancel` goes out and the interrupt is reported done at once,
+    /// without waiting for the agent. With no session nothing happens. The
+    /// state stays as it is; the prompt's own result ends the turn.
+    pub fn interrupt(&mut self) -> Vec<AcpAdapterEffect> {
+        if let Some(session_id) = self.session_id.clone() {
+            self.cancel_permissions();
+            self.write(rpc::notification_line(
+                "session/cancel",
+                obj(vec![("sessionId", string(&session_id))]),
+            ));
+            self.emit(HarnessEvent::ControlResult {
+                action: "interrupt".to_owned(),
+                ok: true,
+                detail: String::new(),
+                value: None,
+            });
+        }
+        self.finish()
+    }
+
+    /// Answers the permission request whose event id is `id` (HK-131,
+    /// HK-144): the option [`permission_choice`] picks, or cancelled when
+    /// none matches. The request is answered once; a second answer, or an
+    /// id nobody asked about, does nothing.
+    pub fn respond_to_permission(&mut self, id: &str, allow: bool) -> Vec<AcpAdapterEffect> {
+        if let Some(at) = self
+            .permissions
+            .iter()
+            .position(|permission| permission.event_id == id)
+        {
+            let permission = self.permissions.remove(at);
+            let outcome = match permission_choice(&permission.options, allow) {
+                Some(option_id) => obj(vec![
+                    ("outcome", string("selected")),
+                    ("optionId", string(option_id)),
+                ]),
+                None => obj(vec![("outcome", string("cancelled"))]),
+            };
+            self.write(rpc::result_line(
+                ResponseId::Ours(permission.rpc_id),
+                obj(vec![("outcome", outcome)]),
+            ));
+        }
+        self.finish()
+    }
+
     /// Switches the model (HK-148): trimmed; with no model or no session
     /// nothing is sent, and nothing is queued either.
     pub fn set_model(&mut self, model: &str) -> Vec<AcpAdapterEffect> {
@@ -322,12 +387,15 @@ impl AcpAdapter {
         self.finish()
     }
 
-    /// Stops the session: stdin closes first, the state reads stopped with
-    /// no session, and the process is force-terminated if it still runs
-    /// after [`KILL_GRACE_SECONDS`] (HK-154). Its exit is then expected
-    /// (HK-136), and its late lines are dropped (HK-135). With no process
-    /// only the state changes, and the session id stays, as it did in
-    /// Swift.
+    /// Stops the session: pending permission requests are answered
+    /// cancelled while stdin is still open (HK-143), then stdin closes, the
+    /// state reads stopped with no session, and the process is
+    /// force-terminated if it still runs after [`KILL_GRACE_SECONDS`]
+    /// (HK-154). Its exit is then expected (HK-136), and its late lines are
+    /// dropped (HK-135), so a dying agent's late permission request cannot
+    /// bring back a prompt the user just stopped. A second stop before the
+    /// exit only arms another kill. With no process only the state changes,
+    /// and the session id stays, as it did in Swift.
     pub fn stop(&mut self) -> Vec<AcpAdapterEffect> {
         self.stop_inner();
         self.finish()
@@ -351,8 +419,10 @@ impl AcpAdapter {
 
     /// The agent of `generation` exited with `exit_code`; `stderr_tail` is
     /// the end of what it wrote on stderr. An exit nobody asked for reports
-    /// the tail and an ended event; an expected one is silent (HK-136). The
-    /// exit of a replaced launch only releases its process.
+    /// the tail and an ended event; an expected one is silent (HK-136).
+    /// Pending permission requests are dropped without an answer, since
+    /// stdin is gone with the process (HK-407). The exit of a replaced
+    /// launch only releases its process.
     pub fn terminated(
         &mut self,
         generation: u64,
@@ -370,6 +440,8 @@ impl AcpAdapter {
         self.process = None;
         self.stdin_open = false;
         self.pending.clear();
+        // stdin is closed, so nothing is written.
+        self.cancel_permissions();
         self.state = HarnessState::Stopped;
         self.session_id = None;
         if !expected {
@@ -381,9 +453,11 @@ impl AcpAdapter {
         self.finish()
     }
 
-    /// The start watchdog of `generation` fired (HK-134). It stops the agent
-    /// only if that same launch is still starting, so it never kills a
-    /// healthy later launch.
+    /// The start watchdog of `generation` fired (HK-134, HK-406). It stops
+    /// the agent only if that same launch is still starting, so it never
+    /// kills a healthy later launch. A prompt sent while starting already
+    /// reads working, so that launch is never stopped by its watchdog
+    /// (kept from Swift).
     pub fn start_watchdog_fired(&mut self, generation: u64) -> Vec<AcpAdapterEffect> {
         if generation == self.generation && self.state == HarnessState::Starting {
             self.emit(HarnessEvent::RuntimeError(START_TIMED_OUT.to_owned()));
@@ -412,9 +486,78 @@ impl AcpAdapter {
         let Some(method) = message.get("method").and_then(JsonValue::as_str) else {
             return;
         };
-        if id.is_none() && method == "session/update" {
-            self.session_update(message.get("params"));
+        match id {
+            Some(id) => self.agent_request(method, id, message.get("params")),
+            None if method == "session/update" => self.session_update(message.get("params")),
+            None => {}
         }
+    }
+
+    /// A request from the agent. Only `session/request_permission` is
+    /// served; any other method (fs/*, terminal/*, even session/update sent
+    /// with an id) gets -32601, because silence would hang the agent
+    /// (HK-145).
+    fn agent_request(&mut self, method: &str, id: &JsonValue, params: Option<&JsonValue>) {
+        if method != "session/request_permission" {
+            self.write(rpc::error_line(
+                ResponseId::Echo(id),
+                rpc::METHOD_NOT_FOUND,
+                &format!("PowerUp does not support {method}"),
+            ));
+            return;
+        }
+        // HK-144: the event id is the rpc id as text; an id Swift could not
+        // read as an Int is answered cancelled at once, echoed as read.
+        let Some(rpc_id) = id.as_swift_int() else {
+            self.write(rpc::result_line(ResponseId::Echo(id), cancelled()));
+            return;
+        };
+        let params = params.filter(|params| params.as_object().is_some());
+        let tool_call = params
+            .and_then(|params| params.get("toolCall"))
+            .filter(|tool_call| tool_call.as_object().is_some());
+        let field = |key: &str| tool_call.and_then(|tool_call| tool_call.get(key)?.as_str());
+        let name = field("title").unwrap_or("run a tool").to_owned();
+        let kind = field("kind").unwrap_or("").to_owned();
+        let detail = tool_detail(tool_call);
+        // HK-403: one option that is not an object empties the list.
+        let options = params
+            .and_then(|params| params.get("options"))
+            .and_then(JsonValue::as_object_array)
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|option| {
+                Some(PermissionOption {
+                    option_id: option.get("optionId")?.as_str()?.to_owned(),
+                    kind: option
+                        .get("kind")
+                        .and_then(JsonValue::as_str)
+                        .unwrap_or("")
+                        .to_owned(),
+                })
+            })
+            .collect();
+        let event_id = rpc_id.to_string();
+        let permission = PendingPermission {
+            event_id: event_id.clone(),
+            rpc_id,
+            options,
+        };
+        // HK-407: a repeated id replaces the options where they were.
+        match self
+            .permissions
+            .iter_mut()
+            .find(|pending| pending.event_id == event_id)
+        {
+            Some(pending) => *pending = permission,
+            None => self.permissions.push(permission),
+        }
+        self.emit(HarnessEvent::PermissionRequest {
+            id: event_id,
+            name,
+            kind,
+            detail,
+        });
     }
 
     /// The response to one of our requests.
@@ -617,6 +760,7 @@ impl AcpAdapter {
 
     fn stop_inner(&mut self) {
         self.stop_requested = true;
+        self.cancel_permissions();
         self.pending.clear();
         self.queued_prompts.clear();
         if self.process.is_none() {
@@ -632,6 +776,19 @@ impl AcpAdapter {
         self.push(AcpAdapterEffect::TerminateAfterGrace {
             seconds: KILL_GRACE_SECONDS,
         });
+    }
+
+    /// Answers every pending permission request cancelled, in arrival order
+    /// (HK-143, HK-407), and forgets them. The answers are written only
+    /// while stdin is open, as Swift's write was, so after an exit they are
+    /// dropped silently.
+    fn cancel_permissions(&mut self) {
+        for permission in std::mem::take(&mut self.permissions) {
+            self.write(rpc::result_line(
+                ResponseId::Ours(permission.rpc_id),
+                cancelled(),
+            ));
+        }
     }
 
     /// Records a request and writes it (HK-404): the id is consumed and the
@@ -677,6 +834,14 @@ impl AcpAdapter {
         self.sync();
         std::mem::take(&mut self.effects)
     }
+}
+
+/// The answer to a permission request nobody picked an option for.
+fn cancelled() -> JsonValue {
+    obj(vec![(
+        "outcome",
+        obj(vec![("outcome", string("cancelled"))]),
+    )])
 }
 
 /// A set_model or set_mode answer: the value asked for is echoed, and a

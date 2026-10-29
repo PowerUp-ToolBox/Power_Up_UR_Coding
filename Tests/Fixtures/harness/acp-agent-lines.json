@@ -586,6 +586,313 @@
       "input": "{\"jsonrpc\":\"2.0\",\"id\":42,\"result\":{\"stopReason\":\"end_turn\"}}",
       "expected": [],
       "reason": "HK-146: a response to an id we never sent changes nothing."
+    },
+    {
+      "name": "a permission request becomes an event",
+      "input": "{\"jsonrpc\":\"2.0\",\"id\":100,\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"s1\",\"toolCall\":{\"title\":\"Edit a.swift\",\"kind\":\"edit\",\"rawInput\":{\"file_path\":\"/work/app/a.swift\"}},\"options\":[{\"optionId\":\"allow-once\",\"kind\":\"allow_once\"}]}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "permissionRequest",
+            "id": "100",
+            "name": "Edit a.swift",
+            "kind": "edit",
+            "detail": "/work/app/a.swift"
+          }
+        }
+      ],
+      "reason": "HK-144: the event id is the rpc id as text, with the tool call's title, kind and detail; nothing is written until the user answers."
+    },
+    {
+      "name": "a permission request without params",
+      "input": "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"session/request_permission\"}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "permissionRequest",
+            "id": "5",
+            "name": "run a tool",
+            "kind": "",
+            "detail": ""
+          }
+        }
+      ],
+      "reason": "HK-144: with no params the request still asks, as run a tool with no kind or detail."
+    },
+    {
+      "name": "a toolCall that is not an object",
+      "input": "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"session/request_permission\",\"params\":{\"toolCall\":\"Edit\"}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "permissionRequest",
+            "id": "5",
+            "name": "run a tool",
+            "kind": "",
+            "detail": ""
+          }
+        }
+      ],
+      "reason": "HK-403: toolCall reads only as an object."
+    },
+    {
+      "name": "a non-string title and kind",
+      "input": "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"session/request_permission\",\"params\":{\"toolCall\":{\"title\":5,\"kind\":[\"edit\"]}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "permissionRequest",
+            "id": "5",
+            "name": "run a tool",
+            "kind": "",
+            "detail": ""
+          }
+        }
+      ],
+      "reason": "HK-403: title and kind read only as strings."
+    },
+    {
+      "name": "params that are not an object",
+      "input": "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"session/request_permission\",\"params\":\"x\"}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "permissionRequest",
+            "id": "5",
+            "name": "run a tool",
+            "kind": "",
+            "detail": ""
+          }
+        }
+      ],
+      "reason": "HK-403: params reads only as an object."
+    },
+    {
+      "name": "the detail prefers a location",
+      "input": "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"session/request_permission\",\"params\":{\"toolCall\":{\"title\":\"Edit\",\"kind\":\"edit\",\"locations\":[{\"path\":\"/work/app/src/b.swift\"}],\"rawInput\":{\"file_path\":\"/work/app/a.swift\"}}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "permissionRequest",
+            "id": "5",
+            "name": "Edit",
+            "kind": "edit",
+            "detail": "b.swift"
+          }
+        }
+      ],
+      "reason": "HK-150: a permission's detail follows the tool call rules: the first location's file name beats rawInput."
+    },
+    {
+      "name": "an id of 7.0 is event 7",
+      "input": "{\"jsonrpc\":\"2.0\",\"id\":7.0,\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"s1\",\"toolCall\":{\"title\":\"Edit a.swift\",\"kind\":\"edit\",\"rawInput\":{\"file_path\":\"/work/app/a.swift\"}},\"options\":[{\"optionId\":\"allow-once\",\"kind\":\"allow_once\"}]}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "permissionRequest",
+            "id": "7",
+            "name": "Edit a.swift",
+            "kind": "edit",
+            "detail": "/work/app/a.swift"
+          }
+        }
+      ],
+      "reason": "HK-144: the id reads through Swift's as? Int, so 7.0 is 7."
+    },
+    {
+      "name": "an id of true is event 1",
+      "input": "{\"jsonrpc\":\"2.0\",\"id\":true,\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"s1\",\"toolCall\":{\"title\":\"Edit a.swift\",\"kind\":\"edit\",\"rawInput\":{\"file_path\":\"/work/app/a.swift\"}},\"options\":[{\"optionId\":\"allow-once\",\"kind\":\"allow_once\"}]}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "permissionRequest",
+            "id": "1",
+            "name": "Edit a.swift",
+            "kind": "edit",
+            "detail": "/work/app/a.swift"
+          }
+        }
+      ],
+      "reason": "HK-144, HK-401: Swift's as? Int reads true as 1 (measured), and no request of ours is pending, so it is the agent's request 1."
+    },
+    {
+      "name": "a string id is answered cancelled at once",
+      "input": "{\"jsonrpc\":\"2.0\",\"id\":\"abc\",\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"s1\",\"toolCall\":{\"title\":\"Edit a.swift\",\"kind\":\"edit\",\"rawInput\":{\"file_path\":\"/work/app/a.swift\"}},\"options\":[{\"optionId\":\"allow-once\",\"kind\":\"allow_once\"}]}}",
+      "expected": [
+        {
+          "effect": "writeStdin",
+          "line": {
+            "jsonrpc": "2.0",
+            "id": "abc",
+            "result": {
+              "outcome": {
+                "outcome": "cancelled"
+              }
+            }
+          }
+        }
+      ],
+      "reason": "HK-144: an id that is not an Int cannot be an event id, so the request is answered cancelled at once, its id echoed as read."
+    },
+    {
+      "name": "a fractional id is answered cancelled at once",
+      "input": "{\"jsonrpc\":\"2.0\",\"id\":1.5,\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"s1\",\"toolCall\":{\"title\":\"Edit a.swift\",\"kind\":\"edit\",\"rawInput\":{\"file_path\":\"/work/app/a.swift\"}},\"options\":[{\"optionId\":\"allow-once\",\"kind\":\"allow_once\"}]}}",
+      "expected": [
+        {
+          "effect": "writeStdin",
+          "line": {
+            "jsonrpc": "2.0",
+            "id": 1.5,
+            "result": {
+              "outcome": {
+                "outcome": "cancelled"
+              }
+            }
+          }
+        }
+      ],
+      "reason": "HK-144: 1.5 is not an Int; it is echoed as read."
+    },
+    {
+      "name": "a null id is answered cancelled at once",
+      "input": "{\"jsonrpc\":\"2.0\",\"id\":null,\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"s1\",\"toolCall\":{\"title\":\"Edit a.swift\",\"kind\":\"edit\",\"rawInput\":{\"file_path\":\"/work/app/a.swift\"}},\"options\":[{\"optionId\":\"allow-once\",\"kind\":\"allow_once\"}]}}",
+      "expected": [
+        {
+          "effect": "writeStdin",
+          "line": {
+            "jsonrpc": "2.0",
+            "id": null,
+            "result": {
+              "outcome": {
+                "outcome": "cancelled"
+              }
+            }
+          }
+        }
+      ],
+      "reason": "HK-144, HK-402: a null id still makes the message a request, so it is answered, with id null."
+    },
+    {
+      "name": "an object id is echoed",
+      "input": "{\"jsonrpc\":\"2.0\",\"id\":{\"n\":[1,\"a/b\"]},\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"s1\",\"toolCall\":{\"title\":\"Edit a.swift\",\"kind\":\"edit\",\"rawInput\":{\"file_path\":\"/work/app/a.swift\"}},\"options\":[{\"optionId\":\"allow-once\",\"kind\":\"allow_once\"}]}}",
+      "expected": [
+        {
+          "effect": "writeStdin",
+          "line": {
+            "jsonrpc": "2.0",
+            "id": {
+              "n": [
+                1,
+                "a/b"
+              ]
+            },
+            "result": {
+              "outcome": {
+                "outcome": "cancelled"
+              }
+            }
+          }
+        }
+      ],
+      "reason": "HK-144, HK-404: whatever the agent sent as the id comes back as read."
+    },
+    {
+      "name": "fs/read_text_file is refused",
+      "input": "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"fs/read_text_file\",\"params\":{\"sessionId\":\"s1\",\"path\":\"/etc/hosts\"}}",
+      "expected": [
+        {
+          "effect": "writeStdin",
+          "line": {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "error": {
+              "code": -32601,
+              "message": "PowerUp does not support fs/read_text_file"
+            }
+          }
+        }
+      ],
+      "reason": "HK-145: PowerUp declared no fs capability; it still answers -32601, because silence would hang the agent."
+    },
+    {
+      "name": "terminal/create is refused",
+      "input": "{\"jsonrpc\":\"2.0\",\"id\":\"t-1\",\"method\":\"terminal/create\",\"params\":{\"sessionId\":\"s1\",\"command\":\"ls\"}}",
+      "expected": [
+        {
+          "effect": "writeStdin",
+          "line": {
+            "jsonrpc": "2.0",
+            "id": "t-1",
+            "error": {
+              "code": -32601,
+              "message": "PowerUp does not support terminal/create"
+            }
+          }
+        }
+      ],
+      "reason": "HK-145: no terminal capability either; a string id is echoed."
+    },
+    {
+      "name": "an unknown method is refused",
+      "input": "{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"x/new_thing\"}",
+      "expected": [
+        {
+          "effect": "writeStdin",
+          "line": {
+            "jsonrpc": "2.0",
+            "id": 8,
+            "error": {
+              "code": -32601,
+              "message": "PowerUp does not support x/new_thing"
+            }
+          }
+        }
+      ],
+      "reason": "HK-145: any method PowerUp does not serve gets -32601."
+    },
+    {
+      "name": "session/update sent with an id is refused",
+      "input": "{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"x\"}}}}",
+      "expected": [
+        {
+          "effect": "writeStdin",
+          "line": {
+            "jsonrpc": "2.0",
+            "id": 8,
+            "error": {
+              "code": -32601,
+              "message": "PowerUp does not support session/update"
+            }
+          }
+        }
+      ],
+      "reason": "HK-402: a message with a method and an id is a request, never an update, so it is refused and nothing streams."
+    },
+    {
+      "name": "a request with a null id is refused",
+      "input": "{\"jsonrpc\":\"2.0\",\"id\":null,\"method\":\"fs/write_text_file\"}",
+      "expected": [
+        {
+          "effect": "writeStdin",
+          "line": {
+            "jsonrpc": "2.0",
+            "id": null,
+            "error": {
+              "code": -32601,
+              "message": "PowerUp does not support fs/write_text_file"
+            }
+          }
+        }
+      ],
+      "reason": "HK-402: a null id is an id."
     }
   ]
 }

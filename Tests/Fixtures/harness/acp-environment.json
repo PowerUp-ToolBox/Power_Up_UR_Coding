@@ -1,7 +1,7 @@
 {
   "description": "Which environment variables are removed from a spawned ACP agent's environment: the exact names CLAUDECODE and CLAUDE_PID, and every name with the prefix CLAUDE_CODE_ (Swift's hasPrefix, whole clusters). Names are compared case-sensitively. The PATH augmentation is the platform's and is not in this table.",
   "function": "ACPAdapter.agentEnvironment(from:), the scrub half ↔ powerup_core::harness::acp::environment::is_scrubbed — input: a variable name; expected: true when it is removed",
-  "verifiedBy": "Swift: ACPFixtureTests.testAcpEnvironmentTable runs ACPAdapter.agentEnvironment(from:).",
+  "verifiedBy": "Swift: ACPFixtureTests.testAcpEnvironmentTable runs ACPAdapter.agentEnvironment(from:). Rust: rust/powerup-core/tests/acp.rs acp_environment_cases runs harness::acp::environment::is_scrubbed.",
   "capturedAgainst": "ACPAdapter.swift's agentEnvironment(from:) as of dddf9c6 (Swift 5.9.2, macOS 27.2)",
   "cases": [
     {
@@ -95,10 +95,16 @@
       "reason": "HK-063, HK-127: Swift's hasPrefix compares whole clusters, so an underscore that a combining acute follows is not the prefix's underscore (captured on the Swift statics)."
     },
     {
-      "name": "a combining mark inside the prefix is kept",
-      "input": "CLAUDÉ_CODE_X",
+      "name": "a zero width joiner after the prefix is kept",
+      "input": "CLAUDE_CODE_‍X",
       "expected": false,
-      "reason": "HK-063, HK-127: the same cluster rule."
+      "reason": "HK-063, HK-127: a joiner extends the underscore's cluster too (captured on the Swift statics)."
+    },
+    {
+      "name": "a combining mark after an exact name is kept",
+      "input": "CLAUDECODÉ",
+      "expected": false,
+      "reason": "HK-063, HK-127: CLAUDECODE with a combining acute on its last letter is another name."
     }
   ]
 }

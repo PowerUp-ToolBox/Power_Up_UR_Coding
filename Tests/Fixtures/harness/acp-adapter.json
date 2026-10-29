@@ -7613,6 +7613,4486 @@
         }
       },
       "reason": "HK-146: a start forgets every pending request, so the new agent's id 3 answers nothing it did not ask."
+    },
+    {
+      "name": "mock agent: a prompt streams a reply, a tool and a permission, and completes",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/tmp",
+              "agentCommand": [
+                "python3",
+                "acp-mock-agent.py"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"jsonrpc\": \"2.0\", \"id\": 1, \"result\": {\"protocolVersion\": 1, \"agentInfo\": {\"name\": \"MockAgent\", \"version\": \"1.0\"}}}"
+          },
+          {
+            "line": "{\"jsonrpc\": \"2.0\", \"id\": 2, \"result\": {\"sessionId\": \"mock-session\", \"models\": {\"currentModelId\": \"mock/model-1\"}}}"
+          },
+          {
+            "send": "do the thing"
+          },
+          {
+            "line": "{\"jsonrpc\": \"2.0\", \"method\": \"session/update\", \"params\": {\"sessionId\": \"mock-session\", \"update\": {\"sessionUpdate\": \"agent_thought_chunk\", \"content\": {\"type\": \"text\", \"text\": \"thinking\"}}}}"
+          },
+          {
+            "line": "{\"jsonrpc\": \"2.0\", \"method\": \"session/update\", \"params\": {\"sessionId\": \"mock-session\", \"update\": {\"sessionUpdate\": \"agent_message_chunk\", \"content\": {\"type\": \"text\", \"text\": \"Working. \"}}}}"
+          },
+          {
+            "line": "{\"jsonrpc\": \"2.0\", \"method\": \"session/update\", \"params\": {\"sessionId\": \"mock-session\", \"update\": {\"sessionUpdate\": \"tool_call\", \"toolCallId\": \"t1\", \"title\": \"Edit File\", \"kind\": \"edit\", \"locations\": [{\"path\": \"/tmp/a.swift\", \"line\": 1}]}}}"
+          },
+          {
+            "line": "{\"jsonrpc\": \"2.0\", \"id\": 100, \"method\": \"session/request_permission\", \"params\": {\"sessionId\": \"mock-session\", \"toolCall\": {\"title\": \"Edit a.swift\", \"kind\": \"edit\", \"rawInput\": {\"file_path\": \"/tmp/a.swift\"}}, \"options\": [{\"optionId\": \"allow-always\", \"name\": \"Always\", \"kind\": \"allow_always\"}, {\"optionId\": \"allow-once\", \"name\": \"Once\", \"kind\": \"allow_once\"}, {\"optionId\": \"reject-once\", \"name\": \"No\", \"kind\": \"reject_once\"}]}}"
+          },
+          {
+            "respondToPermission": {
+              "id": "100",
+              "allow": true
+            }
+          },
+          {
+            "line": "{\"jsonrpc\": \"2.0\", \"method\": \"session/update\", \"params\": {\"sessionId\": \"mock-session\", \"update\": {\"sessionUpdate\": \"agent_message_chunk\", \"content\": {\"type\": \"text\", \"text\": \"choice=allow-once\"}}}}"
+          },
+          {
+            "line": "{\"jsonrpc\": \"2.0\", \"id\": 3, \"result\": {\"stopReason\": \"end_turn\", \"usage\": {\"inputTokens\": 100, \"outputTokens\": 50}}}"
+          },
+          {
+            "send": "again"
+          },
+          {
+            "line": "{\"jsonrpc\": \"2.0\", \"method\": \"session/update\", \"params\": {\"sessionId\": \"mock-session\", \"update\": {\"sessionUpdate\": \"agent_thought_chunk\", \"content\": {\"type\": \"text\", \"text\": \"thinking\"}}}}"
+          },
+          {
+            "line": "{\"jsonrpc\": \"2.0\", \"method\": \"session/update\", \"params\": {\"sessionId\": \"mock-session\", \"update\": {\"sessionUpdate\": \"agent_message_chunk\", \"content\": {\"type\": \"text\", \"text\": \"Working. \"}}}}"
+          },
+          {
+            "line": "{\"jsonrpc\": \"2.0\", \"method\": \"session/update\", \"params\": {\"sessionId\": \"mock-session\", \"update\": {\"sessionUpdate\": \"tool_call\", \"toolCallId\": \"t1\", \"title\": \"Edit File\", \"kind\": \"edit\", \"locations\": [{\"path\": \"/tmp/a.swift\", \"line\": 1}]}}}"
+          },
+          {
+            "line": "{\"jsonrpc\": \"2.0\", \"id\": 100, \"method\": \"session/request_permission\", \"params\": {\"sessionId\": \"mock-session\", \"toolCall\": {\"title\": \"Edit a.swift\", \"kind\": \"edit\", \"rawInput\": {\"file_path\": \"/tmp/a.swift\"}}, \"options\": [{\"optionId\": \"allow-always\", \"name\": \"Always\", \"kind\": \"allow_always\"}, {\"optionId\": \"allow-once\", \"name\": \"Once\", \"kind\": \"allow_once\"}, {\"optionId\": \"reject-once\", \"name\": \"No\", \"kind\": \"reject_once\"}]}}"
+          },
+          {
+            "respondToPermission": {
+              "id": "100",
+              "allow": true
+            }
+          },
+          {
+            "line": "{\"jsonrpc\": \"2.0\", \"method\": \"session/update\", \"params\": {\"sessionId\": \"mock-session\", \"update\": {\"sessionUpdate\": \"agent_message_chunk\", \"content\": {\"type\": \"text\", \"text\": \"choice=allow-once\"}}}}"
+          },
+          {
+            "line": "{\"jsonrpc\": \"2.0\", \"id\": 4, \"result\": {\"stopReason\": \"end_turn\", \"usage\": {\"inputTokens\": 100, \"outputTokens\": 50}}}"
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "python3",
+              "arguments": [
+                "acp-mock-agent.py"
+              ],
+              "projectDir": "/tmp"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 1,
+              "seconds": 30
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {
+                  "cwd": "/tmp",
+                  "mcpServers": []
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "mock-session",
+              "modelName": "mock/model-1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "mock-session",
+                "model": "mock/model-1"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "working",
+              "sessionID": "mock-session",
+              "modelName": "mock/model-1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "session/prompt",
+                "params": {
+                  "sessionId": "mock-session",
+                  "prompt": [
+                    {
+                      "type": "text",
+                      "text": "do the thing"
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "replyDelta",
+                "text": "Working. "
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "toolUse",
+                "name": "Edit File",
+                "detail": "a.swift"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "permissionRequest",
+                "id": "100",
+                "name": "Edit a.swift",
+                "kind": "edit",
+                "detail": "/tmp/a.swift"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 100,
+                "result": {
+                  "outcome": {
+                    "outcome": "selected",
+                    "optionId": "allow-once"
+                  }
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "replyDelta",
+                "text": "choice=allow-once"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "working",
+              "sessionID": "mock-session",
+              "modelName": "mock/model-1",
+              "totalTokens": 150
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "reply",
+                "text": "Working. choice=allow-once"
+              }
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "turnCompleted",
+                "resultText": "Working. choice=allow-once",
+                "costUSD": null,
+                "isError": false,
+                "detail": "end_turn"
+              }
+            },
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "mock-session",
+              "modelName": "mock/model-1",
+              "totalTokens": 150
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "working",
+              "sessionID": "mock-session",
+              "modelName": "mock/model-1",
+              "totalTokens": 150
+            },
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 4,
+                "method": "session/prompt",
+                "params": {
+                  "sessionId": "mock-session",
+                  "prompt": [
+                    {
+                      "type": "text",
+                      "text": "again"
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "replyDelta",
+                "text": "Working. "
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "toolUse",
+                "name": "Edit File",
+                "detail": "a.swift"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "permissionRequest",
+                "id": "100",
+                "name": "Edit a.swift",
+                "kind": "edit",
+                "detail": "/tmp/a.swift"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 100,
+                "result": {
+                  "outcome": {
+                    "outcome": "selected",
+                    "optionId": "allow-once"
+                  }
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "replyDelta",
+                "text": "choice=allow-once"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "working",
+              "sessionID": "mock-session",
+              "modelName": "mock/model-1",
+              "totalTokens": 300
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "reply",
+                "text": "Working. choice=allow-once"
+              }
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "turnCompleted",
+                "resultText": "Working. choice=allow-once",
+                "costUSD": null,
+                "isError": false,
+                "detail": "end_turn"
+              }
+            },
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "mock-session",
+              "modelName": "mock/model-1",
+              "totalTokens": 300
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "ready",
+          "sessionID": "mock-session",
+          "modelName": "mock/model-1",
+          "totalTokens": 300
+        }
+      },
+      "reason": "HK-131, HK-139, HK-141, HK-144, HK-151: a turn streams the reply but never the thought, shows the tool call, asks permission under the stringified rpc id, answers allow with the once option, then emits the whole reply and the usage; a second turn adds to the token total. The lines are acp-mock-agent.py's; ACPAdapterIntegrationTests.testPromptStreamsToolsPermissionAndCompletion checks them against the mock's record."
+    },
+    {
+      "name": "answering allow picks the once option",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"s1\",\"models\":{\"currentModelId\":\"m1\"}}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":100,\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"s1\",\"toolCall\":{\"title\":\"Edit a.swift\",\"kind\":\"edit\",\"rawInput\":{\"file_path\":\"/work/app/a.swift\"}},\"options\":[{\"optionId\":\"allow-always\",\"kind\":\"allow_always\"},{\"optionId\":\"allow-once\",\"kind\":\"allow_once\"},{\"optionId\":\"reject-always\",\"kind\":\"reject_always\"},{\"optionId\":\"reject-once\",\"kind\":\"reject_once\"}]}}"
+          },
+          {
+            "respondToPermission": {
+              "id": "100",
+              "allow": true
+            }
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 1,
+              "seconds": 30
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {
+                  "cwd": "/work/app",
+                  "mcpServers": []
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s1",
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s1",
+                "model": "m1"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "permissionRequest",
+                "id": "100",
+                "name": "Edit a.swift",
+                "kind": "edit",
+                "detail": "/work/app/a.swift"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 100,
+                "result": {
+                  "outcome": {
+                    "outcome": "selected",
+                    "optionId": "allow-once"
+                  }
+                }
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "ready",
+          "sessionID": "s1",
+          "modelName": "m1",
+          "totalTokens": 0
+        }
+      },
+      "reason": "HK-131, HK-144: the request becomes an event under its rpc id as text, and approving answers with the allow_once option, never allow_always."
+    },
+    {
+      "name": "answering reject picks the reject_once option",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"s1\",\"models\":{\"currentModelId\":\"m1\"}}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":100,\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"s1\",\"toolCall\":{\"title\":\"Edit a.swift\",\"kind\":\"edit\",\"rawInput\":{\"file_path\":\"/work/app/a.swift\"}},\"options\":[{\"optionId\":\"allow-always\",\"kind\":\"allow_always\"},{\"optionId\":\"allow-once\",\"kind\":\"allow_once\"},{\"optionId\":\"reject-always\",\"kind\":\"reject_always\"},{\"optionId\":\"reject-once\",\"kind\":\"reject_once\"}]}}"
+          },
+          {
+            "respondToPermission": {
+              "id": "100",
+              "allow": false
+            }
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 1,
+              "seconds": 30
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {
+                  "cwd": "/work/app",
+                  "mcpServers": []
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s1",
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s1",
+                "model": "m1"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "permissionRequest",
+                "id": "100",
+                "name": "Edit a.swift",
+                "kind": "edit",
+                "detail": "/work/app/a.swift"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 100,
+                "result": {
+                  "outcome": {
+                    "outcome": "selected",
+                    "optionId": "reject-once"
+                  }
+                }
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "ready",
+          "sessionID": "s1",
+          "modelName": "m1",
+          "totalTokens": 0
+        }
+      },
+      "reason": "HK-131: denying answers with reject_once, never reject_always."
+    },
+    {
+      "name": "a permission is answered once",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"s1\",\"models\":{\"currentModelId\":\"m1\"}}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"s1\",\"toolCall\":{\"title\":\"Edit a.swift\",\"kind\":\"edit\",\"rawInput\":{\"file_path\":\"/work/app/a.swift\"}},\"options\":[{\"optionId\":\"allow-always\",\"kind\":\"allow_always\"},{\"optionId\":\"allow-once\",\"kind\":\"allow_once\"},{\"optionId\":\"reject-always\",\"kind\":\"reject_always\"},{\"optionId\":\"reject-once\",\"kind\":\"reject_once\"}]}}"
+          },
+          {
+            "respondToPermission": {
+              "id": "8",
+              "allow": true
+            }
+          },
+          {
+            "respondToPermission": {
+              "id": "7",
+              "allow": true
+            }
+          },
+          {
+            "respondToPermission": {
+              "id": "7",
+              "allow": false
+            }
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 1,
+              "seconds": 30
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {
+                  "cwd": "/work/app",
+                  "mcpServers": []
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s1",
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s1",
+                "model": "m1"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "permissionRequest",
+                "id": "7",
+                "name": "Edit a.swift",
+                "kind": "edit",
+                "detail": "/work/app/a.swift"
+              }
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 7,
+                "result": {
+                  "outcome": {
+                    "outcome": "selected",
+                    "optionId": "allow-once"
+                  }
+                }
+              }
+            }
+          ],
+          []
+        ],
+        "snapshot": {
+          "state": "ready",
+          "sessionID": "s1",
+          "modelName": "m1",
+          "totalTokens": 0
+        }
+      },
+      "reason": "HK-144: answering removes the request, so a second answer and an id nobody asked about write nothing."
+    },
+    {
+      "name": "no matching option answers cancelled",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"s1\",\"models\":{\"currentModelId\":\"m1\"}}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"s1\",\"toolCall\":{\"title\":\"Edit a.swift\",\"kind\":\"edit\",\"rawInput\":{\"file_path\":\"/work/app/a.swift\"}},\"options\":[{\"optionId\":\"allow-always\",\"kind\":\"allow_always\"}]}}"
+          },
+          {
+            "respondToPermission": {
+              "id": "5",
+              "allow": false
+            }
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 1,
+              "seconds": 30
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {
+                  "cwd": "/work/app",
+                  "mcpServers": []
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s1",
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s1",
+                "model": "m1"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "permissionRequest",
+                "id": "5",
+                "name": "Edit a.swift",
+                "kind": "edit",
+                "detail": "/work/app/a.swift"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 5,
+                "result": {
+                  "outcome": {
+                    "outcome": "cancelled"
+                  }
+                }
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "ready",
+          "sessionID": "s1",
+          "modelName": "m1",
+          "totalTokens": 0
+        }
+      },
+      "reason": "HK-131: with no option of the chosen direction the request is answered cancelled, never with the other direction."
+    },
+    {
+      "name": "options with a non-object element answer cancelled",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"s1\",\"models\":{\"currentModelId\":\"m1\"}}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"s1\",\"toolCall\":{\"title\":\"Edit a.swift\",\"kind\":\"edit\",\"rawInput\":{\"file_path\":\"/work/app/a.swift\"}},\"options\":[{\"optionId\":\"allow-once\",\"kind\":\"allow_once\"},5]}}"
+          },
+          {
+            "respondToPermission": {
+              "id": "5",
+              "allow": true
+            }
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 1,
+              "seconds": 30
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {
+                  "cwd": "/work/app",
+                  "mcpServers": []
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s1",
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s1",
+                "model": "m1"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "permissionRequest",
+                "id": "5",
+                "name": "Edit a.swift",
+                "kind": "edit",
+                "detail": "/work/app/a.swift"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 5,
+                "result": {
+                  "outcome": {
+                    "outcome": "cancelled"
+                  }
+                }
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "ready",
+          "sessionID": "s1",
+          "modelName": "m1",
+          "totalTokens": 0
+        }
+      },
+      "reason": "HK-403: options casts all-or-nothing to an array of objects, so one bad element leaves no option at all."
+    },
+    {
+      "name": "an option without an optionId is skipped",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"s1\",\"models\":{\"currentModelId\":\"m1\"}}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"s1\",\"toolCall\":{\"title\":\"Edit a.swift\",\"kind\":\"edit\",\"rawInput\":{\"file_path\":\"/work/app/a.swift\"}},\"options\":[{\"kind\":\"allow_once\"},{\"optionId\":3,\"kind\":\"allow_once\"},{\"optionId\":\"nokind\"},{\"optionId\":\"always\",\"kind\":\"allow_always\"}]}}"
+          },
+          {
+            "respondToPermission": {
+              "id": "5",
+              "allow": true
+            }
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 1,
+              "seconds": 30
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {
+                  "cwd": "/work/app",
+                  "mcpServers": []
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s1",
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s1",
+                "model": "m1"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "permissionRequest",
+                "id": "5",
+                "name": "Edit a.swift",
+                "kind": "edit",
+                "detail": "/work/app/a.swift"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 5,
+                "result": {
+                  "outcome": {
+                    "outcome": "selected",
+                    "optionId": "always"
+                  }
+                }
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "ready",
+          "sessionID": "s1",
+          "modelName": "m1",
+          "totalTokens": 0
+        }
+      },
+      "reason": "HK-131: an option needs a string optionId; a missing kind reads as empty, which matches nothing."
+    },
+    {
+      "name": "a repeated rpc id replaces the options",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"s1\",\"models\":{\"currentModelId\":\"m1\"}}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"s1\",\"toolCall\":{\"title\":\"Edit a.swift\",\"kind\":\"edit\",\"rawInput\":{\"file_path\":\"/work/app/a.swift\"}},\"options\":[{\"optionId\":\"always\",\"kind\":\"allow_always\"}]}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"s1\",\"toolCall\":{\"title\":\"Run make\",\"kind\":\"execute\"},\"options\":[{\"optionId\":\"once\",\"kind\":\"allow_once\"}]}}"
+          },
+          {
+            "respondToPermission": {
+              "id": "9",
+              "allow": true
+            }
+          },
+          {
+            "interrupt": true
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 1,
+              "seconds": 30
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {
+                  "cwd": "/work/app",
+                  "mcpServers": []
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s1",
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s1",
+                "model": "m1"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "permissionRequest",
+                "id": "9",
+                "name": "Edit a.swift",
+                "kind": "edit",
+                "detail": "/work/app/a.swift"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "permissionRequest",
+                "id": "9",
+                "name": "Run make",
+                "kind": "execute",
+                "detail": ""
+              }
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 9,
+                "result": {
+                  "outcome": {
+                    "outcome": "selected",
+                    "optionId": "once"
+                  }
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "method": "session/cancel",
+                "params": {
+                  "sessionId": "s1"
+                }
+              }
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "controlResult",
+                "action": "interrupt",
+                "ok": true,
+                "detail": "",
+                "value": null
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "ready",
+          "sessionID": "s1",
+          "modelName": "m1",
+          "totalTokens": 0
+        }
+      },
+      "reason": "HK-407: a second request with the same id replaces the first one's options in place; it is answered once."
+    },
+    {
+      "name": "a negative rpc id is an event id too",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"s1\",\"models\":{\"currentModelId\":\"m1\"}}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":-3,\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"s1\",\"toolCall\":{\"title\":\"Edit a.swift\",\"kind\":\"edit\",\"rawInput\":{\"file_path\":\"/work/app/a.swift\"}},\"options\":[{\"optionId\":\"allow-always\",\"kind\":\"allow_always\"},{\"optionId\":\"allow-once\",\"kind\":\"allow_once\"},{\"optionId\":\"reject-always\",\"kind\":\"reject_always\"},{\"optionId\":\"reject-once\",\"kind\":\"reject_once\"}]}}"
+          },
+          {
+            "respondToPermission": {
+              "id": "-3",
+              "allow": true
+            }
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 1,
+              "seconds": 30
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {
+                  "cwd": "/work/app",
+                  "mcpServers": []
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s1",
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s1",
+                "model": "m1"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "permissionRequest",
+                "id": "-3",
+                "name": "Edit a.swift",
+                "kind": "edit",
+                "detail": "/work/app/a.swift"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": -3,
+                "result": {
+                  "outcome": {
+                    "outcome": "selected",
+                    "optionId": "allow-once"
+                  }
+                }
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "ready",
+          "sessionID": "s1",
+          "modelName": "m1",
+          "totalTokens": 0
+        }
+      },
+      "reason": "HK-144: any Int id works; the event id is its text."
+    },
+    {
+      "name": "a permission asked while starting is answerable",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":50,\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"s1\",\"toolCall\":{\"title\":\"Edit a.swift\",\"kind\":\"edit\",\"rawInput\":{\"file_path\":\"/work/app/a.swift\"}},\"options\":[{\"optionId\":\"allow-always\",\"kind\":\"allow_always\"},{\"optionId\":\"allow-once\",\"kind\":\"allow_once\"},{\"optionId\":\"reject-always\",\"kind\":\"reject_always\"},{\"optionId\":\"reject-once\",\"kind\":\"reject_once\"}]}}"
+          },
+          {
+            "respondToPermission": {
+              "id": "50",
+              "allow": true
+            }
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 1,
+              "seconds": 30
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "permissionRequest",
+                "id": "50",
+                "name": "Edit a.swift",
+                "kind": "edit",
+                "detail": "/work/app/a.swift"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 50,
+                "result": {
+                  "outcome": {
+                    "outcome": "selected",
+                    "optionId": "allow-once"
+                  }
+                }
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "starting",
+          "sessionID": null,
+          "modelName": null,
+          "totalTokens": 0
+        }
+      },
+      "reason": "HK-144: a permission request is served in any running state, before the session exists too."
+    },
+    {
+      "name": "interrupt cancels each pending permission, then sends session/cancel",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"s1\",\"models\":{\"currentModelId\":\"m1\"}}}"
+          },
+          {
+            "send": "go"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"s1\",\"toolCall\":{\"title\":\"Edit a.swift\",\"kind\":\"edit\",\"rawInput\":{\"file_path\":\"/work/app/a.swift\"}},\"options\":[{\"optionId\":\"allow-always\",\"kind\":\"allow_always\"},{\"optionId\":\"allow-once\",\"kind\":\"allow_once\"},{\"optionId\":\"reject-always\",\"kind\":\"reject_always\"},{\"optionId\":\"reject-once\",\"kind\":\"reject_once\"}]}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"s1\",\"toolCall\":{\"title\":\"Edit a.swift\",\"kind\":\"edit\",\"rawInput\":{\"file_path\":\"/work/app/a.swift\"}},\"options\":[{\"optionId\":\"allow-always\",\"kind\":\"allow_always\"},{\"optionId\":\"allow-once\",\"kind\":\"allow_once\"},{\"optionId\":\"reject-always\",\"kind\":\"reject_always\"},{\"optionId\":\"reject-once\",\"kind\":\"reject_once\"}]}}"
+          },
+          {
+            "interrupt": true
+          },
+          {
+            "respondToPermission": {
+              "id": "5",
+              "allow": true
+            }
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"stopReason\":\"cancelled\"}}"
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 1,
+              "seconds": 30
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {
+                  "cwd": "/work/app",
+                  "mcpServers": []
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s1",
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s1",
+                "model": "m1"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "working",
+              "sessionID": "s1",
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "session/prompt",
+                "params": {
+                  "sessionId": "s1",
+                  "prompt": [
+                    {
+                      "type": "text",
+                      "text": "go"
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "permissionRequest",
+                "id": "5",
+                "name": "Edit a.swift",
+                "kind": "edit",
+                "detail": "/work/app/a.swift"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "permissionRequest",
+                "id": "6",
+                "name": "Edit a.swift",
+                "kind": "edit",
+                "detail": "/work/app/a.swift"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 5,
+                "result": {
+                  "outcome": {
+                    "outcome": "cancelled"
+                  }
+                }
+              }
+            },
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 6,
+                "result": {
+                  "outcome": {
+                    "outcome": "cancelled"
+                  }
+                }
+              }
+            },
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "method": "session/cancel",
+                "params": {
+                  "sessionId": "s1"
+                }
+              }
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "controlResult",
+                "action": "interrupt",
+                "ok": true,
+                "detail": "",
+                "value": null
+              }
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "turnCompleted",
+                "resultText": null,
+                "costUSD": null,
+                "isError": false,
+                "detail": "cancelled"
+              }
+            },
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s1",
+              "modelName": "m1",
+              "totalTokens": 0
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "ready",
+          "sessionID": "s1",
+          "modelName": "m1",
+          "totalTokens": 0
+        }
+      },
+      "reason": "HK-143, HK-407: every unanswered permission is answered cancelled first, in arrival order, so the agent never hangs; then session/cancel goes out and the interrupt is reported done at once. The state stays working until the prompt's result."
+    },
+    {
+      "name": "interrupt without a session does nothing",
+      "input": {
+        "steps": [
+          {
+            "interrupt": true
+          },
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "interrupt": true
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 1,
+              "seconds": 30
+            }
+          ],
+          []
+        ],
+        "snapshot": {
+          "state": "starting",
+          "sessionID": null,
+          "modelName": null,
+          "totalTokens": 0
+        }
+      },
+      "reason": "HK-143: with no session there is nothing to cancel; nothing is written or reported."
+    },
+    {
+      "name": "interrupt when idle still reports done",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"s1\",\"models\":{\"currentModelId\":\"m1\"}}}"
+          },
+          {
+            "interrupt": true
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 1,
+              "seconds": 30
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {
+                  "cwd": "/work/app",
+                  "mcpServers": []
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s1",
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s1",
+                "model": "m1"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "method": "session/cancel",
+                "params": {
+                  "sessionId": "s1"
+                }
+              }
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "controlResult",
+                "action": "interrupt",
+                "ok": true,
+                "detail": "",
+                "value": null
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "ready",
+          "sessionID": "s1",
+          "modelName": "m1",
+          "totalTokens": 0
+        }
+      },
+      "reason": "HK-143: an interrupt with a session but no turn sends session/cancel and reports done; the agent ignores it."
+    },
+    {
+      "name": "stop cancels pending permissions before stdin closes",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"s1\",\"models\":{\"currentModelId\":\"m1\"}}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":100,\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"s1\",\"toolCall\":{\"title\":\"Edit a.swift\",\"kind\":\"edit\",\"rawInput\":{\"file_path\":\"/work/app/a.swift\"}},\"options\":[{\"optionId\":\"allow-always\",\"kind\":\"allow_always\"},{\"optionId\":\"allow-once\",\"kind\":\"allow_once\"},{\"optionId\":\"reject-always\",\"kind\":\"reject_always\"},{\"optionId\":\"reject-once\",\"kind\":\"reject_once\"}]}}"
+          },
+          {
+            "stop": true
+          },
+          {
+            "respondToPermission": {
+              "id": "100",
+              "allow": true
+            }
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 1,
+              "seconds": 30
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {
+                  "cwd": "/work/app",
+                  "mcpServers": []
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s1",
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s1",
+                "model": "m1"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "permissionRequest",
+                "id": "100",
+                "name": "Edit a.swift",
+                "kind": "edit",
+                "detail": "/work/app/a.swift"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 100,
+                "result": {
+                  "outcome": {
+                    "outcome": "cancelled"
+                  }
+                }
+              }
+            },
+            {
+              "effect": "closeStdin"
+            },
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": null,
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "terminateAfterGrace",
+              "seconds": 2
+            }
+          ],
+          []
+        ],
+        "snapshot": {
+          "state": "stopped",
+          "sessionID": null,
+          "modelName": "m1",
+          "totalTokens": 0
+        }
+      },
+      "reason": "HK-143, HK-154: unanswered permissions are answered cancelled while stdin is still open, then stdin closes, the state reads stopped with no session, and the kill is armed after the 2 s grace. The model stays."
+    },
+    {
+      "name": "stop without a process does nothing",
+      "input": {
+        "steps": [
+          {
+            "stop": true
+          },
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "/missing/agent"
+              ]
+            }
+          },
+          {
+            "spawnFailed": {
+              "executable": "/missing/agent",
+              "description": "gone"
+            }
+          },
+          {
+            "stop": true
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/missing/agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "runtimeError",
+                "message": "Couldn't start the ACP agent (/missing/agent): gone"
+              }
+            }
+          ],
+          []
+        ],
+        "snapshot": {
+          "state": "stopped",
+          "sessionID": null,
+          "modelName": null,
+          "totalTokens": 0
+        }
+      },
+      "reason": "HK-154: with nothing running a stop changes nothing."
+    },
+    {
+      "name": "a second stop only arms another kill",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"s1\",\"models\":{\"currentModelId\":\"m1\"}}}"
+          },
+          {
+            "stop": true
+          },
+          {
+            "stop": true
+          },
+          {
+            "terminated": {
+              "exitCode": 0,
+              "stderrTail": ""
+            }
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 1,
+              "seconds": 30
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {
+                  "cwd": "/work/app",
+                  "mcpServers": []
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s1",
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s1",
+                "model": "m1"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "closeStdin"
+            },
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": null,
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "terminateAfterGrace",
+              "seconds": 2
+            }
+          ],
+          [
+            {
+              "effect": "terminateAfterGrace",
+              "seconds": 2
+            }
+          ],
+          []
+        ],
+        "snapshot": {
+          "state": "stopped",
+          "sessionID": null,
+          "modelName": "m1",
+          "totalTokens": 0
+        }
+      },
+      "reason": "HK-154: stdin is already closed, so a second stop before the exit only arms another kill after the grace."
+    },
+    {
+      "name": "lines after a stop are dropped",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"s1\",\"models\":{\"currentModelId\":\"m1\"}}}"
+          },
+          {
+            "send": "go"
+          },
+          {
+            "stop": true
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":100,\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"s1\",\"toolCall\":{\"title\":\"Edit a.swift\",\"kind\":\"edit\",\"rawInput\":{\"file_path\":\"/work/app/a.swift\"}},\"options\":[{\"optionId\":\"allow-always\",\"kind\":\"allow_always\"},{\"optionId\":\"allow-once\",\"kind\":\"allow_once\"},{\"optionId\":\"reject-always\",\"kind\":\"reject_always\"},{\"optionId\":\"reject-once\",\"kind\":\"reject_once\"}]}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"late\"}}}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"stopReason\":\"cancelled\"}}"
+          },
+          {
+            "terminated": {
+              "exitCode": 0,
+              "stderrTail": "bye"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 1,
+              "seconds": 30
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {
+                  "cwd": "/work/app",
+                  "mcpServers": []
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s1",
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s1",
+                "model": "m1"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "working",
+              "sessionID": "s1",
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "session/prompt",
+                "params": {
+                  "sessionId": "s1",
+                  "prompt": [
+                    {
+                      "type": "text",
+                      "text": "go"
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "closeStdin"
+            },
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": null,
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "terminateAfterGrace",
+              "seconds": 2
+            }
+          ],
+          [],
+          [],
+          [],
+          []
+        ],
+        "snapshot": {
+          "state": "stopped",
+          "sessionID": null,
+          "modelName": "m1",
+          "totalTokens": 0
+        }
+      },
+      "reason": "HK-135: after a stop the pipe stays readable for the grace, but every line is dropped, so a dying agent's late permission request or reply cannot bring back a prompt the user just stopped; its exit is expected and silent."
+    },
+    {
+      "name": "lines of a retired launch are dropped",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"s1\",\"models\":{\"currentModelId\":\"m1\"}}}"
+          },
+          {
+            "stop": true
+          },
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "retiredLine": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"old\"}}}}"
+          },
+          {
+            "retiredLine": "{\"jsonrpc\":\"2.0\",\"id\":100,\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"s1\",\"toolCall\":{\"title\":\"Edit a.swift\",\"kind\":\"edit\",\"rawInput\":{\"file_path\":\"/work/app/a.swift\"}},\"options\":[{\"optionId\":\"allow-always\",\"kind\":\"allow_always\"},{\"optionId\":\"allow-once\",\"kind\":\"allow_once\"},{\"optionId\":\"reject-always\",\"kind\":\"reject_always\"},{\"optionId\":\"reject-once\",\"kind\":\"reject_once\"}]}}"
+          },
+          {
+            "retiredTerminated": {
+              "exitCode": 1,
+              "stderrTail": "old agent crashed"
+            }
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{}}"
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 1,
+              "seconds": 30
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {
+                  "cwd": "/work/app",
+                  "mcpServers": []
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s1",
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s1",
+                "model": "m1"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "closeStdin"
+            },
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": null,
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "terminateAfterGrace",
+              "seconds": 2
+            }
+          ],
+          [
+            {
+              "effect": "terminateAfterGrace",
+              "seconds": 2
+            },
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 2,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 2,
+              "seconds": 30
+            }
+          ],
+          [],
+          [],
+          [],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 4,
+                "method": "session/new",
+                "params": {
+                  "cwd": "/work/app",
+                  "mcpServers": []
+                }
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "starting",
+          "sessionID": null,
+          "modelName": null,
+          "totalTokens": 0
+        }
+      },
+      "reason": "HK-135: once a new launch starts, output, permission requests and the exit of the old one never touch it. A start while the old process has not exited stops it again, which arms another kill."
+    },
+    {
+      "name": "a start while the agent runs stops it first",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"s1\",\"models\":{\"currentModelId\":\"m1\"}}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":100,\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"s1\",\"toolCall\":{\"title\":\"Edit a.swift\",\"kind\":\"edit\",\"rawInput\":{\"file_path\":\"/work/app/a.swift\"}},\"options\":[{\"optionId\":\"allow-always\",\"kind\":\"allow_always\"},{\"optionId\":\"allow-once\",\"kind\":\"allow_once\"},{\"optionId\":\"reject-always\",\"kind\":\"reject_always\"},{\"optionId\":\"reject-once\",\"kind\":\"reject_once\"}]}}"
+          },
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "retiredTerminated": {
+              "exitCode": 0,
+              "stderrTail": ""
+            }
+          },
+          {
+            "respondToPermission": {
+              "id": "100",
+              "allow": true
+            }
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 1,
+              "seconds": 30
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {
+                  "cwd": "/work/app",
+                  "mcpServers": []
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s1",
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s1",
+                "model": "m1"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "permissionRequest",
+                "id": "100",
+                "name": "Edit a.swift",
+                "kind": "edit",
+                "detail": "/work/app/a.swift"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 100,
+                "result": {
+                  "outcome": {
+                    "outcome": "cancelled"
+                  }
+                }
+              }
+            },
+            {
+              "effect": "closeStdin"
+            },
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": null,
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "terminateAfterGrace",
+              "seconds": 2
+            },
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 2,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 2,
+              "seconds": 30
+            }
+          ],
+          [],
+          []
+        ],
+        "snapshot": {
+          "state": "starting",
+          "sessionID": null,
+          "modelName": null,
+          "totalTokens": 0
+        }
+      },
+      "reason": "HK-135, HK-143: starting again stops the running agent first (its pending permission answered cancelled, stdin closed, the kill armed), then the new launch begins with a new generation; the old one's exit is ignored."
+    },
+    {
+      "name": "an unexpected exit reports the stderr tail, then ended",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"s1\",\"models\":{\"currentModelId\":\"m1\"}}}"
+          },
+          {
+            "terminated": {
+              "exitCode": 1,
+              "stderrTail": "Error: boom"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 1,
+              "seconds": 30
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {
+                  "cwd": "/work/app",
+                  "mcpServers": []
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s1",
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s1",
+                "model": "m1"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": null,
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "runtimeError",
+                "message": "Error: boom"
+              }
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "ended",
+                "exitCode": 1
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "stopped",
+          "sessionID": null,
+          "modelName": "m1",
+          "totalTokens": 0
+        }
+      },
+      "reason": "HK-136: an exit nobody asked for shows the agent's last words, then ends the session."
+    },
+    {
+      "name": "an unexpected exit with no stderr only ends",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"s1\",\"models\":{\"currentModelId\":\"m1\"}}}"
+          },
+          {
+            "terminated": {
+              "exitCode": 9,
+              "stderrTail": ""
+            }
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 1,
+              "seconds": 30
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {
+                  "cwd": "/work/app",
+                  "mcpServers": []
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s1",
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s1",
+                "model": "m1"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": null,
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "ended",
+                "exitCode": 9
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "stopped",
+          "sessionID": null,
+          "modelName": "m1",
+          "totalTokens": 0
+        }
+      },
+      "reason": "HK-136: with nothing on stderr there is no error event."
+    },
+    {
+      "name": "an exit 0 nobody asked for still ends",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"s1\",\"models\":{\"currentModelId\":\"m1\"}}}"
+          },
+          {
+            "terminated": {
+              "exitCode": 0,
+              "stderrTail": "done"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 1,
+              "seconds": 30
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {
+                  "cwd": "/work/app",
+                  "mcpServers": []
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s1",
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s1",
+                "model": "m1"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": null,
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "runtimeError",
+                "message": "done"
+              }
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "ended",
+                "exitCode": 0
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "stopped",
+          "sessionID": null,
+          "modelName": "m1",
+          "totalTokens": 0
+        }
+      },
+      "reason": "HK-136: what makes an exit expected is the stop, not the code."
+    },
+    {
+      "name": "an expected exit after a stop is silent",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"s1\",\"models\":{\"currentModelId\":\"m1\"}}}"
+          },
+          {
+            "stop": true
+          },
+          {
+            "terminated": {
+              "exitCode": 1,
+              "stderrTail": "killed"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 1,
+              "seconds": 30
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {
+                  "cwd": "/work/app",
+                  "mcpServers": []
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s1",
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s1",
+                "model": "m1"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "closeStdin"
+            },
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": null,
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "terminateAfterGrace",
+              "seconds": 2
+            }
+          ],
+          []
+        ],
+        "snapshot": {
+          "state": "stopped",
+          "sessionID": null,
+          "modelName": "m1",
+          "totalTokens": 0
+        }
+      },
+      "reason": "HK-136: after a stop the exit says nothing, whatever its code or stderr."
+    },
+    {
+      "name": "an exit drops pending permissions without writing",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"s1\",\"models\":{\"currentModelId\":\"m1\"}}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":100,\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"s1\",\"toolCall\":{\"title\":\"Edit a.swift\",\"kind\":\"edit\",\"rawInput\":{\"file_path\":\"/work/app/a.swift\"}},\"options\":[{\"optionId\":\"allow-always\",\"kind\":\"allow_always\"},{\"optionId\":\"allow-once\",\"kind\":\"allow_once\"},{\"optionId\":\"reject-always\",\"kind\":\"reject_always\"},{\"optionId\":\"reject-once\",\"kind\":\"reject_once\"}]}}"
+          },
+          {
+            "terminated": {
+              "exitCode": 1,
+              "stderrTail": ""
+            }
+          },
+          {
+            "respondToPermission": {
+              "id": "100",
+              "allow": true
+            }
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 1,
+              "seconds": 30
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {
+                  "cwd": "/work/app",
+                  "mcpServers": []
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s1",
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s1",
+                "model": "m1"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "permissionRequest",
+                "id": "100",
+                "name": "Edit a.swift",
+                "kind": "edit",
+                "detail": "/work/app/a.swift"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": null,
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "ended",
+                "exitCode": 1
+              }
+            }
+          ],
+          []
+        ],
+        "snapshot": {
+          "state": "stopped",
+          "sessionID": null,
+          "modelName": "m1",
+          "totalTokens": 0
+        }
+      },
+      "reason": "HK-143, HK-407: stdin is gone with the process, so pending permissions are forgotten without an answer; answering one later writes nothing."
+    },
+    {
+      "name": "an exit after an initialize error is silent",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"message\":\"no\"}}"
+          },
+          {
+            "terminated": {
+              "exitCode": 0,
+              "stderrTail": ""
+            }
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 1,
+              "seconds": 30
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "runtimeError",
+                "message": "The ACP agent rejected initialize: no"
+              }
+            },
+            {
+              "effect": "closeStdin"
+            },
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "terminateAfterGrace",
+              "seconds": 2
+            }
+          ],
+          []
+        ],
+        "snapshot": {
+          "state": "stopped",
+          "sessionID": null,
+          "modelName": null,
+          "totalTokens": 0
+        }
+      },
+      "reason": "HK-136, HK-147: the initialize error already stopped the agent, so its exit is expected."
+    },
+    {
+      "name": "an exit while starting reports the tail",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "terminated": {
+              "exitCode": 127,
+              "stderrTail": "env: node: No such file or directory"
+            }
+          },
+          {
+            "watchdog": true
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 1,
+              "seconds": 30
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "runtimeError",
+                "message": "env: node: No such file or directory"
+              }
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "ended",
+                "exitCode": 127
+              }
+            }
+          ],
+          []
+        ],
+        "snapshot": {
+          "state": "stopped",
+          "sessionID": null,
+          "modelName": null,
+          "totalTokens": 0
+        }
+      },
+      "reason": "HK-136: an agent that dies during the handshake (a missing node, a bad flag) explains itself; its watchdog then does nothing."
+    },
+    {
+      "name": "the watchdog stops a launch still starting",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"
+          },
+          {
+            "watchdog": true
+          },
+          {
+            "terminated": {
+              "exitCode": 0,
+              "stderrTail": ""
+            }
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 1,
+              "seconds": 30
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {
+                  "cwd": "/work/app",
+                  "mcpServers": []
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "runtimeError",
+                "message": "The ACP agent didn't finish starting within 30 seconds."
+              }
+            },
+            {
+              "effect": "closeStdin"
+            },
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "terminateAfterGrace",
+              "seconds": 2
+            }
+          ],
+          []
+        ],
+        "snapshot": {
+          "state": "stopped",
+          "sessionID": null,
+          "modelName": null,
+          "totalTokens": 0
+        }
+      },
+      "reason": "HK-134: an agent that has not finished the handshake within 30 seconds is reported and stopped, so the app never stays starting forever; its exit is then expected."
+    },
+    {
+      "name": "the watchdog does nothing once ready",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"
+          },
+          {
+            "line": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"s1\",\"models\":{\"currentModelId\":\"m1\"}}}"
+          },
+          {
+            "watchdog": true
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 1,
+              "seconds": 30
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {
+                  "cwd": "/work/app",
+                  "mcpServers": []
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s1",
+              "modelName": "m1",
+              "totalTokens": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s1",
+                "model": "m1"
+              }
+            }
+          ],
+          []
+        ],
+        "snapshot": {
+          "state": "ready",
+          "sessionID": "s1",
+          "modelName": "m1",
+          "totalTokens": 0
+        }
+      },
+      "reason": "HK-134: a launch that finished starting is never stopped by its watchdog."
+    },
+    {
+      "name": "a prompt queued while starting keeps the watchdog from firing",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "send": "hello"
+          },
+          {
+            "watchdog": true
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 1,
+              "seconds": 30
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "working",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            }
+          ],
+          []
+        ],
+        "snapshot": {
+          "state": "working",
+          "sessionID": null,
+          "modelName": null,
+          "totalTokens": 0
+        }
+      },
+      "reason": "HK-406: the watchdog fires only while the state reads starting, and a prompt sent during the handshake already reads working, so that launch is never stopped by it (kept from Swift)."
+    },
+    {
+      "name": "a retired launch's watchdog does nothing",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "stop": true
+          },
+          {
+            "terminated": {
+              "exitCode": 0,
+              "stderrTail": ""
+            }
+          },
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "agentCommand": [
+                "agent"
+              ]
+            }
+          },
+          {
+            "spawned": true
+          },
+          {
+            "retiredWatchdog": true
+          },
+          {
+            "watchdog": true
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 1,
+              "seconds": 30
+            }
+          ],
+          [
+            {
+              "effect": "closeStdin"
+            },
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "terminateAfterGrace",
+              "seconds": 2
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "spawn",
+              "generation": 2,
+              "executable": "agent",
+              "arguments": [],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "initialize",
+                "params": {
+                  "protocolVersion": 1,
+                  "clientCapabilities": {
+                    "fs": {
+                      "readTextFile": false,
+                      "writeTextFile": false
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "effect": "armStartWatchdog",
+              "generation": 2,
+              "seconds": 30
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "runtimeError",
+                "message": "The ACP agent didn't finish starting within 30 seconds."
+              }
+            },
+            {
+              "effect": "closeStdin"
+            },
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": null,
+              "modelName": null,
+              "totalTokens": 0
+            },
+            {
+              "effect": "terminateAfterGrace",
+              "seconds": 2
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "stopped",
+          "sessionID": null,
+          "modelName": null,
+          "totalTokens": 0
+        }
+      },
+      "reason": "HK-134: the watchdog checks its own generation, so an old launch's timer never stops a newer launch that is still starting; the newer one's own timer does."
     }
   ]
 }

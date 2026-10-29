@@ -16,5 +16,8 @@
 //! carries out the adapter's effects in order.
 
 pub mod adapter;
+pub mod agents;
+pub mod environment;
+pub mod permission;
 mod rpc;
 mod update;

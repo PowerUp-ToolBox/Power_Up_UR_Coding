@@ -189,6 +189,7 @@ final class ACPAdapterIntegrationTests: XCTestCase {
             return false
         }
         XCTAssertEqual(adapter.totalTokens, 300, "usage must accumulate across turns")
+        try assertTranscript(matchesCase: "mock agent: a prompt streams a reply, a tool and a permission, and completes")
     }
 
     func testSetModelSuccessAndRejection() async throws {

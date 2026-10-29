@@ -235,7 +235,7 @@ use the line input and harness event descriptors above, and these:
 | Descriptor | Shape |
 | --- | --- |
 | acp effect | `{"effect": "publish", "state", "sessionID", "modelName", "totalTokens"}`, `{"effect": "spawn", "generation", "executable", "arguments", "projectDir"}`, `{"effect": "writeStdin", "line": <the JSON object of the line>}`, `{"effect": "closeStdin"}`, `{"effect": "terminateAfterGrace", "seconds"}`, `{"effect": "armStartWatchdog", "generation", "seconds"}`, `{"effect": "emit", "event": <harness event>}` |
-| acp step | an object with exactly one of these keys, every field required: `{"start": {projectDir, agentCommand}}` (`agentCommand` a list of strings or `null`), `{"spawned": true}`, `{"spawnFailed": {executable, description}}`, `{"send": <text>}`, `{"setModel": <model>}`, `{"setPermissionMode": <mode>}`, `{"stop": true}`, `{"line": <line input>}`, `{"retiredLine": <line input>}`, `{"terminated": {exitCode, stderrTail}}`, `{"retiredTerminated": {…}}`, `{"watchdog": true}` and `{"retiredWatchdog": true}`. The `retired` steps come from the launch before the current one; the others are for the current launch |
+| acp step | an object with exactly one of these keys, every field required: `{"start": {projectDir, agentCommand}}` (`agentCommand` a list of strings or `null`), `{"spawned": true}`, `{"spawnFailed": {executable, description}}`, `{"send": <text>}`, `{"interrupt": true}`, `{"setModel": <model>}`, `{"setPermissionMode": <mode>}`, `{"respondToPermission": {id, allow}}` (the event id the session answers by, and whether the user approved), `{"stop": true}`, `{"line": <line input>}`, `{"retiredLine": <line input>}`, `{"terminated": {exitCode, stderrTail}}`, `{"retiredTerminated": {…}}`, `{"watchdog": true}` and `{"retiredWatchdog": true}`. The `retired` steps come from the launch before the current one; the others are for the current launch |
 
 `acp-adapter.json` takes `{steps}` and plays them in order on a fresh
 adapter (JSON-RPC ids count from 1 and are never reset); it expects
@@ -266,9 +266,11 @@ mock's, answering the real adapter.
 The expectations were checked against `ACPAdapter.swift` at `dddf9c6`
 (the last Swift-only version) with a scratch differential harness that
 stubs the process and the timers and compares every written line, every
-event, the state each event saw and the state after each step. The Rust
-runner is `rust/powerup-core/tests/acp.rs` (its helpers are in
-`tests/support`).
+event, the state each event saw and the state after each step. The old
+adapter cancelled pending permission requests in dictionary order, so the
+harness compared a step's cancellations as a set; the tables pin arrival
+order. The Rust runner is `rust/powerup-core/tests/acp.rs` (its helpers are
+in `tests/support`).
 
 Three small tables hold the rules around the adapter, each captured by
 running the Swift suite on the Swift statics before anything else read it:
@@ -285,7 +287,8 @@ running the Swift suite on the Swift statics before anything else read it:
   opencode and npx on its own install paths; the Swift runner stubs that
   lookup so every path is executable and expects the first one.
 
-Their Swift runner is `Tests/PowerUpTests/ACPFixtureTests.swift`.
+Their Swift runner is `Tests/PowerUpTests/ACPFixtureTests.swift`, and the
+Rust runner is `rust/powerup-core/tests/acp.rs`.
 
 ## `session/`: session scenarios (format 1)
 

@@ -53,6 +53,40 @@ pub fn contains_clusters(haystack: &str, needle: &str) -> bool {
         .any(|window| window == wanted.as_slice())
 }
 
+/// Swift's `String.hasPrefix(_:)`: whether `text`'s first clusters are
+/// `prefix`'s. A combining mark (or another cluster-extending scalar) right
+/// after the prefix's last character makes it a different character, so
+/// `"CLAUDE_CODE_\u{301}X"` does not have the prefix `"CLAUDE_CODE_"`
+/// (captured on the Swift statics). The same canonical-equivalence caveat
+/// as [`contains_clusters`] applies.
+pub fn starts_with_clusters(text: &str, prefix: &str) -> bool {
+    let mut clusters = text.graphemes(true);
+    prefix
+        .graphemes(true)
+        .all(|wanted| clusters.next() == Some(wanted))
+}
+
+/// Swift's `split(separator: " ", omittingEmptySubsequences: true)`: the
+/// pieces between clusters equal to `" "`, empty pieces dropped. A space
+/// that a combining mark follows is one other cluster, so it never
+/// separates; a tab is not a space either.
+pub fn split_on_spaces(text: &str) -> Vec<&str> {
+    let mut pieces = Vec::new();
+    let mut start = 0;
+    for (at, cluster) in text.grapheme_indices(true) {
+        if cluster == " " {
+            if at > start {
+                pieces.push(&text[start..at]);
+            }
+            start = at + cluster.len();
+        }
+    }
+    if start < text.len() {
+        pieces.push(&text[start..]);
+    }
+    pieces
+}
+
 /// Tool and status text as one short line (HK-062, HK-063): CR, LF and tab
 /// become spaces, the text is split on clusters equal to `" "` with the
 /// empty pieces dropped and joined with one space, and above `max` clusters
@@ -161,6 +195,32 @@ mod tests {
         assert!(!contains_clusters("rm -r \u{308}x", "rm -r "));
         assert!(!contains_clusters("rm", "rm -rf"));
         assert!(contains_clusters("", ""));
+    }
+
+    #[test]
+    fn starts_with_clusters_like_has_prefix() {
+        assert!(starts_with_clusters("CLAUDE_CODE_X", "CLAUDE_CODE_"));
+        assert!(starts_with_clusters("CLAUDE_CODE_", "CLAUDE_CODE_"));
+        assert!(!starts_with_clusters(
+            "CLAUDE_CODE_\u{301}X",
+            "CLAUDE_CODE_"
+        ));
+        assert!(!starts_with_clusters(
+            "CLAUDE_CODE_\u{200D}X",
+            "CLAUDE_CODE_"
+        ));
+        assert!(!starts_with_clusters("CLAUDE_CODE", "CLAUDE_CODE_"));
+        assert!(starts_with_clusters("anything", ""));
+    }
+
+    #[test]
+    fn split_on_spaces_like_swift() {
+        assert_eq!(split_on_spaces("a  b "), ["a", "b"]);
+        assert_eq!(split_on_spaces("a\tb"), ["a\tb"]);
+        assert_eq!(split_on_spaces("a \u{301}b c"), ["a \u{301}b", "c"]);
+        assert!(split_on_spaces("   ").is_empty());
+        assert!(split_on_spaces("").is_empty());
+        assert_eq!(split_on_spaces(" é x"), ["é", "x"]);
     }
 
     #[test]

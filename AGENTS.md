@@ -82,7 +82,8 @@ clearly without them. CI runs the cargo job on macOS, Windows and Linux.
   the platform carries them out in order (CONTEXT.md, "Effect"):
   ClaudeService owns the process and pipes, AppState the adapters,
   config, transcript, speech and remote injector. Slice 2.4 is moving the
-  ACP adapter's JSON-RPC rules into `harness::acp`, played against
+  ACP adapter's JSON-RPC rules, the agent presets and the environment
+  scrub list into `harness::acp`, played against
   `Tests/Fixtures/harness/acp-*.json`; `ACPAdapter` does not call them
   until its bridge lands.
 - **Panic rule.** Every public core function is total: it returns its

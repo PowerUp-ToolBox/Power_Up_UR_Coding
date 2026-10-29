@@ -1,7 +1,7 @@
 {
   "description": "How each ACP agent preset is launched before its binary is looked up: opencode with acp, the Claude and Codex bridges with npx -y and their package (no version pin), and a custom command split on spaces with empty pieces dropped (no quoting). The platform finds opencode and npx on its own install paths; a custom executable is used as typed. An unknown agent, or a custom command with no pieces, has no command.",
   "function": "ACPAdapter.agentCommand(for:) before the install-path lookup ↔ powerup_core::harness::acp::agents::agent_launch — input {agent, customCommand}; expected {program: \"opencode\" | \"npx\" | {\"command\": <executable>}, arguments: [string]}, or null when there is no command",
-  "verifiedBy": "Swift: ACPFixtureTests.testAcpAgentLaunchTable runs ACPAdapter.agentCommand(for:isExecutable:) with every install path executable.",
+  "verifiedBy": "Swift: ACPFixtureTests.testAcpAgentLaunchTable runs ACPAdapter.agentCommand(for:isExecutable:) with every install path executable. Rust: rust/powerup-core/tests/acp.rs acp_agent_launch_cases runs harness::acp::agents::agent_launch.",
   "capturedAgainst": "ACPAdapter.swift's agentCommand(for:) as of dddf9c6 (Swift 5.9.2, macOS 27.2), with the install-path probe stubbed",
   "cases": [
     {

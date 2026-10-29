@@ -1,7 +1,7 @@
 {
   "description": "Which option answers an ACP permission request (session/request_permission) when the user approves or denies it: among the options whose kind contains allow (or reject), the first whose kind contains once, else the first; none answers the request cancelled. So a controller press never silently grants or denies \"always\". Kinds are matched with Swift's String.contains, whole clusters, case-sensitively.",
   "function": "ACPAdapter.permissionChoice(options:allow:) ↔ powerup_core::harness::acp::permission::permission_choice — input {options: [{optionId, kind}], allow}; expected the chosen optionId, or null (answered cancelled)",
-  "verifiedBy": "Swift: ACPFixtureTests.testAcpPermissionChoiceTable runs ACPAdapter.permissionChoice.",
+  "verifiedBy": "Swift: ACPFixtureTests.testAcpPermissionChoiceTable runs ACPAdapter.permissionChoice. Rust: rust/powerup-core/tests/acp.rs acp_permission_choice_cases runs harness::acp::permission::permission_choice.",
   "capturedAgainst": "ACPAdapter.swift's permissionChoice as of dddf9c6 (Swift 5.9.2, macOS 27.2)",
   "cases": [
     {

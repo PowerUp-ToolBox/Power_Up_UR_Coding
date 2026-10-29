@@ -4,6 +4,9 @@
 mod support;
 
 use powerup_core::harness::acp::adapter::{AcpAdapter, AcpAdapterEffect};
+use powerup_core::harness::acp::agents::{agent_launch, AgentProgram};
+use powerup_core::harness::acp::environment::is_scrubbed;
+use powerup_core::harness::acp::permission::{permission_choice, PermissionOption};
 use powerup_core::harness::HarnessConfiguration;
 use serde_json::Value;
 use support::{acp_effect_descriptor, acp_snapshot_fields, case_table, line_input_bytes};
@@ -71,6 +74,14 @@ fn acp_step(adapter: &mut AcpAdapter, step: &Value) -> Vec<AcpAdapterEffect> {
             )
         }
         ["send"] => adapter.send(&string(&fields["send"], "send")),
+        ["interrupt"] => adapter.interrupt(),
+        ["respondToPermission"] => {
+            let answer = &fields["respondToPermission"];
+            let allow = answer["allow"]
+                .as_bool()
+                .unwrap_or_else(|| panic!("allow must be a bool: {step}"));
+            adapter.respond_to_permission(&string(&answer["id"], "id"), allow)
+        }
         ["setModel"] => adapter.set_model(&string(&fields["setModel"], "setModel")),
         ["setPermissionMode"] => {
             adapter.set_permission_mode(&string(&fields["setPermissionMode"], "setPermissionMode"))
@@ -170,4 +181,73 @@ fn acp_agent_lines_cases() {
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// Collects one table's failures and panics with all of them.
+fn play_table(file: &str, mut actual: impl FnMut(&Value) -> Value) {
+    let mut failures = Vec::new();
+    for case in case_table("harness", file).cases {
+        let got = actual(&case.input);
+        if got != case.expected {
+            failures.push(fail(file, &case.name, &case.reason, &case.expected, &got));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn acp_permission_choice_cases() {
+    play_table("acp-permission-choice.json", |input| {
+        let options: Vec<PermissionOption> = input["options"]
+            .as_array()
+            .unwrap_or_else(|| panic!("options must be a list: {input}"))
+            .iter()
+            .map(|option| PermissionOption {
+                option_id: option["optionId"]
+                    .as_str()
+                    .unwrap_or_else(|| panic!("optionId must be a string: {option}"))
+                    .to_owned(),
+                kind: option["kind"]
+                    .as_str()
+                    .unwrap_or_else(|| panic!("kind must be a string: {option}"))
+                    .to_owned(),
+            })
+            .collect();
+        let allow = input["allow"]
+            .as_bool()
+            .unwrap_or_else(|| panic!("allow must be a bool: {input}"));
+        permission_choice(&options, allow).into()
+    });
+}
+
+#[test]
+fn acp_environment_cases() {
+    play_table("acp-environment.json", |input| {
+        let name = input
+            .as_str()
+            .unwrap_or_else(|| panic!("a variable name must be a string: {input}"));
+        is_scrubbed(name).into()
+    });
+}
+
+#[test]
+fn acp_agent_launch_cases() {
+    play_table("acp-agent-launch.json", |input| {
+        let field = |key: &str| {
+            input[key]
+                .as_str()
+                .unwrap_or_else(|| panic!("{key} must be a string: {input}"))
+        };
+        match agent_launch(field("agent"), field("customCommand")) {
+            None => Value::Null,
+            Some(launch) => {
+                let program = match launch.program {
+                    AgentProgram::Opencode => "opencode".into(),
+                    AgentProgram::Npx => "npx".into(),
+                    AgentProgram::Command(executable) => serde_json::json!({"command": executable}),
+                };
+                serde_json::json!({"program": program, "arguments": launch.arguments})
+            }
+        }
+    });
 }
