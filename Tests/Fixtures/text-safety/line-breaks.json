@@ -135,6 +135,12 @@
       "input": "👩‍💻\r\nship it",
       "expected": "👩‍💻 ship it",
       "reason": "A multi-scalar emoji sequence must stay whole when the break after it is flattened."
+    },
+    {
+      "name": "a break a combining mark follows is still flattened",
+      "input": "a\n\u0301b",
+      "expected": "a \u0301b",
+      "reason": "Flattening works on scalars, not characters: a combining mark after a newline must not shield it from becoming a space (condense, a display rule, keeps such a break; injection never may)."
     }
   ]
 }

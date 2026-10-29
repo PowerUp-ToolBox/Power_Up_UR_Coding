@@ -376,6 +376,172 @@
         }
       ],
       "reason": "Nothing is invented as selected; the auto-target then falls back to the first row."
+    },
+    {
+      "name": "CRLF output is one line",
+      "input": "* workspace:1  A\r\n  workspace:2  B\r\n",
+      "expected": [
+        {
+          "ref": "workspace:1",
+          "title": "A\r\n  workspace:2  B",
+          "selected": true
+        }
+      ],
+      "reason": "Lines are split on the LF character only; CR LF is one character that is not LF, so CRLF output (which cmux on macOS never prints) is one row whose title carries the rest. Pinned so every implementation splits alike."
+    },
+    {
+      "name": "a tab does not separate the ref from the title",
+      "input": "  workspace:1\tMain",
+      "expected": [
+        {
+          "ref": "workspace:1\tMain",
+          "title": "",
+          "selected": false
+        }
+      ],
+      "reason": "Only a space separates the ref; a tab stays inside the ref token (workspace: plus a non-empty rest is still a ref), so the title is empty rather than guessed."
+    },
+    {
+      "name": "a non-numeric workspace ref is accepted",
+      "input": "* workspace:abc  Main",
+      "expected": [
+        {
+          "ref": "workspace:abc",
+          "title": "Main",
+          "selected": true
+        }
+      ],
+      "reason": "Any non-empty text after workspace: is a ref; the number is not checked, so a future ref spelling keeps working."
+    },
+    {
+      "name": "uppercase WORKSPACE: is not a ref",
+      "input": "  WORKSPACE:1  Shouty\n* workspace:2  Real",
+      "expected": [
+        {
+          "ref": "workspace:2",
+          "title": "Real",
+          "selected": true
+        }
+      ],
+      "reason": "The workspace: prefix is case-sensitive; anything else is skipped, never guessed."
+    },
+    {
+      "name": "malformed UUIDs are skipped",
+      "input": "  {3F2504E0-4F89-11D3-9A0C-0305E82C3301}  Braced\n  3F2504E04F8911D39A0C0305E82C3301  Bare\n  3F2504E0-4F89-11D3-9A0C-0305E82C330G  Not hex\n  ３F2504E0-4F89-11D3-9A0C-0305E82C3301  Full-width digit\n  3F2504E0-4F89-11D3-9A0C-0305E82C330  Short\n* workspace:1  Real",
+      "expected": [
+        {
+          "ref": "workspace:1",
+          "title": "Real",
+          "selected": true
+        }
+      ],
+      "reason": "A bare ref must be the canonical 8-4-4-4-12 form of ASCII hex digits, as Foundation's UUID(uuidString:) accepts it: braces, a missing hyphen, a non-hex or full-width digit and a short form are not refs."
+    },
+    {
+      "name": "a NUL ends the UUID check",
+      "input": "* 3F2504E0-4F89-11D3-9A0C-0305E82C3301\u0000x  Main",
+      "expected": [
+        {
+          "ref": "3F2504E0-4F89-11D3-9A0C-0305E82C3301\u0000x",
+          "title": "Main",
+          "selected": true
+        }
+      ],
+      "reason": "Foundation reads the token as a C string, so a UUID followed by a NUL and more text is accepted with the whole token as the ref; every implementation must accept the same refs."
+    },
+    {
+      "name": "a lone star or tag is skipped",
+      "input": "*\n[selected]\n* [selected]\n* workspace:1  Main",
+      "expected": [
+        {
+          "ref": "workspace:1",
+          "title": "Main",
+          "selected": true
+        }
+      ],
+      "reason": "A line that is only selection markers has no ref and is skipped, so it can never steal the selection."
+    },
+    {
+      "name": "a combining mark on the star is not the marker",
+      "input": "*\u0301workspace:1  Main\n  workspace:2  Side",
+      "expected": [
+        {
+          "ref": "workspace:2",
+          "title": "Side",
+          "selected": false
+        }
+      ],
+      "reason": "The star must be a character of its own; a star a combining mark extends is not a marker, and the token it starts is not a ref."
+    },
+    {
+      "name": "a combining mark on the tag hides it",
+      "input": "  workspace:1  Main [selected]\u0301\n  workspace:2  Side",
+      "expected": [
+        {
+          "ref": "workspace:1",
+          "title": "Main [selected]\u0301",
+          "selected": false
+        },
+        {
+          "ref": "workspace:2",
+          "title": "Side",
+          "selected": false
+        }
+      ],
+      "reason": "The tag must end the line as whole characters; a combining mark on its bracket makes it part of the title, not a selection."
+    },
+    {
+      "name": "no-break space after the star is trimmed",
+      "input": "*\u00A0workspace:1\u00A0 Main",
+      "expected": [
+        {
+          "ref": "workspace:1\u00A0",
+          "title": "Main",
+          "selected": true
+        }
+      ],
+      "reason": "After the star the line is trimmed of spaces and tabs (no-break space included), but only an ordinary space separates the ref, so the no-break space after the ref stays in it."
+    },
+    {
+      "name": "a line separator after the star is not trimmed",
+      "input": "*\u2028workspace:1  Main\n  workspace:2  Side",
+      "expected": [
+        {
+          "ref": "workspace:2",
+          "title": "Side",
+          "selected": false
+        }
+      ],
+      "reason": "After the star only spaces and tabs are trimmed, not line separators, so the token does not start with workspace: and the row is skipped."
+    },
+    {
+      "name": "a zero-width space after the star is trimmed",
+      "input": "*\u200Bworkspace:1  Main",
+      "expected": [
+        {
+          "ref": "workspace:1",
+          "title": "Main",
+          "selected": true
+        }
+      ],
+      "reason": "Foundation's whitespace set includes U+200B, so it is trimmed after the star like a space."
+    },
+    {
+      "name": "duplicate refs are both kept",
+      "input": "* workspace:1  A\n  workspace:1  B",
+      "expected": [
+        {
+          "ref": "workspace:1",
+          "title": "A",
+          "selected": true
+        },
+        {
+          "ref": "workspace:1",
+          "title": "B",
+          "selected": false
+        }
+      ],
+      "reason": "Rows are reported as listed, never merged or deduplicated."
     }
   ]
 }

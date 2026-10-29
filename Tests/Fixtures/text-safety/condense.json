@@ -174,6 +174,42 @@
       },
       "expected": "a\u2028b",
       "reason": "condense is display-only; injection safety is flattenLineBreaks' job (line-breaks.json), not this function's."
+    },
+    {
+      "name": "a line break a combining mark follows is kept",
+      "input": {
+        "text": "a\n\u0301b",
+        "maxChars": 10
+      },
+      "expected": "a\n\u0301b",
+      "reason": "Foundation's replacement never matches a break that a combining scalar follows, so the break stays (display text only; the injection flattener works on scalars)."
+    },
+    {
+      "name": "a space a combining mark follows does not separate",
+      "input": {
+        "text": "a  \u0301b",
+        "maxChars": 10
+      },
+      "expected": "a  \u0301b",
+      "reason": "A space with a combining mark is one character that is not a space, so it is not collapsed: only one of the two spaces is a separator."
+    },
+    {
+      "name": "negative limit still cuts",
+      "input": {
+        "text": "abc",
+        "maxChars": -1
+      },
+      "expected": "a…",
+      "reason": "Any text is longer than a negative limit, so it is cut to one character and the marker; callers pass 160 and 200, but every implementation must agree."
+    },
+    {
+      "name": "negative limit on empty text gives only the marker",
+      "input": {
+        "text": "",
+        "maxChars": -1
+      },
+      "expected": "…",
+      "reason": "Even empty text is longer than a negative limit, so the result is the marker alone."
     }
   ]
 }

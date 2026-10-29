@@ -289,6 +289,71 @@
       },
       "expected": "Sending text to cmux failed (exit -1).",
       "reason": "A process still running at the deadline reports -1; whitespace-only output counts as no detail."
+    },
+    {
+      "name": "spawn failure with whitespace-only stderr",
+      "input": {
+        "action": "Reaching cmux",
+        "status": -1,
+        "standardOutput": "",
+        "standardError": " \n\t",
+        "timedOut": false,
+        "spawnFailed": true
+      },
+      "expected": "Reaching cmux failed to start.",
+      "reason": "Blank stderr condenses to nothing, so the short form without a colon is used."
+    },
+    {
+      "name": "keyword past the 200-character cut is not seen",
+      "input": {
+        "action": "Sending text to cmux",
+        "status": 1,
+        "standardOutput": "",
+        "standardError": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx broken pipe",
+        "timedOut": false,
+        "spawnFailed": false
+      },
+      "expected": "Sending text to cmux failed: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+      "reason": "Classification reads the condensed detail, so a keyword cut off at 200 characters does not turn the message into the socket advice."
+    },
+    {
+      "name": "keyword split by a line break still matches",
+      "input": {
+        "action": "Reaching cmux",
+        "status": 1,
+        "standardOutput": "",
+        "standardError": "Error: broken\npipe",
+        "timedOut": false,
+        "spawnFailed": false
+      },
+      "expected": "cmux refused the connection. In cmux, open Settings → Automation, set “Socket control mode” to Password (or Automation), then quit and reopen cmux. For Password mode, put the same password in PowerUp’s Remote settings.",
+      "reason": "The detail is condensed before it is classified, so a line break inside broken pipe becomes a space and the refusal is recognised."
+    },
+    {
+      "name": "combining mark on the keyword hides it",
+      "input": {
+        "action": "Reaching cmux",
+        "status": 1,
+        "standardOutput": "",
+        "standardError": "Error: socket\u0301 closed",
+        "timedOut": false,
+        "spawnFailed": false
+      },
+      "expected": "Reaching cmux failed: Error: socket\u0301 closed",
+      "reason": "Matching compares whole characters, so a t with a combining mark ends a different word and the generic message is used."
+    },
+    {
+      "name": "Kelvin sign lowercases into the keyword",
+      "input": {
+        "action": "Reaching cmux",
+        "status": 1,
+        "standardOutput": "",
+        "standardError": "SOCKET CLOSED",
+        "timedOut": false,
+        "spawnFailed": false
+      },
+      "expected": "cmux refused the connection. In cmux, open Settings → Automation, set “Socket control mode” to Password (or Automation), then quit and reopen cmux. For Password mode, put the same password in PowerUp’s Remote settings.",
+      "reason": "Lowercasing maps each scalar fully, so the Kelvin sign becomes k and the socket refusal is recognised."
     }
   ]
 }

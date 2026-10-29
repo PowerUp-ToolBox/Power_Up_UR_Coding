@@ -195,6 +195,138 @@
       "input": "⠋ 修复登录页面",
       "expected": "修复登录页面",
       "reason": "Non-Latin titles survive stripping intact."
+    },
+    {
+      "name": "emoji-presentation Dingbat U+270A preserved",
+      "input": "✊ Title",
+      "expected": "✊ Title",
+      "reason": "U+270A has emoji presentation, so it is the person's own emoji, not an activity glyph; every emoji-presentation scalar of the Dingbats block is pinned."
+    },
+    {
+      "name": "emoji-presentation Dingbat U+270B preserved",
+      "input": "✋ Title",
+      "expected": "✋ Title",
+      "reason": "U+270B has emoji presentation, so it is the person's own emoji, not an activity glyph; every emoji-presentation scalar of the Dingbats block is pinned."
+    },
+    {
+      "name": "emoji-presentation Dingbat U+274E preserved",
+      "input": "❎ Title",
+      "expected": "❎ Title",
+      "reason": "U+274E has emoji presentation, so it is the person's own emoji, not an activity glyph; every emoji-presentation scalar of the Dingbats block is pinned."
+    },
+    {
+      "name": "emoji-presentation Dingbat U+2753 preserved",
+      "input": "❓ Title",
+      "expected": "❓ Title",
+      "reason": "U+2753 has emoji presentation, so it is the person's own emoji, not an activity glyph; every emoji-presentation scalar of the Dingbats block is pinned."
+    },
+    {
+      "name": "emoji-presentation Dingbat U+2754 preserved",
+      "input": "❔ Title",
+      "expected": "❔ Title",
+      "reason": "U+2754 has emoji presentation, so it is the person's own emoji, not an activity glyph; every emoji-presentation scalar of the Dingbats block is pinned."
+    },
+    {
+      "name": "emoji-presentation Dingbat U+2755 preserved",
+      "input": "❕ Title",
+      "expected": "❕ Title",
+      "reason": "U+2755 has emoji presentation, so it is the person's own emoji, not an activity glyph; every emoji-presentation scalar of the Dingbats block is pinned."
+    },
+    {
+      "name": "emoji-presentation Dingbat U+2757 preserved",
+      "input": "❗ Title",
+      "expected": "❗ Title",
+      "reason": "U+2757 has emoji presentation, so it is the person's own emoji, not an activity glyph; every emoji-presentation scalar of the Dingbats block is pinned."
+    },
+    {
+      "name": "emoji-presentation Dingbat U+2795 preserved",
+      "input": "➕ Title",
+      "expected": "➕ Title",
+      "reason": "U+2795 has emoji presentation, so it is the person's own emoji, not an activity glyph; every emoji-presentation scalar of the Dingbats block is pinned."
+    },
+    {
+      "name": "emoji-presentation Dingbat U+2796 preserved",
+      "input": "➖ Title",
+      "expected": "➖ Title",
+      "reason": "U+2796 has emoji presentation, so it is the person's own emoji, not an activity glyph; every emoji-presentation scalar of the Dingbats block is pinned."
+    },
+    {
+      "name": "emoji-presentation Dingbat U+2797 preserved",
+      "input": "➗ Title",
+      "expected": "➗ Title",
+      "reason": "U+2797 has emoji presentation, so it is the person's own emoji, not an activity glyph; every emoji-presentation scalar of the Dingbats block is pinned."
+    },
+    {
+      "name": "emoji-presentation Dingbat U+27B0 preserved",
+      "input": "➰ Title",
+      "expected": "➰ Title",
+      "reason": "U+27B0 has emoji presentation, so it is the person's own emoji, not an activity glyph; every emoji-presentation scalar of the Dingbats block is pinned."
+    },
+    {
+      "name": "emoji-presentation Dingbat U+27BF preserved",
+      "input": "➿ Title",
+      "expected": "➿ Title",
+      "reason": "U+27BF has emoji presentation, so it is the person's own emoji, not an activity glyph; every emoji-presentation scalar of the Dingbats block is pinned."
+    },
+    {
+      "name": "Dingbat U+27BE near the upper bound is stripped",
+      "input": "➾ Next",
+      "expected": "Next",
+      "reason": "The last text-presentation Dingbat is still a glyph; the block runs to U+27BF."
+    },
+    {
+      "name": "U+27C0 above the Dingbats block preserved",
+      "input": "⟀ Title",
+      "expected": "⟀ Title",
+      "reason": "Just past the Dingbats block is ordinary math notation, not a glyph."
+    },
+    {
+      "name": "U+26FF below the Dingbats block preserved",
+      "input": "⛿ Title",
+      "expected": "⛿ Title",
+      "reason": "Just below the Dingbats block is Miscellaneous Symbols, not a glyph."
+    },
+    {
+      "name": "U+2900 above the Braille block preserved",
+      "input": "⤀ Title",
+      "expected": "⤀ Title",
+      "reason": "Just past the Braille block is an arrow, not a spinner frame."
+    },
+    {
+      "name": "glyph with a combining mark preserved",
+      "input": "✳\u0301 Design",
+      "expected": "✳\u0301 Design",
+      "reason": "A glyph a combining mark extends is a character of two scalars, not a lone glyph, so it is kept."
+    },
+    {
+      "name": "glyph with a ZWJ preserved",
+      "input": "✳\u200D Design",
+      "expected": "✳\u200D Design",
+      "reason": "A ZWJ joins the glyph's character, making two scalars, so it is kept."
+    },
+    {
+      "name": "glyph then tab",
+      "input": "✳\tDesign",
+      "expected": "Design",
+      "reason": "A tab after the glyph is trimmed like a space."
+    },
+    {
+      "name": "glyph then no-break and ideographic spaces",
+      "input": "✳\u00A0\u3000Design",
+      "expected": "Design",
+      "reason": "Trimming after the glyph uses Foundation's whitespace set, which includes U+00A0 and U+3000."
+    },
+    {
+      "name": "glyph then line separator keeps it",
+      "input": "✳\u2028Design",
+      "expected": "\u2028Design",
+      "reason": "Trimming after the glyph covers spaces and tabs only, never line separators."
+    },
+    {
+      "name": "glyph then zero-width space",
+      "input": "✳\u200BDesign",
+      "expected": "Design",
+      "reason": "Foundation's whitespace set includes U+200B, so it is trimmed after the glyph."
     }
   ]
 }

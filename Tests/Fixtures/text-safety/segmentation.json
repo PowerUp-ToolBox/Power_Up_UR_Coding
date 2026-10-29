@@ -171,6 +171,24 @@
       "input": "x\\nx\\nx\\nx\\nx\\nx\\nx\\nx\\nx\\nx\\nx\\nx\\nx\\n",
       "expected": ["x\\", "nx\\", "nx\\", "nx\\", "nx\\", "nx\\", "nx\\", "nx\\", "nx\\", "nx\\", "nx\\", "nx\\", "nx\\n"],
       "reason": "Pathological input must not spawn hundreds of cmux processes: after 12 splits the remainder goes in one last send and cmux's interpretation is accepted (deliberate trade-off)."
+    },
+    {
+      "name": "a combining mark on the backslash is not an escape",
+      "input": "a\\\u0301nb",
+      "expected": ["a\\\u0301nb"],
+      "reason": "Splitting compares whole characters: a backslash that a combining mark extends is another character, so no split is made (cmux sees the mark, not n, after the backslash)."
+    },
+    {
+      "name": "a combining mark on the n means no split",
+      "input": "a\\n\u0301b",
+      "expected": ["a\\n\u0301b"],
+      "reason": "Characters are compared whole, so n with a combining mark is not the letter n and the text stays one send. Recorded as Swift does it: cmux may still read the backslash-n bytes, and every implementation must agree on this edge."
+    },
+    {
+      "name": "a prepended scalar joins the backslash",
+      "input": "\u0600\\nx",
+      "expected": ["\u0600\\nx"],
+      "reason": "A Prepend scalar (U+0600) makes one character with the backslash that follows it, so that backslash is not a lone backslash and nothing is split; the cluster rules must match Swift's."
     }
   ]
 }
