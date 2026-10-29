@@ -65,6 +65,48 @@ final class CoreBridgeObjectTests: XCTestCase {
         }
     }
 
+    // MARK: ACP adapter
+
+    func testTheACPWrapperSpeaksTheAppsTypes() {
+        let machine = CoreBridge.ACPStateMachine()
+        XCTAssertEqual(machine.snapshot, .stopped)
+        let configuration = HarnessConfiguration(projectDir: URL(fileURLWithPath: "/work/app", isDirectory: true),
+                                                 model: "default", permissionMode: "default", effort: "default",
+                                                 resumeSessionID: nil, binaryPathOverride: nil,
+                                                 agentCommand: ["/bin/agent", "acp"])
+        XCTAssertEqual(machine.start(configuration), [
+            .publish(.init(state: .starting, sessionID: nil, modelName: nil, totalTokens: 0)),
+            .spawn(generation: 1, executable: "/bin/agent", arguments: ["acp"], projectDir: "/work/app")
+        ])
+        XCTAssertEqual(machine.generation, 1)
+        let spawned = machine.spawned(generation: 1)
+        XCTAssertEqual(spawned.count, 2)
+        XCTAssertEqual(spawned.last, .armStartWatchdog(generation: 1, seconds: 30))
+
+        _ = machine.stdoutLine(generation: 1, line: Data(#"{"jsonrpc":"2.0","id":1,"result":{}}"#.utf8))
+        XCTAssertEqual(machine.stdoutLine(generation: 1, line: Data(#"{"jsonrpc":"2.0","id":2,"result":{"sessionId":"s1"}}"#.utf8)), [
+            .publish(.init(state: .ready, sessionID: "s1", modelName: nil, totalTokens: 0)),
+            .emit(.sessionReady(sessionID: "s1", model: "acp"))
+        ])
+        XCTAssertEqual(machine.terminated(generation: 1, exitCode: 3, stderrTail: "boom"), [
+            .publish(.init(state: .stopped, sessionID: nil, modelName: nil, totalTokens: 0)),
+            .emit(.runtimeError("boom")),
+            .emit(.ended(exitCode: 3))
+        ])
+        XCTAssertEqual(machine.send("Hi"), [.emit(.runtimeError("Can't send that — the agent session isn't running."))])
+    }
+
+    func testTheACPStaticsSpeakTheAppsTypes() {
+        XCTAssertEqual(CoreBridge.acpPermissionChoice(options: [("aa", "allow_always"), ("ao", "allow_once")], allow: true),
+                       "ao")
+        XCTAssertEqual(CoreBridge.acpAgentLaunch(agent: "custom", customCommand: "/x/agent acp"),
+                       .init(program: .command("/x/agent"), arguments: ["acp"]))
+        XCTAssertNil(CoreBridge.acpAgentLaunch(agent: "custom", customCommand: " "))
+        let scrub = CoreBridge.acpEnvironmentScrub
+        XCTAssertTrue(scrub.scrubs("CLAUDE_CODE_ENTRYPOINT"))
+        XCTAssertFalse(scrub.scrubs("CLAUDE_CODE"))
+    }
+
     // MARK: Session
 
     private func context(_ config: AppConfig, claude: HarnessState = .stopped,
