@@ -1,0 +1,678 @@
+{
+  "description": "Whether a harness permission request is destructive and needs a second Approve (HK-093..097). The kind, lowercased, equal to \"delete\" is always destructive. Otherwise the haystack is title + \" \" + detail + \" \", lowercased, and the request is destructive when it contains any of 32 substring patterns, each lowercased (\"git branch -D\" lowercases to a duplicate of \"git branch -d\" and stays in the list as written). Patterns keep their own trailing spaces (\"rm -r \", \"push -f \", \"git checkout -- \", \"killall \", \"chown -r \", \"delete from \"); the haystack's trailing space lets them match a command that ends there. Matching is pure substring: a false positive costs one extra press, a false negative a branch.",
+  "function": "DestructiveActionClassifier.isDestructive(kind:title:detail:) ↔ powerup_core::harness::destructive::is_destructive — input {kind, title, detail}; expected: Bool",
+  "verifiedBy": "DESIGN.md v2.1 (destructive confirmation, issue #47) and docs/protocol.md invariants; Tests/PowerUpTests/DestructiveActionClassifierTests.swift testDestructiveTable plays it through DestructiveActionClassifier.isDestructive.",
+  "capturedAgainst": "The Swift app (DestructiveActionClassifier) of PowerUp at cb85a5b, built with Swift 5.9.2 (Xcode 15.2) and run on macOS 27.2.",
+  "cases": [
+    {
+      "name": "delete kind",
+      "input": {
+        "kind": "delete",
+        "title": "Remove file",
+        "detail": ""
+      },
+      "expected": true,
+      "reason": "An ACP 'delete' tool call is destructive by definition, whatever its text says."
+    },
+    {
+      "name": "delete kind in capitals",
+      "input": {
+        "kind": "DELETE",
+        "title": "",
+        "detail": ""
+      },
+      "expected": true,
+      "reason": "The kind is compared lowercased, so an agent's capitalisation cannot skip the rule."
+    },
+    {
+      "name": "delete kind with mixed case",
+      "input": {
+        "kind": "Delete",
+        "title": "Tidy",
+        "detail": "notes.txt"
+      },
+      "expected": true,
+      "reason": "Any spelling of the delete kind counts."
+    },
+    {
+      "name": "delete kind with a trailing space is not the delete kind",
+      "input": {
+        "kind": "delete ",
+        "title": "Tidy",
+        "detail": "notes.txt"
+      },
+      "expected": false,
+      "reason": "The kind must equal 'delete' once lowercased; it is not trimmed or searched, and the text here is benign."
+    },
+    {
+      "name": "empty request",
+      "input": {
+        "kind": "",
+        "title": "",
+        "detail": ""
+      },
+      "expected": false,
+      "reason": "Nothing to match: a request with no kind and no text is not destructive."
+    },
+    {
+      "name": "classic: rm -rf node_modules",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "rm -rf node_modules"
+      },
+      "expected": true,
+      "reason": "DestructiveActionClassifierTests.testClassicDestructiveCommands: a command that deletes or rewrites must take two presses."
+    },
+    {
+      "name": "classic: sudo rm /etc/hosts",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "sudo rm /etc/hosts"
+      },
+      "expected": true,
+      "reason": "DestructiveActionClassifierTests.testClassicDestructiveCommands: a command that deletes or rewrites must take two presses."
+    },
+    {
+      "name": "classic: git reset --hard HEAD~3",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "git reset --hard HEAD~3"
+      },
+      "expected": true,
+      "reason": "DestructiveActionClassifierTests.testClassicDestructiveCommands: a command that deletes or rewrites must take two presses."
+    },
+    {
+      "name": "classic: git push --force origin main",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "git push --force origin main"
+      },
+      "expected": true,
+      "reason": "DestructiveActionClassifierTests.testClassicDestructiveCommands: a command that deletes or rewrites must take two presses."
+    },
+    {
+      "name": "classic: git clean -fd",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "git clean -fd"
+      },
+      "expected": true,
+      "reason": "DestructiveActionClassifierTests.testClassicDestructiveCommands: a command that deletes or rewrites must take two presses."
+    },
+    {
+      "name": "classic: DROP TABLE users;",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "DROP TABLE users;"
+      },
+      "expected": true,
+      "reason": "DestructiveActionClassifierTests.testClassicDestructiveCommands: a command that deletes or rewrites must take two presses."
+    },
+    {
+      "name": "classic: terraform destroy -auto-approve",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "terraform destroy -auto-approve"
+      },
+      "expected": true,
+      "reason": "DestructiveActionClassifierTests.testClassicDestructiveCommands: a command that deletes or rewrites must take two presses."
+    },
+    {
+      "name": "classic: kubectl delete deployment api",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "kubectl delete deployment api"
+      },
+      "expected": true,
+      "reason": "DestructiveActionClassifierTests.testClassicDestructiveCommands: a command that deletes or rewrites must take two presses."
+    },
+    {
+      "name": "classic: dd if=/dev/zero of=/dev/disk2",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "dd if=/dev/zero of=/dev/disk2"
+      },
+      "expected": true,
+      "reason": "DestructiveActionClassifierTests.testClassicDestructiveCommands: a command that deletes or rewrites must take two presses."
+    },
+    {
+      "name": "everyday: main.swift",
+      "input": {
+        "kind": "read",
+        "title": "Read File",
+        "detail": "main.swift"
+      },
+      "expected": false,
+      "reason": "DestructiveActionClassifierTests.testEverydayActionsAreNotDestructive: ordinary work must not ask for a second press, or people learn to press twice without reading."
+    },
+    {
+      "name": "everyday: AppState.swift",
+      "input": {
+        "kind": "edit",
+        "title": "Edit File",
+        "detail": "AppState.swift"
+      },
+      "expected": false,
+      "reason": "DestructiveActionClassifierTests.testEverydayActionsAreNotDestructive: ordinary work must not ask for a second press, or people learn to press twice without reading."
+    },
+    {
+      "name": "everyday: swift test",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "swift test"
+      },
+      "expected": false,
+      "reason": "DestructiveActionClassifierTests.testEverydayActionsAreNotDestructive: ordinary work must not ask for a second press, or people learn to press twice without reading."
+    },
+    {
+      "name": "everyday: git status",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "git status"
+      },
+      "expected": false,
+      "reason": "DestructiveActionClassifierTests.testEverydayActionsAreNotDestructive: ordinary work must not ask for a second press, or people learn to press twice without reading."
+    },
+    {
+      "name": "everyday: git commit -m \"fix\"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "git commit -m \"fix\""
+      },
+      "expected": false,
+      "reason": "DestructiveActionClassifierTests.testEverydayActionsAreNotDestructive: ordinary work must not ask for a second press, or people learn to press twice without reading."
+    },
+    {
+      "name": "everyday: npm install",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "npm install"
+      },
+      "expected": false,
+      "reason": "DestructiveActionClassifierTests.testEverydayActionsAreNotDestructive: ordinary work must not ask for a second press, or people learn to press twice without reading."
+    },
+    {
+      "name": "a path containing rmdir asks for confirmation",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "ls -la ./rmdir-notes"
+      },
+      "expected": true,
+      "reason": "Matching is pure substring on purpose (HK-096): a false positive costs one press. The Swift test skipped this row (safe.dropLast()); the table pins what the classifier really answers."
+    },
+    {
+      "name": "ls of a path containing rmdir",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "ls ./rmdir-notes"
+      },
+      "expected": true,
+      "reason": "testInformedTradeoff_PathContainingPatternTriggersConfirm: the same trade-off without -la."
+    },
+    {
+      "name": "pattern \"rm -rf\"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "rm -rf build"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \"rm -fr\"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "rm -fr build"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \"rm -r \"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "rm -r build"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \"sudo rm\"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "sudo rm /etc/hosts"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \"rmdir\"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "rmdir old"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \"git reset --hard\"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "git reset --hard HEAD~1"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \"git clean -f\"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "git clean -f"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \"git checkout -- \"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "git checkout -- src/"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \"push --force\"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "git push --force origin main"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \"push -f \"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "git push -f origin main"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \"--force-with-lease\"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "git push --force-with-lease"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \"git branch -d\"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "git branch -d feature"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \"git branch -D\"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "git branch -D feature"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \"git rebase\"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "git rebase main"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \"drop table\"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "psql -c 'drop table users'"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \"drop database\"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "psql -c 'drop database prod'"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \"truncate table\"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "psql -c 'truncate table logs'"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \"delete from \"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "psql -c 'delete from users'"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \"mkfs\"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "mkfs.ext4 /dev/sdb1"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \"diskutil erase\"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "diskutil eraseDisk APFS Blank disk2"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \"format c:\"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "format c: /q"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \"shutdown\"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "shutdown -h now"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \"reboot now\"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "sudo reboot now"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \"killall \"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "killall Finder"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \"chmod -r 777\"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "chmod -R 777 /"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \"chown -r \"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "chown -R nobody /srv"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \"of=/dev/\"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "pv image.iso | dd of=/dev/disk2"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \"dd if=\"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "dd if=/dev/zero bs=1m count=1"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \":(){\"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": ":(){ :|:& };:"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \"terraform destroy\"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "terraform destroy"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \"kubectl delete\"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "kubectl delete pod api"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "pattern \"docker system prune\"",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "docker system prune -a"
+      },
+      "expected": true,
+      "reason": "Every pattern is a false negative if it is dropped (HK-097); one case per pattern keeps the list whole."
+    },
+    {
+      "name": "bare force push at the end",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "git push -f"
+      },
+      "expected": true,
+      "reason": "The trailing space added to the haystack lets the end-anchored 'push -f ' match a command that ends with the flag (HK-094)."
+    },
+    {
+      "name": "bare long force push at the end",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "git push --force"
+      },
+      "expected": true,
+      "reason": "The long form needs no trailing space."
+    },
+    {
+      "name": "bare rm -r at the end",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "rm -r"
+      },
+      "expected": true,
+      "reason": "'rm -r ' keeps its own trailing space; the haystack's trailing space lets it match a command that ends there."
+    },
+    {
+      "name": "rm -rf is caught by its own pattern",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "rm -rf"
+      },
+      "expected": true,
+      "reason": "rm -rf does not contain 'rm -r ' (an f follows the r), so it needs its own pattern."
+    },
+    {
+      "name": "rm -i is not destructive",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "rm -i notes.txt"
+      },
+      "expected": false,
+      "reason": "Removing one file interactively matches no pattern: rm alone is not on the list."
+    },
+    {
+      "name": "git checkout -- needs its space",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "git checkout -- README.md"
+      },
+      "expected": true,
+      "reason": "Discarding working-tree changes loses work."
+    },
+    {
+      "name": "git checkout --theirs is not destructive",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "git checkout --theirs src/main.swift"
+      },
+      "expected": false,
+      "reason": "'git checkout -- ' keeps its trailing space so a merge-resolution flag does not match."
+    },
+    {
+      "name": "upper-case command",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "RM -RF /tmp/build"
+      },
+      "expected": true,
+      "reason": "The haystack is lowercased, so shouting the command does not skip the check."
+    },
+    {
+      "name": "a pattern in the title only",
+      "input": {
+        "kind": "execute",
+        "title": "rm -rf /",
+        "detail": ""
+      },
+      "expected": true,
+      "reason": "The title is searched as well as the detail."
+    },
+    {
+      "name": "a pattern spanning the title and the detail",
+      "input": {
+        "kind": "execute",
+        "title": "git reset",
+        "detail": "--hard"
+      },
+      "expected": true,
+      "reason": "Title and detail are joined with one space before searching, so a pattern can span the join: the classifier errs to the safe side."
+    },
+    {
+      "name": "redirect to /dev/null is not destructive",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "npm test > /dev/null 2>&1"
+      },
+      "expected": false,
+      "reason": "The '> /dev/' pattern was removed so the /dev/null idiom stays one press (HK-095)."
+    },
+    {
+      "name": "raw device write is destructive",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "dd if=image.iso of=/dev/disk2"
+      },
+      "expected": true,
+      "reason": "Raw-device writes are caught by 'of=/dev/' instead (HK-095)."
+    },
+    {
+      "name": "a Kelvin sign lowercases to k",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "Killall Finder"
+      },
+      "expected": true,
+      "reason": "U+212A KELVIN SIGN lowercases to an ASCII k in both Swift and Rust, so 'killall ' still matches; pins that both lowercasings agree where it can make a pattern match."
+    }
+  ]
+}

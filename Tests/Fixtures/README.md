@@ -130,8 +130,9 @@ The built-in Claude harness's wire rules (spec #98, slice 2.3):
 `claude-stdin.json` what each call writes on its stdin,
 `claude-launch.json` the argv a launch passes, and `claude-adapter.json`
 the adapter's process rules: what each call, stdout event and exit does,
-as the effects the platform carries out. All are ordinary case tables, with
-these descriptors:
+as the effects the platform carries out. `destructive-actions.json` holds
+whether a harness permission request is destructive, so a second Approve
+must confirm it. All are ordinary case tables, with these descriptors:
 
 | Descriptor | Shape |
 | --- | --- |
@@ -189,13 +190,19 @@ step is an object with exactly one of these shapes, every field required:
   `{"retiredTerminated": {…}}` for the one before it
 - `{"writeFailed": <description>}`
 
+`destructive-actions.json` takes `{kind, title, detail}` (all strings)
+and expects a bool. It has one case per pattern, each named `pattern`
+followed by the pattern in quotes, and the Swift runner checks that count
+against the pattern list.
+
 Until the Swift app runs on the core's adapter (slice 2.3, #152), only the
 Rust runner plays `claude-adapter.json`: `ClaudeService` drives a real
 process, so its expectations were written from `ClaudeService.swift` rather
 than captured.
 
 The Swift runner is `Tests/PowerUpTests/HarnessFixtureTests.swift` (its
-descriptor helpers are in `FixtureValues.swift`), and the Rust runner is
+descriptor helpers are in `FixtureValues.swift`; `destructive-actions.json`
+is played by `DestructiveActionClassifierTests`), and the Rust runner is
 `rust/powerup-core/tests/harness.rs` (its helpers are in `tests/support`).
 
 ## `session/`: session scenarios (format 1)
