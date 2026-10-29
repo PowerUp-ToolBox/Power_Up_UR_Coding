@@ -1,7 +1,7 @@
 {
   "description": "One stdout line of an ACP agent in a ready session, and the effects it gives. Each case starts from the same handshake: start {projectDir \"/work/app\", agentCommand [\"agent\"]}, spawned, {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}} and {\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"s1\",\"models\":{\"currentModelId\":\"m1\"}}}, which must give sessionReady(s1, m1); then the case's line is fed to the same launch. Lines are read with the shared Foundation-matching reader (HK-393) and fields as Swift casts them (HK-403). Only agent_message_chunk and tool_call updates show; thoughts and every other kind are ignored (HK-151). Text lengths count extended grapheme clusters (HK-063).",
   "function": "one agent line in a ready session ↔ AcpAdapter::stdout_line after the standard handshake — input: a line input; expected: [acp effect]",
-  "verifiedBy": "DESIGN.md v2.0, v2.2 E. Rust: rust/powerup-core/tests/acp.rs acp_agent_lines_cases runs AcpAdapter; the Swift app plays it through CoreBridge from slice 2.4's bridge ticket (#155).",
+  "verifiedBy": "DESIGN.md v2.0, v2.2 E. Rust: rust/powerup-core/tests/acp.rs acp_agent_lines_cases runs AcpAdapter. Swift: ACPFixtureTests.testAcpAgentLinesTable runs it through CoreBridge.ACPStateMachine, the state machine ACPAdapter drives.",
   "capturedAgainst": "ACPAdapter.swift at dddf9c6 through a scratch differential harness (Swift 5.9.2, macOS 27.2) that checks every written line, every event and the state each event sees",
   "cases": [
     {

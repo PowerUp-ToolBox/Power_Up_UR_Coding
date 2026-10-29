@@ -54,16 +54,17 @@ jobs:
           test -f build/PowerUp.app/Contents/Resources/AppIcon.icns
           plutil -lint build/PowerUp.app/Contents/Info.plist
           codesign --verify build/PowerUp.app
-          # The launch probe, the device layer the app now runs on (2.2), and
-          # the claude stream parser, line buffer, adapter and session, and
-          # the status derivation (2.3).
+          # The launch probe, the device layer the app now runs on (2.2), the
+          # claude stream parser, line buffer, adapter and session, the status
+          # derivation (2.3), and the ACP adapter and its presets (2.4).
           # nm writes to a file: piped into grep -q it dies of SIGPIPE, which
           # the runner's pipefail would report as a missing symbol.
           nm build/PowerUp.app/Contents/MacOS/PowerUp > "$RUNNER_TEMP/powerup-symbols.txt"
           for symbol in func_probe_echo func_resolve_action func_hold_tracker_step \
                         func_claude_events_from_line method_corelinebuffer_ingest \
                         method_coreclaudeadapter_stdout_event method_coresession_harness_event \
-                        func_derived_status; do
+                        func_derived_status method_coreacpadapter_stdout_line \
+                        func_acp_permission_choice; do
             grep -q "uniffi_powerup_core_ffi_fn_$symbol" "$RUNNER_TEMP/powerup-symbols.txt" \
               || { echo "::error::the app bundle does not link the Rust core ($symbol)"; exit 1; }
           done

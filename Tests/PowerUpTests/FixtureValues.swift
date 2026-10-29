@@ -339,3 +339,47 @@ extension CoreBridge.ClaudeAdapterEffect {
         }
     }
 }
+
+extension CoreBridge.ACPSnapshot {
+    /// `{state, sessionID, modelName, totalTokens}`.
+    var fixtureFields: JSONValue {
+        .object(["state": .string(state.fixtureName),
+                 "sessionID": sessionID.map(JSONValue.string) ?? .null,
+                 "modelName": modelName.map(JSONValue.string) ?? .null,
+                 "totalTokens": .integer(Int64(totalTokens))])
+    }
+}
+
+extension CoreBridge.ACPEffect {
+    /// An acp effect (Tests/Fixtures/README.md, the ACP adapter): `{"effect":
+    /// <name>}` plus the effect's fields; a written line is the JSON value it
+    /// holds, and must be exactly one line. Numbers are normalized by the
+    /// caller (`JSONValue(encoding:)`). Exhaustive, so a new effect is a
+    /// compile error here.
+    func fixtureDescriptor() throws -> JSONValue {
+        switch self {
+        case .publish(let snapshot):
+            guard case .object(var fields) = snapshot.fixtureFields else { return .null }
+            fields["effect"] = .string("publish")
+            return .object(fields)
+        case .spawn(let generation, let executable, let arguments, let projectDir):
+            return .object(["effect": .string("spawn"), "generation": .integer(Int64(generation)),
+                            "executable": .string(executable), "arguments": .array(arguments.map(JSONValue.string)),
+                            "projectDir": .string(projectDir)])
+        case .writeStdin(let line):
+            guard line.last == 0x0A, line.filter({ $0 == 0x0A }).count == 1 else {
+                throw FixtureValueError(description: "a stdin line is not one line: \(String(decoding: line, as: UTF8.self))")
+            }
+            return .object(["effect": .string("writeStdin"), "line": try JSONDecoder().decode(JSONValue.self, from: line)])
+        case .closeStdin:
+            return .object(["effect": .string("closeStdin")])
+        case .terminateAfterGrace(let seconds):
+            return .object(["effect": .string("terminateAfterGrace"), "seconds": .number(seconds)])
+        case .armStartWatchdog(let generation, let seconds):
+            return .object(["effect": .string("armStartWatchdog"), "generation": .integer(Int64(generation)),
+                            "seconds": .number(seconds)])
+        case .emit(let event):
+            return .object(["effect": .string("emit"), "event": event.fixtureDescriptor])
+        }
+    }
+}

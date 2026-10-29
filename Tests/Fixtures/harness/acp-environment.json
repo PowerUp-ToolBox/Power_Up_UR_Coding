@@ -1,7 +1,7 @@
 {
   "description": "Which environment variables are removed from a spawned ACP agent's environment: the exact names CLAUDECODE and CLAUDE_PID, and every name with the prefix CLAUDE_CODE_ (Swift's hasPrefix, whole clusters). Names are compared case-sensitively. The PATH augmentation is the platform's and is not in this table.",
   "function": "ACPAdapter.agentEnvironment(from:), the scrub half ↔ powerup_core::harness::acp::environment::is_scrubbed — input: a variable name; expected: true when it is removed",
-  "verifiedBy": "Swift: ACPFixtureTests.testAcpEnvironmentTable runs ACPAdapter.agentEnvironment(from:). Rust: rust/powerup-core/tests/acp.rs acp_environment_cases runs harness::acp::environment::is_scrubbed.",
+  "verifiedBy": "Swift: ACPFixtureTests.testAcpEnvironmentTable runs ACPAdapter.agentEnvironment(from:), which applies the scrub list the core hands over through the bridge. Rust: rust/powerup-core/tests/acp.rs acp_environment_cases runs harness::acp::environment::is_scrubbed.",
   "capturedAgainst": "ACPAdapter.swift's agentEnvironment(from:) as of dddf9c6 (Swift 5.9.2, macOS 27.2)",
   "cases": [
     {
