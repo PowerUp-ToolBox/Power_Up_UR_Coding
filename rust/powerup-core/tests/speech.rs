@@ -172,11 +172,12 @@ fn language_cases() {
 /// accepted difference and `expected.swift` everywhere else. A recorded
 /// difference must really differ, so a stale record cannot linger, and it
 /// must be one of the three kinds the ledger accepts: the core undecided,
-/// so the reply reads in English (HK-421, HK-422, HK-423); CJK text the
-/// core decides by its script where the recognizer named another CJK
-/// language (HK-420, HK-423); or German the core reads as French, which
-/// only one sentence repeated does (HK-424). Outside these the core never
-/// names a language the Swift app did not.
+/// so the reply reads in English (HK-421, HK-422, HK-423, HK-425); CJK
+/// text the core decides by its script where the recognizer named another
+/// CJK language (HK-420, HK-423); or the language the sentence is written
+/// in, the one its case is named after, where the recognizer named another
+/// or was undecided (HK-425). So outside CJK the core never names a
+/// language the Swift app did not, unless it is the sentence's own.
 #[test]
 fn language_agreement_cases() {
     let file = "language-agreement.json";
@@ -202,8 +203,11 @@ fn language_agreement_cases() {
                 let cjk = |value: &Value| matches!(value.as_str(), Some("zh" | "ja" | "ko"));
                 let by_script =
                     cjk(core) && cjk(swift) && core.as_str() == cjk_script_language(&input);
+                let written_in = case.name.split_once(": ").map(|(kind, _)| kind);
+                let own_language =
+                    !cjk(core) && core.as_str().is_some() && core.as_str() == written_in;
                 assert!(
-                    core.is_null() || by_script || (core == "fr" && swift == "de"),
+                    core.is_null() || by_script || own_language,
                     "{file} case {:?}: {core} where Swift said {swift} is no accepted kind of difference",
                     case.name
                 );

@@ -59,14 +59,21 @@ How the language is decided, honestly stated:
   letters (`！`, `１２３`, `ＯＫ`) don't count as any of these scripts. A
   Chinese or Korean reply that quotes a Japanese word in kana (「ログイン」)
   reads as Japanese, because the kana decide.
+- **Other languages need more than a guess.** For a language written in
+  Latin or Cyrillic letters (Spanish, German, Czech, Russian and the rest),
+  the detector's guess is only used when the reply's letters belong to
+  that language's alphabet and the reply's small common words ("und",
+  "les", "jsem", "что") point to that language and no other. Short,
+  terse technical English otherwise fooled the guess into French or
+  Portuguese.
 - **When PowerUp isn't sure, it reads in English.** Very short replies
-  ("OK", "Done."), lists of names or paths, and the occasional short
-  sentence in another language that the detector can't call confidently
-  are read by an English voice rather than risk a wrong one. (One known
-  slip: a German sentence repeated word for word can read in a French
-  voice.) A few
-  languages macOS can name but PowerUp's detector can't (Icelandic, Kazakh,
-  Lao, Tibetan and Cherokee among them) are always read in English.
+  ("OK", "Done."), lists of names or paths, and sentences whose common
+  words don't settle the language (Danish and Norwegian share most of
+  theirs, as do Czech and Slovak) are read by an English voice rather
+  than risk a wrong one. So now and then a short reply in another
+  language is read in English. A few languages macOS can name but
+  PowerUp's detector can't (Icelandic, Kazakh, Lao, Tibetan and Cherokee
+  among them) are always read in English.
 - PowerUp's own spoken confirmations (such as "Model: Sonnet") are always
   English.
 

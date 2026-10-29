@@ -3060,7 +3060,7 @@ language:)`, `rankedVoices`, `isExcludedVoiceIdentifier`,
 `availableVoices` and SummaryService's `arguments(model:)`, `summarize`
 and `cancel` keep their shape. What a reply sounds like, when it is
 summarized and which voice reads it are unchanged, apart from the accepted
-language differences of D (HK-420 to HK-424) and what a failed core call
+language differences of D (HK-420 to HK-425) and what a failed core call
 does (B).
 
 The core gains `config` (`AppConfig`, `load_config`, `encode_config`,
@@ -3094,7 +3094,9 @@ gates `MINIMUM_LETTERS`, `CJK_SHARE` and `CONFIDENCE_GATE`,
 `voice_language`, the phrases and `SENTENCE_ENDERS`, and the summary rules
 `wants_summary`, `usable_summary`, `summary_prompt` and
 `SUMMARY_MINIMUM_REPLY_LENGTH`), whose private `markdown` module holds one
-hand-written pass per NSRegularExpression the app ran, and the core's
+hand-written pass per NSRegularExpression the app ran and private
+`evidence` module the alphabets and function-word lists a Latin- or
+Cyrillic-script answer is checked against (HK-425), and the core's
 first dependency beyond serde and unicode-segmentation: whatlang
 `=0.18.0`, a pure-Rust trigram language detector (MIT, with no threads
 and no I/O; its dependencies are permissive, `rust/deny.toml` admits
@@ -3566,7 +3568,7 @@ reply the same and routes it to the same language.
   is undecided; CJK script decides from a 20% share of the Alphabetic
   scalars (any kana ja, else any hangul ko, else zh, with the ranges of
   `language.json`); else a statistical answer needs 25 Alphabetic scalars
-  and a confidence above the gate, and undecided reads as English. Swift
+  and a check on how sure it is, and undecided reads as English. Swift
   trusted the recognizer's zh, ja or ko before the script rule; whatlang's
   zh, ja or ko is no statistical answer but a count of scripts, which takes
   the whole Halfwidth and Fullwidth Forms block (U+FF00..U+FFEF) for hangul
@@ -3575,24 +3577,39 @@ reply the same and routes it to the same language.
   alone, and a zh, ja or ko the script does not back is undecided (HK-423).
   The fence placeholder is a space to whatlang, which reads every scalar
   outside ASCII punctuation and digits as part of a word, so a code block
-  adds no confidence to the reply around it (HK-214). The statistical
-  answer is whatlang's, restricted to the 47 languages it shares with
+  adds nothing to the reply around it (HK-214). The statistical answer is
+  whatlang's, restricted to the 47 languages it shares with
   NLLanguageRecognizer (listed from the recognizer's hypotheses for every
   script on macOS 27.2), so the core never names a language the app could
-  not have chosen. whatlang's confidence is its margin over the runner-up,
-  not a probability, so its gate is above 0.59 where the recognizer's was
-  above 0.7: on the agreement corpus 0.59 lies between the most confident
-  wrong answer (a German sentence read as French at 0.58) and the least
-  confident right one (English code prose at 0.60) (HK-421). whatlang's
-  confidence grows with the length of text at the same lean, so that
-  sentence written twice passes the gate as French: the one corpus case
-  where the core names a language outside CJK that the app did not
-  (HK-424).
+  not have chosen (HK-422).
+- Swift's check was a confidence above 0.7. whatlang's confidence is its
+  margin over the runner-up, not a probability, and it grows with the
+  length of text at the same lean (HK-424); on the short, terse prose
+  replies are made of it is confidently wrong (English code-review prose
+  French at 0.93 and Portuguese at 0.87, a Czech sentence Portuguese,
+  Swahili Indonesian) and unsure of right answers (Russian at 0.13), so in
+  a Latin or Cyrillic script no gate on it works. There the core checks
+  the answer against the text instead (HK-425): every letter of the
+  answer's script must be one its alphabet writes (ř is no Portuguese
+  letter, і and ў no Russian ones; ASCII fits every Latin alphabet), and
+  the text must hold more of the answer's commonest function words than
+  of any other listed language's whose alphabet the letters fit, and than
+  of English's whatever the letters. Words are runs of Alphabetic scalars,
+  lowercased; each of the 24 listed Latin- and Cyrillic-script languages
+  has an alphabet and a list, and the check takes no confidence. An answer
+  in any other script (Arabic, Devanagari, Greek, Hebrew, Thai, …) keeps a
+  confidence gate, above 0.59 on whatlang's scale, where the first
+  agreement corpus put it (HK-421).
 - Accepted differences, each a case of
   `Tests/Fixtures/speech/language-agreement.json` with `expected.core`
-  (144 sentences, 29 of them differences), and of three kinds, which both
-  runners enforce: the core undecided, CJK decided by its script where the
-  recognizer named another CJK language, and German read as French.
+  (284 sentences, 58 of them differences), and of three kinds, which both
+  runners enforce: the core undecided; CJK decided by its script where the
+  recognizer named another CJK language; and the language a sentence is
+  written in, the one its case is named after, where the recognizer named
+  another or was undecided. So outside CJK the core names a language the
+  app did not only when it is the sentence's own. The corpus holds at
+  least four sentences of every listed Latin- and Cyrillic-script
+  language, terse English code-review prose among the English ones.
   Han-only text with no kana is zh in the core, where the recognizer knew
   Japanese words written in kanji (東京駅, 日本語, 新幹線 and
   合計：１，２３４，５６７円 read ja in the app; 大丈夫 agrees; HK-420); a
@@ -3604,15 +3621,19 @@ reply the same and routes it to the same language.
   zh or ko in the app, Korean with Han (大韓民國 헌법 제１조) is ko and was
   zh, and Korean with full-width exclamation marks is ko and was ja. Text
   whose only CJK-looking scalars are full-width forms is undecided in the
-  core where the recognizer said ja (（１２／１２）, ｶﾀｶﾅ; HK-423). Eleven
-  sentences are undecided in the core where whatlang is less sure than
-  the recognizer was (HK-421): five the app read as English anyway, and six
-  German (one of them with a code block), Spanish, Dutch and Russian ones
-  that now read in English instead of their language. Five languages only
-  the recognizer names (Icelandic, Kazakh, Lao, Tibetan, Cherokee) are
-  undecided in the core, and Amharic, which only whatlang names, is
-  undecided in both (HK-422). The German sentence written twice reads as
-  French (HK-424).
+  core where the recognizer said ja (（１２／１２）, ｶﾀｶﾅ; HK-423). 46
+  sentences are undecided in the core (HK-421, HK-425): 13 the app read as
+  English anyway, and 33 it read in another language, among them German
+  (the repeated 'Bitte prüfe…' too, which a confidence gate alone read as
+  French, HK-424), Dutch, Czech, Slovak, Croatian, Swedish, Danish and
+  Norwegian (which share most function words), Russian and Ukrainian,
+  where whatlang's answer was another language or the function words did
+  not settle it. Five languages only the recognizer names (Icelandic,
+  Kazakh, Lao, Tibetan, Cherokee) and unlisted ones it names a neighbour
+  for (Slovene, Belarusian, Swahili) are undecided in the core, and
+  Amharic, which only whatlang names, is undecided in both (HK-422). Two
+  Russian sentences read as Russian in the core where the recognizer said
+  Kazakh, or was undecided (HK-425).
 - The summary rules count Characters (HK-169, HK-170, HK-173): a reply is
   summarized from 350 Characters, untrimmed; an answer is spoken when,
   trimmed of `whitespacesAndNewlines`, it is not empty and shorter than
@@ -3627,20 +3648,36 @@ reply the same and routes it to the same language.
   CR-LF line-start rule; after the fix no difference), the whole spoken
   text on 120,000 inputs wherever both chose the same zh or other phrases
   (no difference), and a debug build of the core on 80,000 inputs (same
-  output, no panic). On 20,000 natural single-language replies built from
-  corpus sentences, a quarter of them with a code block, the decisions
-  differ 451 times: 445 times undecided in the core, all from the accepted
-  sentences, and 6 times German read as French, each the one sentence
-  ("Bitte prüfe…") repeated (HK-424); until the placeholder weighed
-  nothing, that sentence with a code block read as French too. On 20,000
-  random strings mixing kana, Han, hangul, full-width forms and CJK
-  punctuation they differ 3,924 times (8,143 while the core trusted
-  whatlang's CJK answer, 5,495 of them Japanese read as Korean), and with
-  the full-width comma the only full-width form, 3,412 times (3,836): the
-  differences of HK-423 at random, where the recognizer weighs words and
-  the core scripts (Chinese or Korean holding kana is ja in the core,
-  Chinese holding hangul ko), and text holding only CJK punctuation is
-  undecided where the recognizer said ja.
+  output, no panic). The language decision was compared on text outside
+  the agreement corpus, with the base Swift `dominantLanguageCode` copied
+  into a scratch binary (HK-421, HK-425). On English: 4,378 distinct lines
+  of DESIGN.md, the docs and the contributor guides, 3,000 replies of one
+  to three of their prose lines, 2,159 lines of this repository's commit
+  messages and 5,535 lines of its source comments, a confidence gate alone
+  named a language the app did not 89 times (French, Catalan, Romanian,
+  Portuguese, German, …); with the evidence it names none, and 55 lines
+  the app read in another language (mostly code, which the recognizer
+  calls Norwegian or Dutch) read in English. On 153 held-out sentences in
+  32 languages, written after the evidence was tuned and none of them in
+  the corpus then, the core agrees 131 times and is undecided 21 times
+  where the app chose a language; it named a language the app did not
+  once, Russian the recognizer read as Kazakh (now a corpus case), and on
+  3,000 replies built from those sentences, a quarter of them with a code
+  block, it agrees 2,836 times, is undecided 136 times and reads that one
+  Russian sentence as Russian 28 times. On the 155 coding replies a
+  reviewer wrote in other languages, the core agrees 123 times and never
+  names a language the app did not, where a confidence gate alone did five
+  times (Czech as Portuguese twice, Slovene as Croatian where the app said
+  Czech, Belarusian as Russian where it said Kazakh, Swahili as Indonesian
+  where it was undecided). On 20,000 random strings mixing kana, Han,
+  hangul, full-width forms and CJK punctuation the decisions differ 3,924
+  times (8,143 while the core trusted whatlang's CJK answer, 5,495 of them
+  Japanese read as Korean), and with the full-width comma the only
+  full-width form, 3,412 times (3,836): the differences of HK-423 at
+  random, where the recognizer weighs words and the core scripts (Chinese
+  or Korean holding kana is ja in the core, Chinese holding hangul ko),
+  and text holding only CJK punctuation is undecided where the recognizer
+  said ja.
 
 ## E. Left for the maintainer
 
@@ -3678,7 +3715,7 @@ in Rust (and in Swift), is met: `rust/powerup-core/tests/speech.rs` and
 `SpeechFixtureTests`, through the bridge, play all eight tables. The
 second, that the agreement fixture lists any accepted differences, is met
 by `language-agreement.json`'s `expected.core` cases with HK-420 to
-HK-424. The third, that a mixed-language reply reads in the expected
+HK-425. The third, that a mixed-language reply reads in the expected
 voices, is the manual check with the app launched as a bundle and speech
 on: a Chinese reply with English identifiers and a fenced code block reads
 in a Chinese voice and says 代码已省略 for the code, an English reply quoting

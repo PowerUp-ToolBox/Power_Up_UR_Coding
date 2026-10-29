@@ -437,48 +437,61 @@ bool, `summary-acceptance.json` takes `{summary, reply}` (`summary` may be
 Strings are compared scalar for scalar.
 
 `language-agreement.json` is a corpus of natural sentences, each named
-after its kind (`en: …`, `zh-Hant: …`, `mixed: …`, `short: …`, `code: …`,
-`fullwidth: …` for full-width forms around few CJK letters, `script: …`
-for text mixing CJK scripts, `han: …`, `gate: …`, and `unlisted: …` for
-a language only one of the two detectors can name). The language decision is the one rule two
-libraries can legitimately disagree on (ADR 0011): the Swift app asks
-NLLanguageRecognizer, the Rust core its own detector, both under the gates
-of `language.json`. Its input is a string and its expected value is
-`{"swift": <code or null>}`, the decision the Swift app made, and each
-reason gives the recognizer's answer, confidence and letter count. A core
-decision that differs is either resolved toward the Swift one or recorded
-as an accepted difference: the expected value gains `"core": <code or
-null>`, the reason says why the difference is accepted, and the ledger
-names it. No other key is allowed in an agreement expectation.
+after its kind (`en: …`, `cs: …`, `zh-Hant: …`, `mixed: …`, `short: …`,
+`code: …`, `fullwidth: …` for full-width forms around few CJK letters,
+`script: …` for text mixing CJK scripts, `han: …`, `gate: …`, and
+`unlisted: …` for a language the core cannot name; a sentence in a
+language the core can name is named after that language). The language
+decision is the one rule two libraries can legitimately disagree on (ADR
+0011): the Swift app asks NLLanguageRecognizer, the Rust core its own
+detector, both under the letter gate of `language.json`. Its input is a
+string and its expected value is `{"swift": <code or null>}`, the
+decision the Swift app made, and each reason gives the recognizer's
+answer, confidence and letter count. A core decision that differs is
+either resolved toward the Swift one or recorded as an accepted
+difference: the expected value gains `"core": <code or null>`, the reason
+says why the difference is accepted, and the ledger names it. No other
+key is allowed in an agreement expectation.
 
 The core's detector is whatlang, restricted to the languages
-NLLanguageRecognizer can answer, with its own confidence gate (above
-0.59 on its scale, where Swift's is 0.7 on the recognizer's); whatlang's
+NLLanguageRecognizer can answer. Its confidence is no probability and is
+often high for a wrong answer on short prose, so the core admits a Latin-
+or Cyrillic-script answer only when the text's letters fit the answer's
+alphabet and its function words point to the answer alone (HK-425), and
+an answer in another script with a confidence above 0.59 on whatlang's
+scale (HK-421, where Swift's gate is 0.7 on the recognizer's); whatlang's
 zh, ja or ko is a count of scripts, not a statistical answer, so the core
 decides CJK by the script rule of `language.json` alone: see
-`rust/powerup-core/src/speech/language.rs`. `language.json` holds only
-texts on which the two decide alike, so it pins the gates themselves; a
-text on which they cannot agree belongs in `language-agreement.json` with
-its difference recorded. An accepted difference is of one of three
-kinds: the core undecided, so the reply reads in English (HK-421, HK-422
-for a language whatlang or the recognizer cannot name, HK-423 for text
-with no CJK script but full-width forms); CJK text the core decides by its
-script where the recognizer named another CJK language (Han-only Japanese
-reading as Chinese, HK-420; a quoted kana word deciding Japanese, hangul
-deciding Korean, HK-423), which the Rust runner checks is the script
-rule's answer; or German the core reads as French, which only one sentence
-repeated does (HK-424). Both runners reject any other. The corpus holds 144
-sentences, 29 of them accepted differences (4 of HK-420, 11 of HK-421, 5
-of HK-422, 8 of HK-423, 1 of HK-424).
+`rust/powerup-core/src/speech/language.rs` and `evidence.rs`.
+`language.json` holds only texts on which the two decide alike, so it
+pins the gates themselves; a text on which they cannot agree belongs in
+`language-agreement.json` with its difference recorded. An accepted
+difference is of one of three kinds: the core undecided, so the reply
+reads in English (HK-421 and HK-425 where the evidence backs no answer,
+HK-422 for a language whatlang or the recognizer cannot name, HK-423 for
+text with no CJK script but full-width forms); CJK text the core decides
+by its script where the recognizer named another CJK language (Han-only
+Japanese reading as Chinese, HK-420; a quoted kana word deciding
+Japanese, hangul deciding Korean, HK-423), which the Rust runner checks
+is the script rule's answer; or the language a sentence is written in,
+the one its case is named after, where the recognizer named another or
+was undecided (Russian the recognizer read as Kazakh, HK-425). Both
+runners reject any other, so outside CJK the core never names a language
+the app did not unless it is the sentence's own. The corpus holds 284
+sentences, at least four of every Latin- and Cyrillic-script language the
+core can name, terse English code-review prose among the English ones,
+and 58 accepted differences (4 of HK-420, 8 of HK-423, 3 of HK-422 alone,
+43 citing HK-425, two of those with HK-422 and one with HK-424).
 
 The Swift runner is `Tests/PowerUpTests/SpeechFixtureTests.swift`, which
 plays every table through the bridge (`CoreBridgeSpeech.swift`), compares
 an agreement case with `expected.core` where it records one and
 `expected.swift` everywhere else, and also checks that the truncation
 cases cover every sentence ender, a hard cut and a multi-scalar Character
-at the cut, that the agreement corpus holds at least 80 sentences with
-every kind represented, and that each recorded difference is real and of
-an accepted kind. The Rust runner
+at the cut, that the agreement corpus holds at least 250 sentences with
+every kind and every Latin- and Cyrillic-script language the core can
+name represented, and that each recorded difference is real and of an
+accepted kind. The Rust runner
 is `rust/powerup-core/tests/speech.rs`, one test per table; it compares
 `expected.core` where an agreement case records one and `expected.swift`
 everywhere else, and checks that a recorded difference still differs and is of an

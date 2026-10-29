@@ -1,5 +1,5 @@
 {
-  "description": "The language decision that routes a reply to a voice (spec #100 slice 2.5, ticket #160): the lowercased primary BCP-47 subtag (zh for zh-Hans and zh-Hant alike), or null for undecided, which callers read as English. Empty text is undecided. A zh, ja or ko answer from the statistical recognizer is trusted as it is. Otherwise CJK script decides when CJK scalars are at least 20% of the Alphabetic scalars (inclusive): any kana (U+3040..U+30FF) means ja, else any hangul (U+AC00..U+D7AF, U+1100..U+11FF, U+3130..U+318F) ko, else Han (U+4E00..U+9FFF, U+3400..U+4DBF, U+F900..U+FAFF) zh; no other ranges count as CJK, though their letters count toward the total. Otherwise a statistical answer is admitted only with at least 25 Alphabetic scalars AND a top-hypothesis confidence above 0.7; the statistical answer is NLLanguageRecognizer's in the Swift app and whatlang's in the core (rust/powerup-core/src/speech/language.rs), whose confidence is another scale, so the core's gate is a confidence above 0.59 instead of 0.7 (HK-421); whatlang's zh, ja or ko is a count of scripts that takes the full-width forms for hangul, not a statistical answer, so the core decides CJK by the script rule alone and is undecided on a zh, ja or ko the script does not back (HK-423). These cases pin the gates and hold only texts the two decide alike; language-agreement.json pins what the statistical answer is for natural sentences, and the cases whose outcome rests on the recognizer's own confidence (the 0.7 gate) name both measured values in their reason. A case on which the core could not agree was moved to language-agreement.json, where its difference is recorded.",
+  "description": "The language decision that routes a reply to a voice (spec #100 slice 2.5, ticket #160): the lowercased primary BCP-47 subtag (zh for zh-Hans and zh-Hant alike), or null for undecided, which callers read as English. Empty text is undecided. A zh, ja or ko answer from the statistical recognizer is trusted as it is. Otherwise CJK script decides when CJK scalars are at least 20% of the Alphabetic scalars (inclusive): any kana (U+3040..U+30FF) means ja, else any hangul (U+AC00..U+D7AF, U+1100..U+11FF, U+3130..U+318F) ko, else Han (U+4E00..U+9FFF, U+3400..U+4DBF, U+F900..U+FAFF) zh; no other ranges count as CJK, though their letters count toward the total. Otherwise a statistical answer is admitted only with at least 25 Alphabetic scalars AND a top-hypothesis confidence above 0.7; the statistical answer is NLLanguageRecognizer's in the Swift app and whatlang's in the core (rust/powerup-core/src/speech/language.rs), whose confidence is another scale and often high for a wrong answer on short prose, so in the core a Latin- or Cyrillic-script answer is admitted when the text's letters fit its alphabet and its function words point to it alone (HK-425), and an answer in any other script with a confidence above 0.59 instead of 0.7 (HK-421); whatlang's zh, ja or ko is a count of scripts that takes the full-width forms for hangul, not a statistical answer, so the core decides CJK by the script rule alone and is undecided on a zh, ja or ko the script does not back (HK-423). These cases pin the gates and hold only texts the two decide alike; language-agreement.json pins what the statistical answer is for natural sentences, and the cases whose outcome rests on the recognizer's own confidence (the 0.7 gate) name both measured values in their reason. A case on which the core could not agree was moved to language-agreement.json, where its difference is recorded.",
   "function": "speech::dominant_language (Swift: CoreBridge.dominantLanguage(of:); until slice 2.5 TTSService.dominantLanguageCode(of:)) — input the text, expected the language code or null",
   "verifiedBy": "DESIGN.md v1.2 A, v1.9, v2.14; Tests/PowerUpTests/SpeechFixtureTests.swift testLanguageTable plays it through CoreBridge.dominantLanguage(of:). Rust: rust/powerup-core/tests/speech.rs language_cases runs speech::dominant_language.",
   "capturedAgainst": "Swift 5.9.2 Foundation and NaturalLanguage (Xcode 15.2) on macOS 27.2, PowerUp at 67659a4",
@@ -44,7 +44,7 @@
       "name": "25 letters is decided",
       "input": "The tests pass and it's all done.",
       "expected": "en",
-      "reason": "25 alphabetic scalars pass the letter gate (HK-213). NLLanguageRecognizer says English at 0.97, the core's whatlang at 0.94."
+      "reason": "25 alphabetic scalars pass the letter gate (HK-213). NLLanguageRecognizer says English at 0.97; the core's whatlang says English at 0.94, and its function words point to it alone (HK-425)."
     },
     {
       "name": "digits are not letters",
@@ -182,25 +182,25 @@
       "name": "a low-confidence answer is undecided",
       "input": "Sonnet Opus Haiku Claude Model Effort Default",
       "expected": null,
-      "reason": "39 letters pass the letter gate, but NLLanguageRecognizer is only 0.57 sure of English, not above 0.7 (HK-213). The core's whatlang says Norwegian Bokmål at 0.08, not above 0.59."
+      "reason": "39 letters pass the letter gate, but NLLanguageRecognizer is only 0.57 sure of English, not above 0.7 (HK-213). The core's whatlang says Norwegian Bokmål at 0.08, and the text holds none of its function words (HK-425)."
     },
     {
       "name": "identifiers are undecided",
       "input": "parseJSON fetchData renderView updateState",
       "expected": null,
-      "reason": "Identifiers are no language: NLLanguageRecognizer says Indonesian at 0.20 (HK-213). The core's whatlang says Swedish at 0.08."
+      "reason": "Identifiers are no language: NLLanguageRecognizer says Indonesian at 0.20 (HK-213). The core's whatlang says Swedish at 0.08, and the text holds none of its function words (HK-425)."
     },
     {
       "name": "a list of paths is undecided",
       "input": "src/main.rs src/lib.rs tests/fixtures.rs Cargo.toml Cargo.lock",
       "expected": null,
-      "reason": "File names are no language: NLLanguageRecognizer says Dutch at 0.31 (HK-213). The core's whatlang says French at 0.11."
+      "reason": "File names are no language: NLLanguageRecognizer says Dutch at 0.31 (HK-213). The core's whatlang says French at 0.10, and the text holds none of its function words (HK-425)."
     },
     {
       "name": "Chinese under 20 percent among identifiers is undecided",
       "input": "我把 src/parser/value.rs 里的 parse_json_value 改名为 parseJsonValue 了。",
       "expected": null,
-      "reason": "8 Han letters of 52 are under 20%, and NLLanguageRecognizer is only 0.61 sure of English, so the reply falls back to English (HK-212, HK-213). The core's whatlang says French at 0.54, not above 0.59."
+      "reason": "8 Han letters of 52 are under 20%, and NLLanguageRecognizer is only 0.61 sure of English, so the reply falls back to English (HK-212, HK-213). The core's whatlang says French at 0.54, and the text holds none of its function words (HK-425)."
     },
     {
       "name": "an identifier-heavy English sentence is English",
@@ -212,7 +212,7 @@
       "name": "Russian is detected",
       "input": "Функция теперь возвращается раньше, когда входные данные пусты.",
       "expected": "ru",
-      "reason": "A non-Latin, non-CJK language passes the same gates (HK-213). NLLanguageRecognizer says Russian at 1.00 with 54 letters, the core's whatlang at 1.00."
+      "reason": "A non-Latin, non-CJK language passes the same gates (HK-213). NLLanguageRecognizer says Russian at 1.00 with 54 letters; the core's whatlang says Russian at 1.00, the letters fit only the Russian alphabet among the listed Cyrillic ones, and its function word теперь points to it (HK-425)."
     }
   ]
 }

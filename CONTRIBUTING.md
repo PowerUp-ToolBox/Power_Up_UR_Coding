@@ -128,7 +128,7 @@ The rules for core work:
   and audio routing, SummaryService the summarizer process, and AppState
   the generation counter and the fallbacks to the full reply. A text the
   two detectors decide differently is recorded in
-  `language-agreement.json` and the ledger (HK-420 to HK-424).
+  `language-agreement.json` and the ledger (HK-420 to HK-425).
 - **Panic rule.** Every public core function is total: it returns its
   value, or a `Result` when it can fail, and never panics. Library code
   never calls `unwrap`, `expect` or `panic!` (clippy denies the first two).

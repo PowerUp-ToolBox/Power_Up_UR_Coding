@@ -20,8 +20,10 @@
 //! the markdown passes reproduce NSRegularExpression's semantics for the
 //! patterns the app used (`markdown`). The statistical half of the
 //! language decision is the one rule two libraries carry out: whatlang
-//! here, NLLanguageRecognizer in the Swift app, under the same gates.
+//! here, held to the text's letters and function words (`evidence`,
+//! HK-425), NLLanguageRecognizer in the Swift app.
 
+mod evidence;
 mod language;
 mod markdown;
 mod summary;

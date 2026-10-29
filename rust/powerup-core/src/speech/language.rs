@@ -2,13 +2,18 @@
 //! HK-213), with the Swift app's gates. Swift asked NLLanguageRecognizer
 //! for the statistical answer; the core asks the pure-Rust `whatlang`
 //! detector, restricted to the languages the recognizer can answer, and
-//! holds it to the same gates with the confidence gate re-tuned for its
-//! scale ([`CONFIDENCE_GATE`]). whatlang has no statistical answer for
-//! CJK, only a count of scripts, so CJK is the script rule's alone
-//! (HK-423). `Tests/Fixtures/speech/language-agreement.json` pins where
-//! the two agree and records every accepted difference.
+//! holds it to the same letter gate. Where Swift then asked for
+//! confidence, the core asks for evidence in a Latin or Cyrillic script
+//! (`evidence`, HK-425), on whose terse prose whatlang is confidently
+//! wrong, and for a confidence re-tuned to its scale in the others
+//! ([`CONFIDENCE_GATE`]). whatlang has no statistical answer for CJK, only
+//! a count of scripts, so CJK is the script rule's alone (HK-423).
+//! `Tests/Fixtures/speech/language-agreement.json` pins where the two
+//! agree and records every accepted difference.
 
 use whatlang::{Detector, Lang};
+
+use super::evidence;
 
 /// The fewest Alphabetic scalars a statistical answer outside CJK needs
 /// (HK-213): short strings misfile constantly (`"OK"`, `"Model: Sonnet"`).
@@ -18,22 +23,19 @@ pub const MINIMUM_LETTERS: usize = 25;
 /// before the script decides (HK-212).
 pub const CJK_SHARE: f64 = 0.2;
 
-/// The confidence a statistical answer outside CJK must exceed (HK-213,
-/// HK-421).
+/// The confidence a statistical answer must exceed in a script without
+/// evidence (HK-213, HK-421): not Latin, Cyrillic or CJK (Arabic,
+/// Devanagari, Greek, Hebrew, Thai, …).
 ///
 /// Swift's gate was 0.7 on NLLanguageRecognizer's probability for its top
 /// hypothesis. whatlang's confidence is another scale: how far its best
 /// score stands above the runner-up's, relative to how much text there
-/// was, so a clear Dutch sentence scores 0.62 against its nearest
-/// neighbour while identifiers around a Chinese sentence reach 0.54. On
-/// the agreement corpus the gate sits between the most confident wrong
-/// answer (a German sentence whatlang files as French at 0.58) and the
-/// least confident right one (English code prose at 0.60): where whatlang
-/// is less sure than the recognizer was, the core is undecided and the
-/// reply reads in English. Its confidence grows with the length of text at
-/// the same lean, so that German sentence written twice passes the gate as
-/// French, the one corpus case where the core names a language outside
-/// CJK that the Swift app did not (HK-424).
+/// was. It grows with the length of text at the same lean (HK-424), and on
+/// short Latin-script prose it is high for wrong answers too (an English
+/// sentence French at 0.93), so a Latin or Cyrillic answer is checked
+/// against the text's letters and function words instead, at any
+/// confidence (HK-425). In the other scripts most languages own theirs,
+/// and the gate stays where the first agreement corpus put it, above 0.59.
 pub const CONFIDENCE_GATE: f64 = 0.59;
 
 /// The languages whatlang may answer, with the subtag the core returns
@@ -137,8 +139,10 @@ fn statistical_answer(text: &str) -> Option<(&'static str, f64)> {
 ///    undecided: it counted only full-width forms, digits or punctuation
 ///    (HK-423).
 /// 4. Otherwise a statistical answer is admitted only with at least 25
-///    Alphabetic scalars and a confidence above [`CONFIDENCE_GATE`]
-///    (HK-213, HK-421).
+///    Alphabetic scalars (HK-213) and, for a language written in a Latin
+///    or Cyrillic script, when the text's letters fit its alphabet and its
+///    function words point to it alone (HK-425), for any other with a
+///    confidence above [`CONFIDENCE_GATE`] (HK-421).
 pub fn dominant_language(text: &str) -> Option<String> {
     if text.is_empty() {
         return None;
@@ -151,7 +155,11 @@ pub fn dominant_language(text: &str) -> Option<String> {
         return None;
     }
     let letters = text.chars().filter(|scalar| scalar.is_alphabetic()).count();
-    (letters >= MINIMUM_LETTERS && confidence > CONFIDENCE_GATE).then(|| code.to_owned())
+    if letters < MINIMUM_LETTERS {
+        return None;
+    }
+    let admitted = evidence::confirms(text, code).unwrap_or(confidence > CONFIDENCE_GATE);
+    admitted.then(|| code.to_owned())
 }
 
 /// The language CJK script implies, when CJK scalars are at least 20% of
@@ -204,6 +212,40 @@ mod tests {
         assert_eq!(subtag(Lang::Epo), None);
         assert_eq!(subtag(Lang::Afr), None);
         assert_eq!(subtag(Lang::Amh), None);
+    }
+
+    #[test]
+    fn the_latin_and_cyrillic_languages_and_only_they_need_evidence() {
+        let evidenced: Vec<&str> = LANGUAGES
+            .iter()
+            .map(|(_, code)| *code)
+            .filter(|code| evidence::confirms("", code).is_some())
+            .collect();
+        assert_eq!(
+            evidenced,
+            [
+                "en", "es", "pt", "it", "fr", "de", "pl", "nb", "da", "sv", "fi", "tr", "nl", "hu",
+                "cs", "ro", "hr", "vi", "id", "sk", "ca", "ru", "uk", "bg"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_confident_answer_the_evidence_does_not_back_is_undecided() {
+        // whatlang: French at 0.93, Portuguese at 0.87; NLLanguageRecognizer:
+        // English for both. Undecided reads as English (HK-425).
+        for english in [
+            "Same connection, de-dup and drop paths as a real pad (a drop releases held buttons).",
+            "to the system default (queried explicitly, so a previous override never",
+        ] {
+            let (_, confidence) = statistical_answer(english).unwrap_or(("", 0.0));
+            assert!(confidence > CONFIDENCE_GATE, "{english:?}");
+            assert_eq!(dominant_language(english), None);
+        }
+        // German written twice: whatlang leans French at 0.96 (HK-424).
+        let twice = "Bitte prüfe, ob die neue Konfiguration für dich so passt. ".repeat(2);
+        assert_eq!(statistical_answer(&twice).map(|(code, _)| code), Some("fr"));
+        assert_eq!(dominant_language(&twice), None);
     }
 
     #[test]

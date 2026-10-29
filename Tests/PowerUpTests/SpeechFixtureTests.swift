@@ -59,10 +59,11 @@ final class SpeechFixtureTests: XCTestCase {
 
     /// An accepted difference is a real one, and of the three kinds the
     /// ledger accepts: the core undecided (spoken in English; HK-421,
-    /// HK-422, HK-423); CJK text the core decides by its script where the
-    /// recognizer named another CJK language (HK-420, HK-423; the Rust
-    /// runner also checks the core's answer is the script's); or German the
-    /// core reads as French, which only one sentence repeated does (HK-424).
+    /// HK-422, HK-423, HK-425); CJK text the core decides by its script
+    /// where the recognizer named another CJK language (HK-420, HK-423; the
+    /// Rust runner also checks the core's answer is the script's); or the
+    /// language the sentence is written in, the one its case is named
+    /// after, where the recognizer named another or was undecided (HK-425).
     func testAgreementDifferencesAreRealAndOfAnAcceptedKind() throws {
         let file = try SpeechFixtures.load("language-agreement.json")
         var differences = 0
@@ -73,7 +74,9 @@ final class SpeechFixtureTests: XCTestCase {
             XCTAssertNotEqual(swift, core, "\(fixtureCase.name): a recorded difference that is none")
             let cjk: [JSONValue] = [.string("zh"), .string("ja"), .string("ko")]
             let byScript = cjk.contains(core) && swift.map { cjk.contains($0) } == true
-            XCTAssertTrue(core == .null || byScript || (core == .string("fr") && swift == .string("de")),
+            let writtenIn = fixtureCase.name.components(separatedBy: ": ").first.map(JSONValue.string)
+            let ownLanguage = !cjk.contains(core) && core != .null && core == writtenIn
+            XCTAssertTrue(core == .null || byScript || ownLanguage,
                           "\(fixtureCase.name): core \(core) where Swift said \(String(describing: swift))")
         }
         XCTAssertGreaterThan(differences, 0, "the table records its accepted differences")
@@ -143,12 +146,14 @@ final class SpeechFixtureTests: XCTestCase {
         }
     }
 
-    /// The agreement corpus stays a corpus: at least 80 sentences, and each
-    /// language and kind of text the spec names is there.
+    /// The agreement corpus stays a corpus: at least 250 sentences, and each
+    /// language and kind of text the spec names is there, every Latin- and
+    /// Cyrillic-script language the core can name among them (HK-425).
     func testLanguageAgreementCorpusCoversEveryKind() throws {
         let file = try SpeechFixtures.load("language-agreement.json")
-        XCTAssertGreaterThanOrEqual(file.cases.count, 80)
-        let kinds = ["en", "de", "fr", "es", "it", "pt", "nl", "zh-Hans", "zh-Hant", "ja", "ko",
+        XCTAssertGreaterThanOrEqual(file.cases.count, 250)
+        let kinds = ["en", "de", "fr", "es", "it", "pt", "nl", "cs", "sk", "pl", "hr", "sv", "da", "nb", "fi",
+                     "hu", "ro", "tr", "id", "vi", "ca", "ru", "uk", "bg", "zh-Hans", "zh-Hant", "ja", "ko",
                      "mixed", "fullwidth", "script", "short", "code", "han", "gate", "unlisted"]
         for kind in kinds {
             let count = file.cases.filter { $0.name.hasPrefix("\(kind): ") }.count

@@ -1,5 +1,5 @@
 {
-  "description": "Agreement between the Swift app's language decision (NLLanguageRecognizer under the gates of language.json) and the Rust core's (whatlang, restricted to the languages NLLanguageRecognizer can answer, under the same gates with the confidence gate re-tuned to above 0.59 for whatlang's scale, HK-421; CJK the core decides by its script alone, HK-423), on natural sentences of the kind replies hold (spec #100 slice 2.5, ticket #160; ADR 0011: the speech text rules are shared, the engines and voices are per OS). expected.swift is the decision the Swift app made (a language code, or null for undecided, read as English). A Rust decision that differs is either resolved toward the Swift one or recorded as an accepted difference: expected gains \"core\" with the core's decision, the reason says why the difference is accepted, and the ledger names it. Three kinds are accepted: the core undecided, so the reply reads in English (HK-421, HK-422, HK-423); CJK text the core decides by its script where the recognizer named another CJK language, so Han-only Japanese reads as Chinese (HK-420), a quoted kana word decides Japanese and hangul Korean (HK-423); and German the core reads as French, which only one sentence repeated does (HK-424). The corpus covers en, de, fr, es, it, pt, nl, simplified and traditional Chinese, ja, ko, mixed CJK and Latin, full-width forms, texts mixing CJK scripts, short strings, Han-only text, text that is no language, code-heavy prose, and languages only one of the two detectors can name (unlisted: the core answers only the languages both whatlang and NLLanguageRecognizer know, HK-422).",
+  "description": "Agreement between the Swift app's language decision (NLLanguageRecognizer under the gates of language.json) and the Rust core's (whatlang, restricted to the languages NLLanguageRecognizer can answer, under the same letter gate; a Latin- or Cyrillic-script answer admitted only when the text's letters fit its alphabet and its function words point to it alone, HK-425, any other with a confidence above 0.59 on whatlang's scale, HK-421; CJK the core decides by its script alone, HK-423), on natural sentences of the kind replies hold (spec #100 slice 2.5, ticket #160; ADR 0011: the speech text rules are shared, the engines and voices are per OS). expected.swift is the decision the Swift app made (a language code, or null for undecided, read as English). A Rust decision that differs is either resolved toward the Swift one or recorded as an accepted difference: expected gains \"core\" with the core's decision, the reason says why the difference is accepted, and the ledger names it. Three kinds are accepted: the core undecided, so the reply reads in English (HK-421, HK-422, HK-423, HK-425); CJK text the core decides by its script where the recognizer named another CJK language, so Han-only Japanese reads as Chinese (HK-420), a quoted kana word decides Japanese and hangul Korean (HK-423); and the core naming the language a sentence is written in, the one its case is named after, where the recognizer named another or was undecided (Russian the recognizer read as Kazakh, HK-425). Outside CJK the core never names a language other than the sentence's own. The corpus covers every Latin- and Cyrillic-script language the core can name (en, de, fr, es, it, pt, nl, cs, sk, pl, hr, sv, da, nb, fi, hu, ro, tr, id, vi, ca, ru, uk, bg, with terse English code-review prose among the en sentences), simplified and traditional Chinese, ja, ko, mixed CJK and Latin, full-width forms, texts mixing CJK scripts, short strings, Han-only text, text that is no language, code-heavy prose, and languages the core cannot name (unlisted: the core answers only the languages both whatlang and NLLanguageRecognizer know, HK-422).",
   "function": "speech::dominant_language (Swift: CoreBridge.dominantLanguage(of:); until slice 2.5 TTSService.dominantLanguageCode(of:)) — input the text, expected {swift} (plus core for an accepted difference), each a language code or null",
   "verifiedBy": "DESIGN.md v1.2 A, v2.14; Tests/PowerUpTests/SpeechFixtureTests.swift testLanguageAgreementTable plays it through CoreBridge.dominantLanguage(of:) and compares expected.core where the table records an accepted difference, expected.swift everywhere else. Rust: rust/powerup-core/tests/speech.rs language_agreement_cases runs speech::dominant_language and compares expected.core where the table records an accepted difference, expected.swift everywhere else.",
   "capturedAgainst": "Swift 5.9.2 Foundation and NaturalLanguage (Xcode 15.2) on macOS 27.2, PowerUp at 67659a4",
@@ -75,7 +75,7 @@
         "swift": "en",
         "core": null
       },
-      "reason": "A clear English reply routes to an English voice. Swift: NLLanguageRecognizer says English at 1.00 with 55 letters; the gates admit it: en. Accepted difference (HK-421): the core's whatlang says French at 0.22, not above its 0.59 gate, so the core is undecided and the reply reads in English, as the Swift decision does."
+      "reason": "A clear English reply routes to an English voice. Swift: NLLanguageRecognizer says English at 1.00 with 55 letters; the gates admit it: en. Accepted difference (HK-425): whatlang says French at 0.22, but the text holds none of its function words; the evidence does not back the answer, so the core is undecided and the reply reads in English, as the Swift decision does."
     },
     {
       "name": "en: Everything compiles cleanly and the warnings about unused v…",
@@ -84,6 +84,183 @@
         "swift": "en"
       },
       "reason": "A clear English reply routes to an English voice. Swift: NLLanguageRecognizer says English at 1.00 with 66 letters; the gates admit it: en."
+    },
+    {
+      "name": "en: Same connection, de-dup and drop paths as a real pad (a drop…",
+      "input": "Same connection, de-dup and drop paths as a real pad (a drop releases held buttons).",
+      "expected": {
+        "swift": "en",
+        "core": null
+      },
+      "reason": "Terse English code-review prose, the kind replies hold, on which whatlang is often confidently wrong (HK-425). Swift: NLLanguageRecognizer says English at 1.00 with 65 letters; the gates admit it: en. Accepted difference (HK-425): whatlang says French at 0.93, but the text holds more English function words (5) than French ones (3); the evidence does not back the answer, so the core is undecided and the reply reads in English, as the Swift decision does."
+    },
+    {
+      "name": "en: In remote mode PowerUp does NOT run its own claude; instead…",
+      "input": "In remote mode PowerUp does NOT run its own claude; instead controller/voice",
+      "expected": {
+        "swift": "en",
+        "core": null
+      },
+      "reason": "Terse English code-review prose, the kind replies hold, on which whatlang is often confidently wrong (HK-425). Swift: NLLanguageRecognizer says English at 1.00 with 63 letters; the gates admit it: en. Accepted difference (HK-425): whatlang says French at 0.88, but the text holds none of its function words; the evidence does not back the answer, so the core is undecided and the reply reads in English, as the Swift decision does."
+    },
+    {
+      "name": "en: to the system default (queried explicitly, so a previous ove…",
+      "input": "to the system default (queried explicitly, so a previous override never",
+      "expected": {
+        "swift": "en",
+        "core": null
+      },
+      "reason": "Terse English code-review prose, the kind replies hold, on which whatlang is often confidently wrong (HK-425). Swift: NLLanguageRecognizer says English at 1.00 with 59 letters; the gates admit it: en. Accepted difference (HK-425): whatlang says Portuguese at 0.87, but the text holds more English function words (5) than Portuguese ones (1); the evidence does not back the answer, so the core is undecided and the reply reads in English, as the Swift decision does."
+    },
+    {
+      "name": "en: provide, solve it privately inside that module's file, or pr…",
+      "input": "provide, solve it privately inside that module's file, or propose a contract",
+      "expected": {
+        "swift": "en",
+        "core": null
+      },
+      "reason": "Terse English code-review prose, the kind replies hold, on which whatlang is often confidently wrong (HK-425). Swift: NLLanguageRecognizer says English at 1.00 with 62 letters; the gates admit it: en. Accepted difference (HK-425): whatlang says Romanian at 0.60, but the text holds more English function words (5) than Romanian ones (1); the evidence does not back the answer, so the core is undecided and the reply reads in English, as the Swift decision does."
+    },
+    {
+      "name": "en: Fixed: the session override now survives a controller reconn…",
+      "input": "Fixed: the session override now survives a controller reconnect.",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "Terse English code-review prose, the kind replies hold, on which whatlang is often confidently wrong (HK-425). Swift: NLLanguageRecognizer says English at 1.00 with 54 letters; the gates admit it: en. The core agrees (HK-425): whatlang says English at 0.07, the letters fit its alphabet, and its function words point to it alone (3, against at most 1 French)."
+    },
+    {
+      "name": "en: Moved the de-dup check before the drop path so a held button…",
+      "input": "Moved the de-dup check before the drop path so a held button releases once.",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "Terse English code-review prose, the kind replies hold, on which whatlang is often confidently wrong (HK-425). Swift: NLLanguageRecognizer says English at 1.00 with 60 letters; the gates admit it: en. The core agrees (HK-425): whatlang says English at 0.71, the letters fit its alphabet, and its function words point to it alone (5, against at most 2 French)."
+    },
+    {
+      "name": "en: The controller session closes on disconnect; the override st…",
+      "input": "The controller session closes on disconnect; the override stays in config.",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "Terse English code-review prose, the kind replies hold, on which whatlang is often confidently wrong (HK-425). Swift: NLLanguageRecognizer says English at 1.00 with 62 letters; the gates admit it: en. The core agrees (HK-425): whatlang says English at 0.18, the letters fit its alphabet, and its function words point to it alone (4, against at most 1 French)."
+    },
+    {
+      "name": "en: Renamed the contract type and updated the bridge; no behavio…",
+      "input": "Renamed the contract type and updated the bridge; no behavior change.",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "Terse English code-review prose, the kind replies hold, on which whatlang is often confidently wrong (HK-425). Swift: NLLanguageRecognizer says English at 1.00 with 57 letters; the gates admit it: en. The core agrees (HK-425): whatlang says English at 1.00, the letters fit its alphabet, and its function words point to it alone (4, against at most 1 Spanish)."
+    },
+    {
+      "name": "en: Slot change releases a held trigger, same as a real pad on r…",
+      "input": "Slot change releases a held trigger, same as a real pad on reconnect.",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "Terse English code-review prose, the kind replies hold, on which whatlang is often confidently wrong (HK-425). Swift: NLLanguageRecognizer says English at 1.00 with 55 letters; the gates admit it: en. The core agrees (HK-425): whatlang says English at 0.25, the letters fit its alphabet, and its function words point to it alone (5, against at most 3 French)."
+    },
+    {
+      "name": "en: Default voice routing is unchanged; the override only applie…",
+      "input": "Default voice routing is unchanged; the override only applies per session.",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "Terse English code-review prose, the kind replies hold, on which whatlang is often confidently wrong (HK-425). Swift: NLLanguageRecognizer says English at 1.00 with 62 letters; the gates admit it: en. The core agrees (HK-425): whatlang says English at 1.00, the letters fit its alphabet, and its function words point to it alone (4, against at most 1 Italian)."
+    },
+    {
+      "name": "en: Pass the request id through the nested envelope, as the cont…",
+      "input": "Pass the request id through the nested envelope, as the contract says.",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "Terse English code-review prose, the kind replies hold, on which whatlang is often confidently wrong (HK-425). Swift: NLLanguageRecognizer says English at 1.00 with 57 letters; the gates admit it: en. The core agrees (HK-425): whatlang says English at 0.37, the letters fit its alphabet, and its function words point to it alone (4, against at most 1 Portuguese)."
+    },
+    {
+      "name": "en: Done: dedup, debounce and drop handling now match the contro…",
+      "input": "Done: dedup, debounce and drop handling now match the controller spec.",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "Terse English code-review prose, the kind replies hold, on which whatlang is often confidently wrong (HK-425). Swift: NLLanguageRecognizer says English at 1.00 with 57 letters; the gates admit it: en. The core agrees (HK-425): whatlang says English at 1.00, the letters fit its alphabet, and its function words point to it alone (3, and no other language's)."
+    },
+    {
+      "name": "en: Capture survives a hold press; release on slot change, never…",
+      "input": "Capture survives a hold press; release on slot change, never on reconnect.",
+      "expected": {
+        "swift": "en",
+        "core": null
+      },
+      "reason": "Terse English code-review prose, the kind replies hold, on which whatlang is often confidently wrong (HK-425). Swift: NLLanguageRecognizer says English at 1.00 with 60 letters; the gates admit it: en. Accepted difference (HK-425): whatlang says French at 0.09, but the text holds more English function words (4) than French ones (3); the evidence does not back the answer, so the core is undecided and the reply reads in English, as the Swift decision does."
+    },
+    {
+      "name": "en: Queried explicitly, the system default voice wins over a sta…",
+      "input": "Queried explicitly, the system default voice wins over a stale override.",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "Terse English code-review prose, the kind replies hold, on which whatlang is often confidently wrong (HK-425). Swift: NLLanguageRecognizer says English at 1.00 with 60 letters; the gates admit it: en. The core agrees (HK-425): whatlang says English at 0.46, the letters fit its alphabet, and its function words point to it alone (3, against at most 1 French)."
+    },
+    {
+      "name": "en: Parse defensively: unknown types and fields are silently ign…",
+      "input": "Parse defensively: unknown types and fields are silently ignored.",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "Terse English code-review prose, the kind replies hold, on which whatlang is often confidently wrong (HK-425). Swift: NLLanguageRecognizer says English at 1.00 with 55 letters; the gates admit it: en. The core agrees (HK-425): whatlang says English at 0.66, the letters fit its alphabet, and its function words point to it alone (2, and no other language's)."
+    },
+    {
+      "name": "en: Grant mic access in System Settings, then relaunch the bundle.",
+      "input": "Grant mic access in System Settings, then relaunch the bundle.",
+      "expected": {
+        "swift": "en",
+        "core": null
+      },
+      "reason": "Terse English code-review prose, the kind replies hold, on which whatlang is often confidently wrong (HK-425). Swift: NLLanguageRecognizer says English at 0.98 with 51 letters; the gates admit it: en. Accepted difference (HK-425): whatlang says German at 0.13, but the text holds none of its function words; the evidence does not back the answer, so the core is undecided and the reply reads in English, as the Swift decision does."
+    },
+    {
+      "name": "en: Remote mode pipes controller input to an existing claude ses…",
+      "input": "Remote mode pipes controller input to an existing claude session instead.",
+      "expected": {
+        "swift": "en",
+        "core": null
+      },
+      "reason": "Terse English code-review prose, the kind replies hold, on which whatlang is often confidently wrong (HK-425). Swift: NLLanguageRecognizer says English at 1.00 with 62 letters; the gates admit it: en. Accepted difference (HK-425): whatlang says Portuguese at 0.01, but the text holds none of its function words; the evidence does not back the answer, so the core is undecided and the reply reads in English, as the Swift decision does."
+    },
+    {
+      "name": "en: A drop path releases the held buttons, then the pad reconnec…",
+      "input": "A drop path releases the held buttons, then the pad reconnects on its own.",
+      "expected": {
+        "swift": "en",
+        "core": null
+      },
+      "reason": "Terse English code-review prose, the kind replies hold, on which whatlang is often confidently wrong (HK-425). Swift: NLLanguageRecognizer says English at 1.00 with 59 letters; the gates admit it: en. Accepted difference (HK-425): whatlang says French at 0.05, but the text holds more English function words (7) than French ones (2); the evidence does not back the answer, so the core is undecided and the reply reads in English, as the Swift decision does."
+    },
+    {
+      "name": "en: Config reload keeps the slot map; the hook merge preserves o…",
+      "input": "Config reload keeps the slot map; the hook merge preserves other entries.",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "Terse English code-review prose, the kind replies hold, on which whatlang is often confidently wrong (HK-425). Swift: NLLanguageRecognizer says English at 0.99 with 60 letters; the gates admit it: en. The core agrees (HK-425): whatlang says English at 0.89, the letters fit its alphabet, and its function words point to it alone (2, and no other language's)."
+    },
+    {
+      "name": "en: Merged the hook entries, kept the user's own, and dropped th…",
+      "input": "Merged the hook entries, kept the user's own, and dropped the stale PowerUp one.",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "Terse English code-review prose, the kind replies hold, on which whatlang is often confidently wrong (HK-425). Swift: NLLanguageRecognizer says English at 1.00 with 63 letters; the gates admit it: en. The core agrees (HK-425): whatlang says English at 1.00, the letters fit its alphabet, and its function words point to it alone (7, against at most 1 Czech)."
+    },
+    {
+      "name": "en: how a file's bytes load and compact, and each project's file…",
+      "input": "how a file's bytes load and compact, and each project's file name), capture survives a hold press; slot change releases a controller hold.",
+      "expected": {
+        "swift": "en",
+        "core": null
+      },
+      "reason": "Terse English code-review prose, the kind replies hold, on which whatlang is often confidently wrong (HK-425). Swift: NLLanguageRecognizer says English at 1.00 with 109 letters; the gates admit it: en. Accepted difference (HK-425): whatlang says French at 0.68, but the text holds more English function words (9) than French ones (3); the evidence does not back the answer, so the core is undecided and the reply reads in English, as the Swift decision does."
     },
     {
       "name": "de: Ich habe den Parser überarbeitet, und jetzt laufen alle Tes…",
@@ -140,16 +317,16 @@
         "swift": "de",
         "core": null
       },
-      "reason": "A clear German reply routes to a German voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says German at 1.00 with 46 letters; the gates admit it: de. Accepted difference (HK-421): the core's whatlang says French at 0.58, not above its 0.59 gate, so the core is undecided and the reply reads in English instead; a gate that admitted it would read German in a French voice, and the same sentence written twice does pass it as French (\"de: Bitte prüfe… twice\", HK-424)."
+      "reason": "A clear German reply routes to a German voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says German at 1.00 with 46 letters; the gates admit it: de. Accepted difference (HK-425): whatlang says French at 0.58, but the text holds none of its function words; the evidence does not back the answer, so the core is undecided and the reply reads in English instead."
     },
     {
       "name": "de: Bitte prüfe… twice",
       "input": "Bitte prüfe, ob die neue Konfiguration für dich so passt. Bitte prüfe, ob die neue Konfiguration für dich so passt.",
       "expected": {
         "swift": "de",
-        "core": "fr"
+        "core": null
       },
-      "reason": "A German reply that repeats a sentence. Swift: NLLanguageRecognizer says German at 1.00 with 92 letters; the gates admit it: de. Accepted difference (HK-424): whatlang leans French on this sentence (0.58 alone, not above the gate, HK-421), and its confidence grows with the length of text at the same lean, so the sentence written twice passes the gate as French at 0.96 and reads in a French voice. It takes the one sentence repeated: in a differential of 20,000 natural replies built from the corpus, every reply the core read as French was this sentence repeated, and no reply of different German sentences was."
+      "reason": "A German reply that repeats a sentence. Swift: NLLanguageRecognizer says German at 1.00 with 92 letters; the gates admit it: de. Accepted difference (HK-424, HK-425): whatlang leans French on this sentence, and its confidence grows with the length of text at the same lean (0.58 alone, 0.96 written twice), so no confidence gate keeps it from French; the text holds none of French's function words, so the evidence does not back the answer, and the core is undecided and the reply reads in English instead of in a French voice."
     },
     {
       "name": "de: Bitte prüfe… with a code block",
@@ -158,7 +335,32 @@
         "swift": "de",
         "core": null
       },
-      "reason": "A German reply with a fenced code block, as spokenReply decides it: the fence is the U+FFFC placeholder (HK-214). Swift: NLLanguageRecognizer says German at 1.00 with 46 letters; the gates admit it: de. Accepted difference (HK-421): the placeholder weighs nothing in the core's statistical answer, so the reply decides as the sentence alone: whatlang says French at 0.58, not above its 0.59 gate, so the core is undecided and the reply reads in English instead. While the placeholder counted as a word for whatlang it added trigrams and with them confidence, and this reply passed the gate as French (HK-424)."
+      "reason": "A German reply with a fenced code block, as spokenReply decides it: the fence is the U+FFFC placeholder (HK-214). Swift: NLLanguageRecognizer says German at 1.00 with 46 letters; the gates admit it: de. Accepted difference (HK-425): the placeholder weighs nothing in the core's statistical answer, so the reply decides as the sentence alone: whatlang says French at 0.58, but the text holds none of French's function words; the evidence does not back the answer, so the core is undecided and the reply reads in English instead. While the placeholder counted as a word for whatlang it added trigrams and with them confidence (HK-424)."
+    },
+    {
+      "name": "de: Ich habe die Dokumentation aktualisiert und zwei neue Tests…",
+      "input": "Ich habe die Dokumentation aktualisiert und zwei neue Tests zum Projekt hinzugefügt.",
+      "expected": {
+        "swift": "de",
+        "core": null
+      },
+      "reason": "A clear German reply routes to a German voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says German at 1.00 with 72 letters; the gates admit it: de. Accepted difference (HK-425): whatlang says French at 0.27, but the text holds none of its function words; the evidence does not back the answer, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "de: Der Fehler lag in der Verbindung zum Controller, die beim Ne…",
+      "input": "Der Fehler lag in der Verbindung zum Controller, die beim Neustart nicht geschlossen wurde.",
+      "expected": {
+        "swift": "de"
+      },
+      "reason": "A clear German reply routes to a German voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says German at 1.00 with 76 letters; the gates admit it: de. The core agrees (HK-425): whatlang says German at 1.00, the letters fit its alphabet, and its function words point to it alone (6, against at most 2 Dutch)."
+    },
+    {
+      "name": "de: Die Sitzung wird jetzt sauber beendet, wenn der Controller g…",
+      "input": "Die Sitzung wird jetzt sauber beendet, wenn der Controller getrennt wird.",
+      "expected": {
+        "swift": "de"
+      },
+      "reason": "A clear German reply routes to a German voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says German at 1.00 with 61 letters; the gates admit it: de. The core agrees (HK-425): whatlang says German at 0.98, the letters fit its alphabet, and its function words point to it alone (6, against at most 1 Dutch)."
     },
     {
       "name": "fr: J'ai corrigé la fonction parseJSON et tous les tests passen…",
@@ -217,6 +419,30 @@
       "reason": "A clear French reply routes to a French voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says French at 1.00 with 60 letters; the gates admit it: fr."
     },
     {
+      "name": "fr: J'ai mis à jour la documentation et ajouté deux nouveaux tes…",
+      "input": "J'ai mis à jour la documentation et ajouté deux nouveaux tests au projet.",
+      "expected": {
+        "swift": "fr"
+      },
+      "reason": "A clear French reply routes to a French voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says French at 1.00 with 59 letters; the gates admit it: fr. The core agrees (HK-425): whatlang says French at 1.00, the letters fit its alphabet, and its function words point to it alone (5, against at most 2 Italian)."
+    },
+    {
+      "name": "fr: L'erreur venait de la connexion au contrôleur, qui n'était p…",
+      "input": "L'erreur venait de la connexion au contrôleur, qui n'était pas fermée au redémarrage.",
+      "expected": {
+        "swift": "fr"
+      },
+      "reason": "A clear French reply routes to a French voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says French at 1.00 with 69 letters; the gates admit it: fr. The core agrees (HK-425): whatlang says French at 1.00, the letters fit its alphabet, and its function words point to it alone (9, against at most 1 Portuguese)."
+    },
+    {
+      "name": "fr: La session se termine maintenant proprement quand le contrôl…",
+      "input": "La session se termine maintenant proprement quand le contrôleur est déconnecté.",
+      "expected": {
+        "swift": "fr"
+      },
+      "reason": "A clear French reply routes to a French voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says French at 1.00 with 68 letters; the gates admit it: fr. The core agrees (HK-425): whatlang says French at 1.00, the letters fit its alphabet, and its function words point to it alone (6, against at most 1 Portuguese)."
+    },
+    {
       "name": "es: He corregido el analizador y ahora todas las pruebas pasan…",
       "input": "He corregido el analizador y ahora todas las pruebas pasan sin errores.",
       "expected": {
@@ -252,10 +478,9 @@
       "name": "es: No pude reproducir el bloqueo en mi equipo; ¿puedes compart…",
       "input": "No pude reproducir el bloqueo en mi equipo; ¿puedes compartir el registro?",
       "expected": {
-        "swift": "es",
-        "core": null
+        "swift": "es"
       },
-      "reason": "A clear Spanish reply routes to a Spanish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Spanish at 1.00 with 60 letters; the gates admit it: es. Accepted difference (HK-421): the core's whatlang says Spanish at 0.17, not above its 0.59 gate, so the core is undecided and the reply reads in English instead."
+      "reason": "A clear Spanish reply routes to a Spanish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Spanish at 1.00 with 60 letters; the gates admit it: es. The core agrees (HK-425): whatlang says Spanish at 0.17, the letters fit its alphabet, and its function words point to it alone (5, against at most 4 Catalan)."
     },
     {
       "name": "es: Todo compila correctamente y las advertencias han desaparec…",
@@ -269,10 +494,33 @@
       "name": "es: Avísame si prefieres dividir este cambio en varios commits…",
       "input": "Avísame si prefieres dividir este cambio en varios commits más pequeños.",
       "expected": {
-        "swift": "es",
-        "core": null
+        "swift": "es"
       },
-      "reason": "A clear Spanish reply routes to a Spanish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Spanish at 1.00 with 61 letters; the gates admit it: es. Accepted difference (HK-421): the core's whatlang says Spanish at 0.52, not above its 0.59 gate, so the core is undecided and the reply reads in English instead."
+      "reason": "A clear Spanish reply routes to a Spanish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Spanish at 1.00 with 61 letters; the gates admit it: es. The core agrees (HK-425): whatlang says Spanish at 0.52, the letters fit its alphabet, and its function words point to it alone (4, and no other language's)."
+    },
+    {
+      "name": "es: He actualizado la documentación y añadido dos pruebas nuevas…",
+      "input": "He actualizado la documentación y añadido dos pruebas nuevas al proyecto.",
+      "expected": {
+        "swift": "es"
+      },
+      "reason": "A clear Spanish reply routes to a Spanish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Spanish at 1.00 with 62 letters; the gates admit it: es. The core agrees (HK-425): whatlang says Spanish at 1.00, the letters fit its alphabet, and its function words point to it alone (4, against at most 1 English)."
+    },
+    {
+      "name": "es: El error venía de la conexión con el controlador, que no se…",
+      "input": "El error venía de la conexión con el controlador, que no se cerraba al reiniciar.",
+      "expected": {
+        "swift": "es"
+      },
+      "reason": "A clear Spanish reply routes to a Spanish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Spanish at 1.00 with 65 letters; the gates admit it: es. The core agrees (HK-425): whatlang says Spanish at 0.99, the letters fit its alphabet, and its function words point to it alone (9, against at most 8 Catalan)."
+    },
+    {
+      "name": "es: La sesión ahora termina limpiamente cuando se desconecta el…",
+      "input": "La sesión ahora termina limpiamente cuando se desconecta el mando.",
+      "expected": {
+        "swift": "es"
+      },
+      "reason": "A clear Spanish reply routes to a Spanish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Spanish at 1.00 with 56 letters; the gates admit it: es. The core agrees (HK-425): whatlang says Spanish at 1.00, the letters fit its alphabet, and its function words point to it alone (5, against at most 3 Catalan)."
     },
     {
       "name": "it: Ho corretto la funzione e ora tutti i test passano senza al…",
@@ -323,6 +571,30 @@
       "reason": "A clear Italian reply routes to a Italian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Italian at 1.00 with 56 letters; the gates admit it: it."
     },
     {
+      "name": "it: Ho aggiornato la documentazione e aggiunto due nuovi test al…",
+      "input": "Ho aggiornato la documentazione e aggiunto due nuovi test al progetto.",
+      "expected": {
+        "swift": "it"
+      },
+      "reason": "A clear Italian reply routes to an Italian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Italian at 1.00 with 59 letters; the gates admit it: it. The core agrees (HK-425): whatlang says Italian at 0.99, the letters fit its alphabet, and its function words point to it alone (4, against at most 2 Spanish)."
+    },
+    {
+      "name": "it: L'errore veniva dalla connessione al controller, che non ven…",
+      "input": "L'errore veniva dalla connessione al controller, che non veniva chiusa al riavvio.",
+      "expected": {
+        "swift": "it"
+      },
+      "reason": "A clear Italian reply routes to an Italian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Italian at 1.00 with 68 letters; the gates admit it: it. The core agrees (HK-425): whatlang says Italian at 1.00, the letters fit its alphabet, and its function words point to it alone (6, against at most 3 Catalan)."
+    },
+    {
+      "name": "it: La sessione ora si chiude correttamente quando il controller…",
+      "input": "La sessione ora si chiude correttamente quando il controller viene scollegato.",
+      "expected": {
+        "swift": "it"
+      },
+      "reason": "A clear Italian reply routes to an Italian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Italian at 1.00 with 67 letters; the gates admit it: it. The core agrees (HK-425): whatlang says Italian at 1.00, the letters fit its alphabet, and its function words point to it alone (5, against at most 3 French)."
+    },
+    {
       "name": "pt: Corrigi o analisador e agora todos os testes passam sem err…",
       "input": "Corrigi o analisador e agora todos os testes passam sem erros.",
       "expected": {
@@ -371,6 +643,30 @@
       "reason": "A clear Portuguese reply routes to a Portuguese voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Portuguese at 1.00 with 59 letters; the gates admit it: pt."
     },
     {
+      "name": "pt: Atualizei a documentação e adicionei dois testes novos ao pr…",
+      "input": "Atualizei a documentação e adicionei dois testes novos ao projeto.",
+      "expected": {
+        "swift": "pt"
+      },
+      "reason": "A clear Portuguese reply routes to a Portuguese voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Portuguese at 1.00 with 56 letters; the gates admit it: pt. The core agrees (HK-425): whatlang says Portuguese at 1.00, the letters fit its alphabet, and its function words point to it alone (3, against at most 1 English)."
+    },
+    {
+      "name": "pt: O erro vinha da conexão com o controle, que não era fechada…",
+      "input": "O erro vinha da conexão com o controle, que não era fechada ao reiniciar.",
+      "expected": {
+        "swift": "pt"
+      },
+      "reason": "A clear Portuguese reply routes to a Portuguese voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Portuguese at 1.00 with 58 letters; the gates admit it: pt. The core agrees (HK-425): whatlang says Portuguese at 1.00, the letters fit its alphabet, and its function words point to it alone (8, and no other language's)."
+    },
+    {
+      "name": "pt: A sessão agora termina corretamente quando o controle é desc…",
+      "input": "A sessão agora termina corretamente quando o controle é desconectado.",
+      "expected": {
+        "swift": "pt"
+      },
+      "reason": "A clear Portuguese reply routes to a Portuguese voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Portuguese at 1.00 with 59 letters; the gates admit it: pt. The core agrees (HK-425): whatlang says Portuguese at 1.00, the letters fit its alphabet, and its function words point to it alone (5, against at most 1 English)."
+    },
+    {
       "name": "nl: Ik heb de parser aangepast en nu slagen alle tests zonder f…",
       "input": "Ik heb de parser aangepast en nu slagen alle tests zonder fouten.",
       "expected": {
@@ -393,7 +689,7 @@
         "swift": "nl",
         "core": null
       },
-      "reason": "A clear Dutch reply routes to a Dutch voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Dutch at 1.00 with 51 letters; the gates admit it: nl. Accepted difference (HK-421): the core's whatlang says Danish at 0.07, not above its 0.59 gate, so the core is undecided and the reply reads in English instead."
+      "reason": "A clear Dutch reply routes to a Dutch voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Dutch at 1.00 with 51 letters; the gates admit it: nl. Accepted difference (HK-425): whatlang says Danish at 0.07, but the text holds more Dutch function words (6) than Danish ones (2); the evidence does not back the answer, so the core is undecided and the reply reads in English instead."
     },
     {
       "name": "nl: De functie geeft nu meteen terug als de invoer leeg is.",
@@ -418,6 +714,748 @@
         "swift": "nl"
       },
       "reason": "A clear Dutch reply routes to a Dutch voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Dutch at 1.00 with 64 letters; the gates admit it: nl."
+    },
+    {
+      "name": "nl: Ik heb de documentatie bijgewerkt en twee nieuwe tests aan h…",
+      "input": "Ik heb de documentatie bijgewerkt en twee nieuwe tests aan het project toegevoegd.",
+      "expected": {
+        "swift": "nl"
+      },
+      "reason": "A clear Dutch reply routes to a Dutch voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Dutch at 1.00 with 69 letters; the gates admit it: nl. The core agrees (HK-425): whatlang says Dutch at 1.00, the letters fit its alphabet, and its function words point to it alone (6, against at most 2 French)."
+    },
+    {
+      "name": "nl: De fout zat in de verbinding met de controller, die bij een…",
+      "input": "De fout zat in de verbinding met de controller, die bij een herstart niet werd gesloten.",
+      "expected": {
+        "swift": "nl"
+      },
+      "reason": "A clear Dutch reply routes to a Dutch voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Dutch at 1.00 with 71 letters; the gates admit it: nl. The core agrees (HK-425): whatlang says Dutch at 0.99, the letters fit its alphabet, and its function words point to it alone (10, against at most 3 French)."
+    },
+    {
+      "name": "nl: De sessie wordt nu netjes afgesloten als de controller wordt…",
+      "input": "De sessie wordt nu netjes afgesloten als de controller wordt losgekoppeld.",
+      "expected": {
+        "swift": "nl",
+        "core": null
+      },
+      "reason": "A clear Dutch reply routes to a Dutch voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Dutch at 1.00 with 63 letters; the gates admit it: nl. Accepted difference (HK-425): whatlang says French at 0.09, but the text holds more Dutch function words (6) than French ones (2); the evidence does not back the answer, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "cs: Opravil jsem chybu v parseru a teď všechny testy znovu proch…",
+      "input": "Opravil jsem chybu v parseru a teď všechny testy znovu procházejí.",
+      "expected": {
+        "swift": "cs"
+      },
+      "reason": "A clear Czech reply routes to a Czech voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Czech at 1.00 with 55 letters; the gates admit it: cs. The core agrees (HK-425): whatlang says Czech at 0.57, the letters fit its alphabet, and its function words point to it alone (5, against at most 2 Slovak)."
+    },
+    {
+      "name": "cs: Funkce byla přejmenována a dokumentace je aktualizovaná.",
+      "input": "Funkce byla přejmenována a dokumentace je aktualizovaná.",
+      "expected": {
+        "swift": "cs"
+      },
+      "reason": "A clear Czech reply routes to a Czech voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Czech at 1.00 with 49 letters; the gates admit it: cs. The core agrees (HK-425): whatlang says Czech at 0.38, the letters fit its alphabet, and its function words point to it alone (3, against at most 1 English)."
+    },
+    {
+      "name": "cs: Sestavení selhalo, protože chybí jedna závislost. Mám ji při…",
+      "input": "Sestavení selhalo, protože chybí jedna závislost. Mám ji přidat?",
+      "expected": {
+        "swift": "cs"
+      },
+      "reason": "A clear Czech reply routes to a Czech voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Czech at 1.00 with 53 letters; the gates admit it: cs. The core agrees (HK-425): whatlang says Czech at 1.00, the letters fit its alphabet, and its function words point to it alone (2, and no other language's)."
+    },
+    {
+      "name": "cs: Změnil jsem tři soubory a napsal dva nové testy pro prázdný…",
+      "input": "Změnil jsem tři soubory a napsal dva nové testy pro prázdný vstup.",
+      "expected": {
+        "swift": "cs"
+      },
+      "reason": "A clear Czech reply routes to a Czech voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Czech at 1.00 with 54 letters; the gates admit it: cs. The core agrees (HK-425): whatlang says Czech at 1.00, the letters fit its alphabet, and its function words point to it alone (3, against at most 1 English)."
+    },
+    {
+      "name": "cs: Problém byl v chybějící kontrole v metodě loadConfig.",
+      "input": "Problém byl v chybějící kontrole v metodě loadConfig.",
+      "expected": {
+        "swift": "cs"
+      },
+      "reason": "A clear Czech reply routes to a Czech voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Czech at 1.00 with 45 letters; the gates admit it: cs. The core agrees (HK-425): whatlang says Czech at 1.00, the letters fit its alphabet, and its function words point to it alone (3, and no other language's)."
+    },
+    {
+      "name": "cs: Aktualizoval jsem dokumentaci a přidal do projektu dva nové…",
+      "input": "Aktualizoval jsem dokumentaci a přidal do projektu dva nové testy.",
+      "expected": {
+        "swift": "cs",
+        "core": null
+      },
+      "reason": "A clear Czech reply routes to a Czech voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Czech at 1.00 with 56 letters; the gates admit it: cs. Accepted difference (HK-425): whatlang says Portuguese at 0.68, but ř is no Portuguese letter; the evidence does not back the answer, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "sk: Opravil som chybu v parseri a teraz všetky testy opäť prechá…",
+      "input": "Opravil som chybu v parseri a teraz všetky testy opäť prechádzajú.",
+      "expected": {
+        "swift": "sk"
+      },
+      "reason": "A clear Slovak reply routes to a Slovak voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Slovak at 1.00 with 55 letters; the gates admit it: sk. The core agrees (HK-425): whatlang says Slovak at 1.00, the letters fit its alphabet, and its function words point to it alone (5, against at most 1 English)."
+    },
+    {
+      "name": "sk: Funkcia bola premenovaná a dokumentácia je aktualizovaná.",
+      "input": "Funkcia bola premenovaná a dokumentácia je aktualizovaná.",
+      "expected": {
+        "swift": "sk",
+        "core": null
+      },
+      "reason": "A clear Slovak reply routes to a Slovak voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Slovak at 1.00 with 50 letters; the gates admit it: sk. Accepted difference (HK-425): whatlang says Portuguese at 0.08, but the text holds more Slovak function words (3) than Portuguese ones (1); the evidence does not back the answer, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "sk: Zostavenie zlyhalo, pretože chýba jedna závislosť. Mám ju pr…",
+      "input": "Zostavenie zlyhalo, pretože chýba jedna závislosť. Mám ju pridať?",
+      "expected": {
+        "swift": "sk"
+      },
+      "reason": "A clear Slovak reply routes to a Slovak voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Slovak at 1.00 with 54 letters; the gates admit it: sk. The core agrees (HK-425): whatlang says Slovak at 1.00, the letters fit its alphabet, and its function words point to it alone (2, against at most 1 Czech)."
+    },
+    {
+      "name": "sk: Zmenil som tri súbory a napísal dva nové testy pre prázdny v…",
+      "input": "Zmenil som tri súbory a napísal dva nové testy pre prázdny vstup.",
+      "expected": {
+        "swift": "sk"
+      },
+      "reason": "A clear Slovak reply routes to a Slovak voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Slovak at 1.00 with 53 letters; the gates admit it: sk. The core agrees (HK-425): whatlang says Slovak at 0.23, the letters fit its alphabet, and its function words point to it alone (3, against at most 1 English)."
+    },
+    {
+      "name": "sk: Problém bol v chýbajúcej kontrole v metóde loadConfig.",
+      "input": "Problém bol v chýbajúcej kontrole v metóde loadConfig.",
+      "expected": {
+        "swift": "sk"
+      },
+      "reason": "A clear Slovak reply routes to a Slovak voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Slovak at 1.00 with 46 letters; the gates admit it: sk. The core agrees (HK-425): whatlang says Slovak at 0.58, the letters fit its alphabet, and its function words point to it alone (3, against at most 2 Czech)."
+    },
+    {
+      "name": "pl: Naprawiłem błąd w parserze i teraz wszystkie testy znowu prz…",
+      "input": "Naprawiłem błąd w parserze i teraz wszystkie testy znowu przechodzą.",
+      "expected": {
+        "swift": "pl"
+      },
+      "reason": "A clear Polish reply routes to a Polish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Polish at 1.00 with 58 letters; the gates admit it: pl. The core agrees (HK-425): whatlang says Polish at 1.00, the letters fit its alphabet, and its function words point to it alone (4, against at most 1 English)."
+    },
+    {
+      "name": "pl: Funkcja została przemianowana, a dokumentacja jest zaktualiz…",
+      "input": "Funkcja została przemianowana, a dokumentacja jest zaktualizowana.",
+      "expected": {
+        "swift": "pl"
+      },
+      "reason": "A clear Polish reply routes to a Polish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Polish at 1.00 with 58 letters; the gates admit it: pl. The core agrees (HK-425): whatlang says Polish at 1.00, the letters fit its alphabet, and its function words point to it alone (3, against at most 1 English)."
+    },
+    {
+      "name": "pl: Kompilacja się nie powiodła, bo brakuje jednej zależności. M…",
+      "input": "Kompilacja się nie powiodła, bo brakuje jednej zależności. Mam ją dodać?",
+      "expected": {
+        "swift": "pl"
+      },
+      "reason": "A clear Polish reply routes to a Polish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Polish at 1.00 with 59 letters; the gates admit it: pl. The core agrees (HK-425): whatlang says Polish at 1.00, the letters fit its alphabet, and its function words point to it alone (4, and no other language's)."
+    },
+    {
+      "name": "pl: Zmieniłem trzy pliki i napisałem dwa nowe testy dla pustego…",
+      "input": "Zmieniłem trzy pliki i napisałem dwa nowe testy dla pustego wejścia.",
+      "expected": {
+        "swift": "pl"
+      },
+      "reason": "A clear Polish reply routes to a Polish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Polish at 1.00 with 57 letters; the gates admit it: pl. The core agrees (HK-425): whatlang says Polish at 1.00, the letters fit its alphabet, and its function words point to it alone (2, against at most 1 English)."
+    },
+    {
+      "name": "pl: Problem polegał na brakującym sprawdzeniu w metodzie loadCon…",
+      "input": "Problem polegał na brakującym sprawdzeniu w metodzie loadConfig.",
+      "expected": {
+        "swift": "pl"
+      },
+      "reason": "A clear Polish reply routes to a Polish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Polish at 1.00 with 56 letters; the gates admit it: pl. The core agrees (HK-425): whatlang says Polish at 1.00, the letters fit its alphabet, and its function words point to it alone (2, and no other language's)."
+    },
+    {
+      "name": "hr: Ispravio sam grešku u parseru i sada svi testovi ponovno pro…",
+      "input": "Ispravio sam grešku u parseru i sada svi testovi ponovno prolaze.",
+      "expected": {
+        "swift": "hr"
+      },
+      "reason": "A clear Croatian reply routes to a Croatian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Croatian at 1.00 with 54 letters; the gates admit it: hr. The core agrees (HK-425): whatlang says Croatian at 1.00, the letters fit its alphabet, and its function words point to it alone (5, against at most 1 English)."
+    },
+    {
+      "name": "hr: Funkcija je preimenovana, a dokumentacija je ažurirana.",
+      "input": "Funkcija je preimenovana, a dokumentacija je ažurirana.",
+      "expected": {
+        "swift": "hr",
+        "core": null
+      },
+      "reason": "A clear Croatian reply routes to a Croatian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Croatian at 1.00 with 47 letters; the gates admit it: hr. Accepted difference (HK-425): whatlang says Croatian at 0.47, but the text holds as many Czech function words as Croatian ones (3); the evidence does not back the answer, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "hr: Izgradnja nije uspjela jer nedostaje jedna ovisnost. Da je d…",
+      "input": "Izgradnja nije uspjela jer nedostaje jedna ovisnost. Da je dodam?",
+      "expected": {
+        "swift": "hr"
+      },
+      "reason": "A clear Croatian reply routes to a Croatian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Croatian at 1.00 with 54 letters; the gates admit it: hr. The core agrees (HK-425): whatlang says Croatian at 1.00, the letters fit its alphabet, and its function words point to it alone (4, against at most 1 French)."
+    },
+    {
+      "name": "hr: Promijenio sam tri datoteke i napisao dva nova testa za praz…",
+      "input": "Promijenio sam tri datoteke i napisao dva nova testa za prazan unos.",
+      "expected": {
+        "swift": "hr"
+      },
+      "reason": "A clear Croatian reply routes to a Croatian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Croatian at 1.00 with 56 letters; the gates admit it: hr. The core agrees (HK-425): whatlang says Croatian at 1.00, the letters fit its alphabet, and its function words point to it alone (3, against at most 2 Polish)."
+    },
+    {
+      "name": "hr: Problem je bio u nedostajućoj provjeri u metodi loadConfig.",
+      "input": "Problem je bio u nedostajućoj provjeri u metodi loadConfig.",
+      "expected": {
+        "swift": "hr"
+      },
+      "reason": "A clear Croatian reply routes to a Croatian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Croatian at 1.00 with 50 letters; the gates admit it: hr. The core agrees (HK-425): whatlang says Croatian at 1.00, the letters fit its alphabet, and its function words point to it alone (4, and no other language's)."
+    },
+    {
+      "name": "sv: Jag har rättat felet i parsern och nu går alla tester igenom…",
+      "input": "Jag har rättat felet i parsern och nu går alla tester igenom igen.",
+      "expected": {
+        "swift": "sv"
+      },
+      "reason": "A clear Swedish reply routes to a Swedish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Swedish at 1.00 with 53 letters; the gates admit it: sv. The core agrees (HK-425): whatlang says Swedish at 1.00, the letters fit its alphabet, and its function words point to it alone (6, against at most 1 English)."
+    },
+    {
+      "name": "sv: Funktionen har bytt namn och dokumentationen är uppdaterad.",
+      "input": "Funktionen har bytt namn och dokumentationen är uppdaterad.",
+      "expected": {
+        "swift": "sv"
+      },
+      "reason": "A clear Swedish reply routes to a Swedish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Swedish at 1.00 with 51 letters; the gates admit it: sv. The core agrees (HK-425): whatlang says Swedish at 1.00, the letters fit its alphabet, and its function words point to it alone (3, and no other language's)."
+    },
+    {
+      "name": "sv: Bygget misslyckades eftersom ett beroende saknas. Ska jag lä…",
+      "input": "Bygget misslyckades eftersom ett beroende saknas. Ska jag lägga till det?",
+      "expected": {
+        "swift": "sv"
+      },
+      "reason": "A clear Swedish reply routes to a Swedish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Swedish at 1.00 with 61 letters; the gates admit it: sv. The core agrees (HK-425): whatlang says Swedish at 0.84, the letters fit its alphabet, and its function words point to it alone (6, and no other language's)."
+    },
+    {
+      "name": "sv: Jag ändrade tre filer och skrev två nya tester för tom indata.",
+      "input": "Jag ändrade tre filer och skrev två nya tester för tom indata.",
+      "expected": {
+        "swift": "sv"
+      },
+      "reason": "A clear Swedish reply routes to a Swedish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Swedish at 1.00 with 50 letters; the gates admit it: sv. The core agrees (HK-425): whatlang says Swedish at 1.00, the letters fit its alphabet, and its function words point to it alone (3, and no other language's)."
+    },
+    {
+      "name": "sv: Problemet var en saknad kontroll i metoden loadConfig.",
+      "input": "Problemet var en saknad kontroll i metoden loadConfig.",
+      "expected": {
+        "swift": "sv",
+        "core": null
+      },
+      "reason": "A clear Swedish reply routes to a Swedish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Swedish at 1.00 with 46 letters; the gates admit it: sv. Accepted difference (HK-425): whatlang says Swedish at 0.59, but the text holds as many Danish function words as Swedish ones (3); the evidence does not back the answer, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "da: Jeg har rettet fejlen i parseren, og nu består alle test igen.",
+      "input": "Jeg har rettet fejlen i parseren, og nu består alle test igen.",
+      "expected": {
+        "swift": "da"
+      },
+      "reason": "A clear Danish reply routes to a Danish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Danish at 1.00 with 49 letters; the gates admit it: da. The core agrees (HK-425): whatlang says Danish at 0.01, the letters fit its alphabet, and its function words point to it alone (6, against at most 5 Norwegian Bokmål)."
+    },
+    {
+      "name": "da: Funktionen er blevet omdøbt, og dokumentationen er opdateret.",
+      "input": "Funktionen er blevet omdøbt, og dokumentationen er opdateret.",
+      "expected": {
+        "swift": "da"
+      },
+      "reason": "A clear Danish reply routes to a Danish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Danish at 1.00 with 52 letters; the gates admit it: da. The core agrees (HK-425): whatlang says Danish at 0.26, the letters fit its alphabet, and its function words point to it alone (4, against at most 3 Norwegian Bokmål)."
+    },
+    {
+      "name": "da: Bygningen mislykkedes, fordi en afhængighed mangler. Skal je…",
+      "input": "Bygningen mislykkedes, fordi en afhængighed mangler. Skal jeg tilføje den?",
+      "expected": {
+        "swift": "da",
+        "core": null
+      },
+      "reason": "A clear Danish reply routes to a Danish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Danish at 1.00 with 62 letters; the gates admit it: da. Accepted difference (HK-425): whatlang says Danish at 0.65, but the text holds as many Norwegian Bokmål function words as Danish ones (5); the evidence does not back the answer, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "da: Jeg ændrede tre filer og skrev to nye test til tomt input.",
+      "input": "Jeg ændrede tre filer og skrev to nye test til tomt input.",
+      "expected": {
+        "swift": "da",
+        "core": null
+      },
+      "reason": "A clear Danish reply routes to a Danish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Danish at 1.00 with 46 letters; the gates admit it: da. Accepted difference (HK-425): whatlang says Danish at 0.07, but the text holds as many Norwegian Bokmål function words as Danish ones (3); the evidence does not back the answer, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "da: Problemet var en manglende kontrol i metoden loadConfig.",
+      "input": "Problemet var en manglende kontrol i metoden loadConfig.",
+      "expected": {
+        "swift": "da",
+        "core": null
+      },
+      "reason": "A clear Danish reply routes to a Danish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Danish at 1.00 with 48 letters; the gates admit it: da. Accepted difference (HK-425): whatlang says Dutch at 0.00, but the text holds more Swedish function words (3) than Dutch ones (1); the evidence does not back the answer, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "nb: Jeg har rettet feilen i parseren, og nå går alle testene gje…",
+      "input": "Jeg har rettet feilen i parseren, og nå går alle testene gjennom igjen.",
+      "expected": {
+        "swift": "nb"
+      },
+      "reason": "A clear Norwegian Bokmål reply routes to a Norwegian Bokmål voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Norwegian Bokmål at 1.00 with 57 letters; the gates admit it: nb. The core agrees (HK-425): whatlang says Norwegian Bokmål at 0.45, the letters fit its alphabet, and its function words point to it alone (6, against at most 5 Danish)."
+    },
+    {
+      "name": "nb: Funksjonen har fått nytt navn, og dokumentasjonen er oppdate…",
+      "input": "Funksjonen har fått nytt navn, og dokumentasjonen er oppdatert.",
+      "expected": {
+        "swift": "nb"
+      },
+      "reason": "A clear Norwegian Bokmål reply routes to a Norwegian Bokmål voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Norwegian Bokmål at 1.00 with 53 letters; the gates admit it: nb. The core agrees (HK-425): whatlang says Norwegian Bokmål at 0.75, the letters fit its alphabet, and its function words point to it alone (4, against at most 3 Danish)."
+    },
+    {
+      "name": "nb: Byggingen mislyktes fordi en avhengighet mangler. Skal jeg l…",
+      "input": "Byggingen mislyktes fordi en avhengighet mangler. Skal jeg legge den til?",
+      "expected": {
+        "swift": "nb",
+        "core": null
+      },
+      "reason": "A clear Norwegian Bokmål reply routes to a Norwegian Bokmål voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Norwegian Bokmål at 1.00 with 61 letters; the gates admit it: nb. Accepted difference (HK-425): whatlang says Norwegian Bokmål at 0.45, but the text holds as many Danish function words as Norwegian Bokmål ones (6); the evidence does not back the answer, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "nb: Jeg endret tre filer og skrev to nye tester for tom inndata.",
+      "input": "Jeg endret tre filer og skrev to nye tester for tom inndata.",
+      "expected": {
+        "swift": "nb",
+        "core": null
+      },
+      "reason": "A clear Norwegian Bokmål reply routes to a Norwegian Bokmål voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Norwegian Bokmål at 1.00 with 48 letters; the gates admit it: nb. Accepted difference (HK-425): whatlang says Norwegian Bokmål at 0.31, but the text holds as many Danish function words as Norwegian Bokmål ones (3); the evidence does not back the answer, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "nb: Problemet var en manglende sjekk i metoden loadConfig.",
+      "input": "Problemet var en manglende sjekk i metoden loadConfig.",
+      "expected": {
+        "swift": "nb",
+        "core": null
+      },
+      "reason": "A clear Norwegian Bokmål reply routes to a Norwegian Bokmål voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Norwegian Bokmål at 1.00 with 46 letters; the gates admit it: nb. Accepted difference (HK-425): whatlang says Swedish at 0.03, but the text holds as many Danish function words as Swedish ones (3); the evidence does not back the answer, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "fi: Korjasin jäsentimen virheen, ja nyt kaikki testit menevät ta…",
+      "input": "Korjasin jäsentimen virheen, ja nyt kaikki testit menevät taas läpi.",
+      "expected": {
+        "swift": "fi"
+      },
+      "reason": "A clear Finnish reply routes to a Finnish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Finnish at 1.00 with 57 letters; the gates admit it: fi. The core agrees (HK-425): whatlang says Finnish at 1.00, the letters fit its alphabet, and its function words point to it alone (3, against at most 1 Slovak)."
+    },
+    {
+      "name": "fi: Funktio on nimetty uudelleen ja dokumentaatio on päivitetty.",
+      "input": "Funktio on nimetty uudelleen ja dokumentaatio on päivitetty.",
+      "expected": {
+        "swift": "fi"
+      },
+      "reason": "A clear Finnish reply routes to a Finnish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Finnish at 1.00 with 52 letters; the gates admit it: fi. The core agrees (HK-425): whatlang says Finnish at 0.87, the letters fit its alphabet, and its function words point to it alone (3, against at most 2 English)."
+    },
+    {
+      "name": "fi: Käännös epäonnistui, koska yksi riippuvuus puuttuu. Lisäänkö…",
+      "input": "Käännös epäonnistui, koska yksi riippuvuus puuttuu. Lisäänkö sen?",
+      "expected": {
+        "swift": "fi"
+      },
+      "reason": "A clear Finnish reply routes to a Finnish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Finnish at 1.00 with 55 letters; the gates admit it: fi. The core agrees (HK-425): whatlang says Finnish at 1.00, the letters fit its alphabet, and its function words point to it alone (2, and no other language's)."
+    },
+    {
+      "name": "fi: Muutin kolmea tiedostoa ja kirjoitin kaksi uutta testiä tyhj…",
+      "input": "Muutin kolmea tiedostoa ja kirjoitin kaksi uutta testiä tyhjälle syötteelle.",
+      "expected": {
+        "swift": "fi"
+      },
+      "reason": "A clear Finnish reply routes to a Finnish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Finnish at 1.00 with 66 letters; the gates admit it: fi. The core agrees (HK-425): whatlang says Finnish at 1.00, the letters fit its alphabet, and its function words point to it alone (1, and no other language's)."
+    },
+    {
+      "name": "fi: Ongelma oli puuttuva tarkistus loadConfig-metodissa.",
+      "input": "Ongelma oli puuttuva tarkistus loadConfig-metodissa.",
+      "expected": {
+        "swift": "fi"
+      },
+      "reason": "A clear Finnish reply routes to a Finnish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Finnish at 1.00 with 46 letters; the gates admit it: fi. The core agrees (HK-425): whatlang says Finnish at 1.00, the letters fit its alphabet, and its function words point to it alone (1, and no other language's)."
+    },
+    {
+      "name": "hu: Kijavítottam a hibát az elemzőben, és most újra minden teszt…",
+      "input": "Kijavítottam a hibát az elemzőben, és most újra minden teszt átmegy.",
+      "expected": {
+        "swift": "hu"
+      },
+      "reason": "A clear Hungarian reply routes to a Hungarian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Hungarian at 1.00 with 56 letters; the gates admit it: hu. The core agrees (HK-425): whatlang says Hungarian at 1.00, the letters fit its alphabet, and its function words point to it alone (5, against at most 1 English)."
+    },
+    {
+      "name": "hu: A függvényt átneveztem, és a dokumentációt frissítettem.",
+      "input": "A függvényt átneveztem, és a dokumentációt frissítettem.",
+      "expected": {
+        "swift": "hu"
+      },
+      "reason": "A clear Hungarian reply routes to a Hungarian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Hungarian at 1.00 with 48 letters; the gates admit it: hu. The core agrees (HK-425): whatlang says Hungarian at 0.72, the letters fit its alphabet, and its function words point to it alone (3, against at most 2 English)."
+    },
+    {
+      "name": "hu: A fordítás meghiúsult, mert hiányzik egy függőség. Hozzáadjam?",
+      "input": "A fordítás meghiúsult, mert hiányzik egy függőség. Hozzáadjam?",
+      "expected": {
+        "swift": "hu"
+      },
+      "reason": "A clear Hungarian reply routes to a Hungarian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Hungarian at 1.00 with 52 letters; the gates admit it: hu. The core agrees (HK-425): whatlang says Hungarian at 1.00, the letters fit its alphabet, and its function words point to it alone (3, against at most 1 English)."
+    },
+    {
+      "name": "hu: Három fájlt módosítottam, és két új tesztet írtam az üres be…",
+      "input": "Három fájlt módosítottam, és két új tesztet írtam az üres bemenetre.",
+      "expected": {
+        "swift": "hu"
+      },
+      "reason": "A clear Hungarian reply routes to a Hungarian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Hungarian at 1.00 with 56 letters; the gates admit it: hu. The core agrees (HK-425): whatlang says Hungarian at 1.00, the letters fit its alphabet, and its function words point to it alone (2, and no other language's)."
+    },
+    {
+      "name": "hu: A probléma egy hiányzó ellenőrzés volt a loadConfig metódusb…",
+      "input": "A probléma egy hiányzó ellenőrzés volt a loadConfig metódusban.",
+      "expected": {
+        "swift": "hu"
+      },
+      "reason": "A clear Hungarian reply routes to a Hungarian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Hungarian at 1.00 with 54 letters; the gates admit it: hu. The core agrees (HK-425): whatlang says Hungarian at 1.00, the letters fit its alphabet, and its function words point to it alone (4, against at most 2 English)."
+    },
+    {
+      "name": "ro: Am reparat eroarea din parser și acum toate testele trec din…",
+      "input": "Am reparat eroarea din parser și acum toate testele trec din nou.",
+      "expected": {
+        "swift": "ro"
+      },
+      "reason": "A clear Romanian reply routes to a Romanian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Romanian at 1.00 with 53 letters; the gates admit it: ro. The core agrees (HK-425): whatlang says Romanian at 1.00, the letters fit its alphabet, and its function words point to it alone (6, and no other language's)."
+    },
+    {
+      "name": "ro: Funcția a fost redenumită, iar documentația este actualizată.",
+      "input": "Funcția a fost redenumită, iar documentația este actualizată.",
+      "expected": {
+        "swift": "ro"
+      },
+      "reason": "A clear Romanian reply routes to a Romanian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Romanian at 1.00 with 52 letters; the gates admit it: ro. The core agrees (HK-425): whatlang says Romanian at 0.32, the letters fit its alphabet, and its function words point to it alone (3, against at most 1 English)."
+    },
+    {
+      "name": "ro: Compilarea a eșuat pentru că lipsește o dependență. Să o ada…",
+      "input": "Compilarea a eșuat pentru că lipsește o dependență. Să o adaug?",
+      "expected": {
+        "swift": "ro"
+      },
+      "reason": "A clear Romanian reply routes to a Romanian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Romanian at 1.00 with 51 letters; the gates admit it: ro. The core agrees (HK-425): whatlang says Romanian at 1.00, the letters fit its alphabet, and its function words point to it alone (6, against at most 1 English)."
+    },
+    {
+      "name": "ro: Am modificat trei fișiere și am scris două teste noi pentru…",
+      "input": "Am modificat trei fișiere și am scris două teste noi pentru intrarea goală.",
+      "expected": {
+        "swift": "ro"
+      },
+      "reason": "A clear Romanian reply routes to a Romanian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Romanian at 1.00 with 62 letters; the gates admit it: ro. The core agrees (HK-425): whatlang says Romanian at 1.00, the letters fit its alphabet, and its function words point to it alone (5, and no other language's)."
+    },
+    {
+      "name": "ro: Problema era o verificare lipsă în metoda loadConfig.",
+      "input": "Problema era o verificare lipsă în metoda loadConfig.",
+      "expected": {
+        "swift": "ro"
+      },
+      "reason": "A clear Romanian reply routes to a Romanian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Romanian at 1.00 with 45 letters; the gates admit it: ro. The core agrees (HK-425): whatlang says Romanian at 0.87, the letters fit its alphabet, and its function words point to it alone (3, and no other language's)."
+    },
+    {
+      "name": "tr: Ayrıştırıcıdaki hatayı düzelttim ve artık tüm testler yenide…",
+      "input": "Ayrıştırıcıdaki hatayı düzelttim ve artık tüm testler yeniden geçiyor.",
+      "expected": {
+        "swift": "tr"
+      },
+      "reason": "A clear Turkish reply routes to a Turkish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Turkish at 1.00 with 61 letters; the gates admit it: tr. The core agrees (HK-425): whatlang says Turkish at 1.00, the letters fit its alphabet, and its function words point to it alone (3, and no other language's)."
+    },
+    {
+      "name": "tr: Fonksiyonun adı değiştirildi ve belgeler güncellendi.",
+      "input": "Fonksiyonun adı değiştirildi ve belgeler güncellendi.",
+      "expected": {
+        "swift": "tr"
+      },
+      "reason": "A clear Turkish reply routes to a Turkish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Turkish at 1.00 with 47 letters; the gates admit it: tr. The core agrees (HK-425): whatlang says Turkish at 1.00, the letters fit its alphabet, and its function words point to it alone (1, and no other language's)."
+    },
+    {
+      "name": "tr: Derleme başarısız oldu çünkü bir bağımlılık eksik. Ekleyeyim…",
+      "input": "Derleme başarısız oldu çünkü bir bağımlılık eksik. Ekleyeyim mi?",
+      "expected": {
+        "swift": "tr"
+      },
+      "reason": "A clear Turkish reply routes to a Turkish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Turkish at 1.00 with 54 letters; the gates admit it: tr. The core agrees (HK-425): whatlang says Turkish at 1.00, the letters fit its alphabet, and its function words point to it alone (3, and no other language's)."
+    },
+    {
+      "name": "tr: Üç dosyayı değiştirdim ve boş girdi için iki yeni test yazdım.",
+      "input": "Üç dosyayı değiştirdim ve boş girdi için iki yeni test yazdım.",
+      "expected": {
+        "swift": "tr"
+      },
+      "reason": "A clear Turkish reply routes to a Turkish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Turkish at 1.00 with 51 letters; the gates admit it: tr. The core agrees (HK-425): whatlang says Turkish at 1.00, the letters fit its alphabet, and its function words point to it alone (2, and no other language's)."
+    },
+    {
+      "name": "tr: Sorun, loadConfig yönteminde eksik bir kontroldü.",
+      "input": "Sorun, loadConfig yönteminde eksik bir kontroldü.",
+      "expected": {
+        "swift": "tr"
+      },
+      "reason": "A clear Turkish reply routes to a Turkish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Turkish at 1.00 with 42 letters; the gates admit it: tr. The core agrees (HK-425): whatlang says Turkish at 0.55, the letters fit its alphabet, and its function words point to it alone (1, and no other language's)."
+    },
+    {
+      "name": "id: Saya sudah memperbaiki bug di parser dan sekarang semua tes…",
+      "input": "Saya sudah memperbaiki bug di parser dan sekarang semua tes lulus lagi.",
+      "expected": {
+        "swift": "id"
+      },
+      "reason": "A clear Indonesian reply routes to an Indonesian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Indonesian at 1.00 with 59 letters; the gates admit it: id. The core agrees (HK-425): whatlang says Indonesian at 1.00, the letters fit its alphabet, and its function words point to it alone (7, against at most 1 Italian)."
+    },
+    {
+      "name": "id: Fungsi itu sudah diganti namanya dan dokumentasinya sudah di…",
+      "input": "Fungsi itu sudah diganti namanya dan dokumentasinya sudah diperbarui.",
+      "expected": {
+        "swift": "id"
+      },
+      "reason": "A clear Indonesian reply routes to an Indonesian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Indonesian at 1.00 with 60 letters; the gates admit it: id. The core agrees (HK-425): whatlang says Indonesian at 1.00, the letters fit its alphabet, and its function words point to it alone (4, and no other language's)."
+    },
+    {
+      "name": "id: Build gagal karena ada satu dependensi yang hilang. Apakah s…",
+      "input": "Build gagal karena ada satu dependensi yang hilang. Apakah saya harus menambahkannya?",
+      "expected": {
+        "swift": "id"
+      },
+      "reason": "A clear Indonesian reply routes to an Indonesian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Indonesian at 1.00 with 72 letters; the gates admit it: id. The core agrees (HK-425): whatlang says Indonesian at 1.00, the letters fit its alphabet, and its function words point to it alone (7, and no other language's)."
+    },
+    {
+      "name": "id: Saya mengubah tiga berkas dan menulis dua tes baru untuk mas…",
+      "input": "Saya mengubah tiga berkas dan menulis dua tes baru untuk masukan kosong.",
+      "expected": {
+        "swift": "id"
+      },
+      "reason": "A clear Indonesian reply routes to an Indonesian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Indonesian at 1.00 with 60 letters; the gates admit it: id. The core agrees (HK-425): whatlang says Indonesian at 1.00, the letters fit its alphabet, and its function words point to it alone (3, and no other language's)."
+    },
+    {
+      "name": "id: Masalahnya adalah pemeriksaan yang hilang di metode loadConf…",
+      "input": "Masalahnya adalah pemeriksaan yang hilang di metode loadConfig.",
+      "expected": {
+        "swift": "id"
+      },
+      "reason": "A clear Indonesian reply routes to an Indonesian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Indonesian at 1.00 with 55 letters; the gates admit it: id. The core agrees (HK-425): whatlang says Indonesian at 1.00, the letters fit its alphabet, and its function words point to it alone (2, against at most 1 Italian)."
+    },
+    {
+      "name": "vi: Tôi đã sửa lỗi trong bộ phân tích và bây giờ tất cả các bài…",
+      "input": "Tôi đã sửa lỗi trong bộ phân tích và bây giờ tất cả các bài kiểm tra đều đạt.",
+      "expected": {
+        "swift": "vi"
+      },
+      "reason": "A clear Vietnamese reply routes to a Vietnamese voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Vietnamese at 1.00 with 58 letters; the gates admit it: vi. The core agrees (HK-425): whatlang says Vietnamese at 1.00, the letters fit its alphabet, and its function words point to it alone (7, and no other language's)."
+    },
+    {
+      "name": "vi: Hàm đã được đổi tên và tài liệu đã được cập nhật.",
+      "input": "Hàm đã được đổi tên và tài liệu đã được cập nhật.",
+      "expected": {
+        "swift": "vi"
+      },
+      "reason": "A clear Vietnamese reply routes to a Vietnamese voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Vietnamese at 1.00 with 37 letters; the gates admit it: vi. The core agrees (HK-425): whatlang says Vietnamese at 1.00, the letters fit its alphabet, and its function words point to it alone (5, and no other language's)."
+    },
+    {
+      "name": "vi: Bản dựng thất bại vì thiếu một phụ thuộc. Tôi có nên thêm nó…",
+      "input": "Bản dựng thất bại vì thiếu một phụ thuộc. Tôi có nên thêm nó không?",
+      "expected": {
+        "swift": "vi"
+      },
+      "reason": "A clear Vietnamese reply routes to a Vietnamese voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Vietnamese at 1.00 with 51 letters; the gates admit it: vi. The core agrees (HK-425): whatlang says Vietnamese at 1.00, the letters fit its alphabet, and its function words point to it alone (5, and no other language's)."
+    },
+    {
+      "name": "vi: Tôi đã sửa ba tệp và viết hai bài kiểm tra mới cho đầu vào r…",
+      "input": "Tôi đã sửa ba tệp và viết hai bài kiểm tra mới cho đầu vào rỗng.",
+      "expected": {
+        "swift": "vi"
+      },
+      "reason": "A clear Vietnamese reply routes to a Vietnamese voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Vietnamese at 1.00 with 48 letters; the gates admit it: vi. The core agrees (HK-425): whatlang says Vietnamese at 1.00, the letters fit its alphabet, and its function words point to it alone (7, and no other language's)."
+    },
+    {
+      "name": "vi: Vấn đề là thiếu một bước kiểm tra trong phương thức loadConf…",
+      "input": "Vấn đề là thiếu một bước kiểm tra trong phương thức loadConfig.",
+      "expected": {
+        "swift": "vi"
+      },
+      "reason": "A clear Vietnamese reply routes to a Vietnamese voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Vietnamese at 1.00 with 51 letters; the gates admit it: vi. The core agrees (HK-425): whatlang says Vietnamese at 1.00, the letters fit its alphabet, and its function words point to it alone (3, and no other language's)."
+    },
+    {
+      "name": "ca: He corregit l'error de l'analitzador i ara totes les proves…",
+      "input": "He corregit l'error de l'analitzador i ara totes les proves tornen a passar.",
+      "expected": {
+        "swift": "ca"
+      },
+      "reason": "A clear Catalan reply routes to a Catalan voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Catalan at 1.00 with 61 letters; the gates admit it: ca. The core agrees (HK-425): whatlang says Catalan at 0.24, the letters fit its alphabet, and its function words point to it alone (9, against at most 5 French)."
+    },
+    {
+      "name": "ca: La funció s'ha reanomenat i la documentació està actualitzada.",
+      "input": "La funció s'ha reanomenat i la documentació està actualitzada.",
+      "expected": {
+        "swift": "ca"
+      },
+      "reason": "A clear Catalan reply routes to a Catalan voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Catalan at 1.00 with 52 letters; the gates admit it: ca. The core agrees (HK-425): whatlang says Catalan at 1.00, the letters fit its alphabet, and its function words point to it alone (5, against at most 4 Italian)."
+    },
+    {
+      "name": "ca: La compilació ha fallat perquè falta una dependència. Vols q…",
+      "input": "La compilació ha fallat perquè falta una dependència. Vols que l'afegeixi?",
+      "expected": {
+        "swift": "ca"
+      },
+      "reason": "A clear Catalan reply routes to a Catalan voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Catalan at 1.00 with 61 letters; the gates admit it: ca. The core agrees (HK-425): whatlang says Catalan at 1.00, the letters fit its alphabet, and its function words point to it alone (6, against at most 4 Italian)."
+    },
+    {
+      "name": "ca: He modificat tres fitxers i he escrit dues proves noves per…",
+      "input": "He modificat tres fitxers i he escrit dues proves noves per a l'entrada buida.",
+      "expected": {
+        "swift": "ca"
+      },
+      "reason": "A clear Catalan reply routes to a Catalan voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Catalan at 1.00 with 63 letters; the gates admit it: ca. The core agrees (HK-425): whatlang says Catalan at 0.81, the letters fit its alphabet, and its function words point to it alone (6, against at most 5 English)."
+    },
+    {
+      "name": "ca: El problema era una comprovació que faltava al mètode loadCo…",
+      "input": "El problema era una comprovació que faltava al mètode loadConfig.",
+      "expected": {
+        "swift": "ca"
+      },
+      "reason": "A clear Catalan reply routes to a Catalan voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Catalan at 1.00 with 55 letters; the gates admit it: ca. The core agrees (HK-425): whatlang says Catalan at 0.62, the letters fit its alphabet, and its function words point to it alone (5, against at most 3 Italian)."
+    },
+    {
+      "name": "ru: Я исправил ошибку в парсере, и теперь все тесты снова проход…",
+      "input": "Я исправил ошибку в парсере, и теперь все тесты снова проходят.",
+      "expected": {
+        "swift": "ru"
+      },
+      "reason": "A clear Russian reply routes to a Russian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Russian at 1.00 with 51 letters; the gates admit it: ru. The core agrees (HK-425): whatlang says Russian at 0.21, the letters fit its alphabet, and its function words point to it alone (5, and no other language's)."
+    },
+    {
+      "name": "ru: Функция была переименована, а документация обновлена.",
+      "input": "Функция была переименована, а документация обновлена.",
+      "expected": {
+        "swift": "ru"
+      },
+      "reason": "A clear Russian reply routes to a Russian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Russian at 1.00 with 46 letters; the gates admit it: ru. The core agrees (HK-425): whatlang says Russian at 0.46, the letters fit its alphabet, and its function words point to it alone (2, and no other language's)."
+    },
+    {
+      "name": "ru: Сборка не удалась, потому что не хватает одной зависимости.…",
+      "input": "Сборка не удалась, потому что не хватает одной зависимости. Добавить её?",
+      "expected": {
+        "swift": "ru"
+      },
+      "reason": "A clear Russian reply routes to a Russian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Russian at 1.00 with 59 letters; the gates admit it: ru. The core agrees (HK-425): whatlang says Russian at 0.87, the letters fit its alphabet, and its function words point to it alone (5, and no other language's)."
+    },
+    {
+      "name": "ru: Я изменил три файла и написал два новых теста для пустого вв…",
+      "input": "Я изменил три файла и написал два новых теста для пустого ввода.",
+      "expected": {
+        "swift": "ru"
+      },
+      "reason": "A clear Russian reply routes to a Russian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Russian at 1.00 with 52 letters; the gates admit it: ru. The core agrees (HK-425): whatlang says Russian at 0.25, the letters fit its alphabet, and its function words point to it alone (3, and no other language's)."
+    },
+    {
+      "name": "ru: Проблема была в отсутствующей проверке в методе loadConfig.",
+      "input": "Проблема была в отсутствующей проверке в методе loadConfig.",
+      "expected": {
+        "swift": "ru"
+      },
+      "reason": "A clear Russian reply routes to a Russian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Russian at 1.00 with 51 letters; the gates admit it: ru. The core agrees (HK-425): whatlang says Russian at 0.13, the letters fit its alphabet, and its function words point to it alone (3, and no other language's)."
+    },
+    {
+      "name": "ru: Готово. Миграция завершена, и база данных актуальна.",
+      "input": "Готово. Миграция завершена, и база данных актуальна.",
+      "expected": {
+        "swift": null,
+        "core": "ru"
+      },
+      "reason": "A clear Russian reply routes to a Russian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Kazakh at 0.54 with 43 letters; 0.54 is not above 0.7, so it is undecided. Accepted difference (HK-425): whatlang says Russian at 0.85, the letters fit its alphabet, and its function words point to it alone (1, and no other language's), so the core reads the reply in Russian, the language it is written in, where the recognizer, 0.54 sure of Kazakh, was undecided."
+    },
+    {
+      "name": "ru: Хочешь, чтобы я сразу закоммитил изменения или сначала их пр…",
+      "input": "Хочешь, чтобы я сразу закоммитил изменения или сначала их проверил?",
+      "expected": {
+        "swift": "kk",
+        "core": "ru"
+      },
+      "reason": "A clear Russian reply routes to a Russian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Kazakh at 1.00 with 56 letters; the gates admit it: kk. Accepted difference (HK-425): whatlang says Russian at 0.98, the letters fit its alphabet, and its function words point to it alone (3, and no other language's), so the core reads the reply in Russian, the language it is written in, where the recognizer named Kazakh."
+    },
+    {
+      "name": "uk: Я виправив помилку в парсері, і тепер усі тести знову проход…",
+      "input": "Я виправив помилку в парсері, і тепер усі тести знову проходять.",
+      "expected": {
+        "swift": "uk"
+      },
+      "reason": "A clear Ukrainian reply routes to a Ukrainian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Ukrainian at 1.00 with 52 letters; the gates admit it: uk. The core agrees (HK-425): whatlang says Ukrainian at 1.00, the letters fit its alphabet, and its function words point to it alone (5, and no other language's)."
+    },
+    {
+      "name": "uk: Функцію було перейменовано, а документацію оновлено.",
+      "input": "Функцію було перейменовано, а документацію оновлено.",
+      "expected": {
+        "swift": "uk"
+      },
+      "reason": "A clear Ukrainian reply routes to a Ukrainian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Ukrainian at 1.00 with 45 letters; the gates admit it: uk. The core agrees (HK-425): whatlang says Ukrainian at 1.00, the letters fit its alphabet, and its function words point to it alone (2, and no other language's)."
+    },
+    {
+      "name": "uk: Збірка не вдалася, бо бракує однієї залежності. Додати її?",
+      "input": "Збірка не вдалася, бо бракує однієї залежності. Додати її?",
+      "expected": {
+        "swift": "uk"
+      },
+      "reason": "A clear Ukrainian reply routes to a Ukrainian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Ukrainian at 1.00 with 47 letters; the gates admit it: uk. The core agrees (HK-425): whatlang says Ukrainian at 1.00, the letters fit its alphabet, and its function words point to it alone (3, and no other language's)."
+    },
+    {
+      "name": "uk: Я змінив три файли й написав два нові тести для порожнього в…",
+      "input": "Я змінив три файли й написав два нові тести для порожнього введення.",
+      "expected": {
+        "swift": "uk"
+      },
+      "reason": "A clear Ukrainian reply routes to a Ukrainian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Ukrainian at 1.00 with 56 letters; the gates admit it: uk. The core agrees (HK-425): whatlang says Ukrainian at 1.00, the letters fit its alphabet, and its function words point to it alone (3, and no other language's)."
+    },
+    {
+      "name": "uk: Проблема була у відсутній перевірці в методі loadConfig.",
+      "input": "Проблема була у відсутній перевірці в методі loadConfig.",
+      "expected": {
+        "swift": "uk"
+      },
+      "reason": "A clear Ukrainian reply routes to a Ukrainian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Ukrainian at 1.00 with 48 letters; the gates admit it: uk. The core agrees (HK-425): whatlang says Ukrainian at 1.00, the letters fit its alphabet, and its function words point to it alone (3, and no other language's)."
+    },
+    {
+      "name": "bg: Поправих грешката в парсера и сега всички тестове отново мин…",
+      "input": "Поправих грешката в парсера и сега всички тестове отново минават.",
+      "expected": {
+        "swift": "bg"
+      },
+      "reason": "A clear Bulgarian reply routes to a Bulgarian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Bulgarian at 1.00 with 55 letters; the gates admit it: bg. The core agrees (HK-425): whatlang says Bulgarian at 1.00, the letters fit its alphabet, and its function words point to it alone (4, against at most 2 Russian)."
+    },
+    {
+      "name": "bg: Функцията беше преименувана, а документацията е обновена.",
+      "input": "Функцията беше преименувана, а документацията е обновена.",
+      "expected": {
+        "swift": "bg"
+      },
+      "reason": "A clear Bulgarian reply routes to a Bulgarian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Bulgarian at 1.00 with 49 letters; the gates admit it: bg. The core agrees (HK-425): whatlang says Bulgarian at 1.00, the letters fit its alphabet, and its function words point to it alone (3, against at most 1 Russian)."
+    },
+    {
+      "name": "bg: Компилацията се провали, защото липсва една зависимост. Да я…",
+      "input": "Компилацията се провали, защото липсва една зависимост. Да я добавя ли?",
+      "expected": {
+        "swift": "bg"
+      },
+      "reason": "A clear Bulgarian reply routes to a Bulgarian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Bulgarian at 1.00 with 58 letters; the gates admit it: bg. The core agrees (HK-425): whatlang says Bulgarian at 1.00, the letters fit its alphabet, and its function words point to it alone (4, against at most 2 Russian)."
+    },
+    {
+      "name": "bg: Промених три файла и написах два нови теста за празен вход.",
+      "input": "Промених три файла и написах два нови теста за празен вход.",
+      "expected": {
+        "swift": "uk",
+        "core": null
+      },
+      "reason": "A clear Bulgarian reply routes to a Bulgarian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Ukrainian at 1.00 with 48 letters; the gates admit it: uk. Accepted difference (HK-425): whatlang says Bulgarian at 1.00, but the text holds as many Russian function words as Bulgarian ones (2); the evidence does not back the answer, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "bg: Проблемът беше в липсваща проверка в метода loadConfig.",
+      "input": "Проблемът беше в липсваща проверка в метода loadConfig.",
+      "expected": {
+        "swift": "bg"
+      },
+      "reason": "A clear Bulgarian reply routes to a Bulgarian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Bulgarian at 1.00 with 47 letters; the gates admit it: bg. The core agrees (HK-425): whatlang says Bulgarian at 1.00, the letters fit its alphabet, and its function words point to it alone (3, against at most 2 Russian)."
     },
     {
       "name": "zh-Hans: 我重构了解析器，现在所有测试都通过了。",
@@ -634,7 +1672,7 @@
         "swift": "en",
         "core": null
       },
-      "reason": "Mixed CJK and Latin text: script evidence decides once CJK is at least 20% of the letters (HK-212). Swift: NLLanguageRecognizer says English at 0.77 with 39 letters; the gates admit it: en. Accepted difference (HK-421): the core's whatlang says Catalan at 0.26, not above its 0.59 gate, so the core is undecided and the reply reads in English, as the Swift decision does."
+      "reason": "Mixed CJK and Latin text: script evidence decides once CJK is at least 20% of the letters (HK-212). Swift: NLLanguageRecognizer says English at 0.77 with 39 letters; the gates admit it: en. Accepted difference (HK-425): whatlang says Catalan at 0.26, but the text holds none of its function words; the evidence does not back the answer, so the core is undecided and the reply reads in English, as the Swift decision does."
     },
     {
       "name": "mixed: ビルドは swift build で実行してください。",
@@ -1039,7 +2077,7 @@
         "swift": "en",
         "core": null
       },
-      "reason": "Text that is no language meets the Latin gates (HK-213). Swift: NLLanguageRecognizer says English at 0.87 with 42 letters; the gates admit it: en. Accepted difference (HK-421): the core's whatlang says French at 0.27, not above its 0.59 gate, so the core is undecided and the reply reads in English, as the Swift decision does."
+      "reason": "Text that is no language meets the Latin gates (HK-213). Swift: NLLanguageRecognizer says English at 0.87 with 42 letters; the gates admit it: en. Accepted difference (HK-425): whatlang says French at 0.26, but the text holds none of its function words; the evidence does not back the answer, so the core is undecided and the reply reads in English, as the Swift decision does."
     },
     {
       "name": "gate: Ni hao, wo shi zhongguo ren, xie xie ni.",
@@ -1064,7 +2102,7 @@
         "swift": "en",
         "core": null
       },
-      "reason": "Code-heavy prose without fences: identifiers count as letters (HK-213, HK-214). Swift: NLLanguageRecognizer says English at 0.99 with 58 letters; the gates admit it: en. Accepted difference (HK-421): the core's whatlang says French at 0.15, not above its 0.59 gate, so the core is undecided and the reply reads in English, as the Swift decision does."
+      "reason": "Code-heavy prose without fences: identifiers count as letters (HK-213, HK-214). Swift: NLLanguageRecognizer says English at 0.99 with 58 letters; the gates admit it: en. Accepted difference (HK-425): whatlang says French at 0.15, but the text holds more English function words (2) than French ones (1); the evidence does not back the answer, so the core is undecided and the reply reads in English, as the Swift decision does."
     },
     {
       "name": "code: Set PATH=/usr/local/bin:$PATH and run make install from b…",
@@ -1118,10 +2156,9 @@
       "name": "gate: The new unit tests all pass now.",
       "input": "The new unit tests all pass now.",
       "expected": {
-        "swift": "en",
-        "core": null
+        "swift": "en"
       },
-      "reason": "Moved from language.json, where it pinned the 25-letter gate (HK-213). Swift: NLLanguageRecognizer says English at 0.99 with 25 letters; the gates admit it: en. Accepted difference (HK-421): the core's whatlang says English at 0.31, not above its 0.59 gate, so the core is undecided and the reply reads in English, as the Swift decision does."
+      "reason": "Moved from language.json, where it pinned the 25-letter gate (HK-213). Swift: NLLanguageRecognizer says English at 0.99 with 25 letters; the gates admit it: en. The core agrees (HK-425): whatlang says English at 0.31, the letters fit its alphabet, and its function words point to it alone (3, and no other language's)."
     },
     {
       "name": "gate: Сборка успешно завершена, и все тесты прошли без ошибок.",
@@ -1130,7 +2167,7 @@
         "swift": "ru",
         "core": null
       },
-      "reason": "Moved from language.json, where it showed a non-Latin, non-CJK language passing the same gates (HK-213). Swift: NLLanguageRecognizer says Russian at 1.00 with 46 letters; the gates admit it: ru. Accepted difference (HK-421): the core's whatlang says Bulgarian at 0.01, not above its 0.59 gate, so the core is undecided and the reply reads in English instead."
+      "reason": "Moved from language.json, where it showed a non-Latin, non-CJK language passing the same gates (HK-213). Swift: NLLanguageRecognizer says Russian at 1.00 with 46 letters; the gates admit it: ru. Accepted difference (HK-425): whatlang says Bulgarian at 0.01, but ы is no Bulgarian letter; the evidence does not back the answer, so the core is undecided and the reply reads in English instead."
     },
     {
       "name": "unlisted: Ég lagaði villuna og nú standast öll prófin án nokkurra vandamála.",
@@ -1139,7 +2176,7 @@
         "swift": "is",
         "core": null
       },
-      "reason": "A language only one of the two detectors can name (HK-422). Swift: NLLanguageRecognizer says Icelandic at 1.00 with 55 letters; the gates admit it: is. Accepted difference (HK-422): whatlang knows no Icelandic; among the languages the core may answer it says Hungarian at 0.00, not above its 0.59 gate, so the core is undecided and the reply reads in English instead."
+      "reason": "A language only one of the two detectors can name (HK-422). Swift: NLLanguageRecognizer says Icelandic at 1.00 with 55 letters; the gates admit it: is. Accepted difference (HK-422, HK-425): whatlang knows no Icelandic; among the languages the core may answer it says Hungarian at 0.00, but ð is no Hungarian letter; the evidence does not back the answer, so the core is undecided and the reply reads in English instead."
     },
     {
       "name": "unlisted: Қате түзетілді және енді барлық тесттер ешқандай қиындықсыз өтеді.",
@@ -1148,7 +2185,7 @@
         "swift": "kk",
         "core": null
       },
-      "reason": "A language only one of the two detectors can name (HK-422). Swift: NLLanguageRecognizer says Kazakh at 1.00 with 57 letters; the gates admit it: kk. Accepted difference (HK-422): whatlang knows no Kazakh (unrestricted it says Belarusian); among the languages the core may answer it says Russian at 0.21, not above its 0.59 gate, so the core is undecided and the reply reads in English instead."
+      "reason": "A language only one of the two detectors can name (HK-422). Swift: NLLanguageRecognizer says Kazakh at 1.00 with 57 letters; the gates admit it: kk. Accepted difference (HK-422, HK-425): whatlang knows no Kazakh (unrestricted it says Belarusian); among the languages the core may answer it says Russian at 0.21, but қ is no Russian letter; the evidence does not back the answer, so the core is undecided and the reply reads in English instead."
     },
     {
       "name": "unlisted: ຂ\u0EC9ອຍໄດ\u0EC9ແກ\u0EC9ໄຂບ\u0EB1ນຫາແລ\u0EC9ວ ແລະ ຕອນນ\u0EB5\u0EC9ການທ\u0EBBດສອບທ\u0EB1ງໝ\u0EBBດຜ\u0EC8ານແລ\u0EC9ວ.",
@@ -1184,6 +2221,118 @@
         "swift": null
       },
       "reason": "A language only one of the two detectors can name (HK-422). Swift: NLLanguageRecognizer has no answer for Amharic, so it is undecided. The core agrees: whatlang says Amharic at 1.00 whatever its allowlist, a language the recognizer cannot answer and so outside the core's list, so the core is undecided too."
+    },
+    {
+      "name": "unlisted: Popravil sem napako v razčlenjevalniku in zdaj vsi testi usp…",
+      "input": "Popravil sem napako v razčlenjevalniku in zdaj vsi testi uspešno minejo.",
+      "expected": {
+        "swift": "cs",
+        "core": null
+      },
+      "reason": "Slovene, a language the core does not answer (HK-422). Swift: NLLanguageRecognizer says Czech at 1.00 with 61 letters; the gates admit it: cs. Accepted difference (HK-425): whatlang says Croatian at 1.00, but the text holds none of its function words; the evidence does not back the answer, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "unlisted: Funkcija je bila preimenovana in dokumentacija je posodoblje…",
+      "input": "Funkcija je bila preimenovana in dokumentacija je posodobljena.",
+      "expected": {
+        "swift": "hr",
+        "core": null
+      },
+      "reason": "Slovene, a language the core does not answer (HK-422). Swift: NLLanguageRecognizer says Croatian at 1.00 with 55 letters; the gates admit it: hr. Accepted difference (HK-425): whatlang says Croatian at 1.00, but the text holds as many Dutch function words as Croatian ones (3); the evidence does not back the answer, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "unlisted: Ndimesasisha nyaraka na kuongeza majaribio mawili mapya kwen…",
+      "input": "Ndimesasisha nyaraka na kuongeza majaribio mawili mapya kwenye mradi.",
+      "expected": {
+        "swift": null
+      },
+      "reason": "Swahili, a language the core does not answer (HK-422). Swift: NLLanguageRecognizer says Indonesian at 0.67 with 60 letters; 0.67 is not above 0.7, so it is undecided. The core agrees (HK-425): whatlang says Indonesian at 0.80, but the text holds none of its function words."
+    },
+    {
+      "name": "unlisted: Nimerekebisha hitilafu kwenye kichanganuzi na sasa majaribio…",
+      "input": "Nimerekebisha hitilafu kwenye kichanganuzi na sasa majaribio yote yanapita.",
+      "expected": {
+        "swift": "id",
+        "core": null
+      },
+      "reason": "Swahili, a language the core does not answer (HK-422). Swift: NLLanguageRecognizer says Indonesian at 0.83 with 66 letters; the gates admit it: id. Accepted difference (HK-425): whatlang says Indonesian at 1.00, but the text holds none of its function words; the evidence does not back the answer, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "unlisted: Я абнавіў дакументацыю і дадаў два новыя тэсты ў гэты праект…",
+      "input": "Я абнавіў дакументацыю і дадаў два новыя тэсты ў гэты праект сёння.",
+      "expected": {
+        "swift": "kk",
+        "core": null
+      },
+      "reason": "Belarusian, a language the core does not answer (HK-422). Swift: NLLanguageRecognizer says Kazakh at 1.00 with 55 letters; the gates admit it: kk. Accepted difference (HK-425): whatlang says Russian at 1.00, but і is no Russian letter; the evidence does not back the answer, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "unlisted: Я выправіў памылку ў парсеры, і цяпер усе тэсты зноў праходз…",
+      "input": "Я выправіў памылку ў парсеры, і цяпер усе тэсты зноў праходзяць.",
+      "expected": {
+        "swift": "ru",
+        "core": null
+      },
+      "reason": "Belarusian, a language the core does not answer (HK-422). Swift: NLLanguageRecognizer says Russian at 0.93 with 52 letters; the gates admit it: ru. Accepted difference (HK-425): whatlang says Russian at 1.00, but і is no Russian letter; the evidence does not back the answer, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "unlisted: Corrixín o erro no analizador e agora todas as probas pasan…",
+      "input": "Corrixín o erro no analizador e agora todas as probas pasan de novo.",
+      "expected": {
+        "swift": "pt"
+      },
+      "reason": "Galician, a language the core does not answer (HK-422). Swift: NLLanguageRecognizer says Portuguese at 0.99 with 55 letters; the gates admit it: pt. The core agrees (HK-425): whatlang says Portuguese at 0.59, the letters fit its alphabet, and its function words point to it alone (7, against at most 3 Spanish)."
+    },
+    {
+      "name": "unlisted: A función foi renomeada e a documentación está actualizada.",
+      "input": "A función foi renomeada e a documentación está actualizada.",
+      "expected": {
+        "swift": "es",
+        "core": null
+      },
+      "reason": "Galician, a language the core does not answer (HK-422). Swift: NLLanguageRecognizer says Spanish at 0.96 with 50 letters; the gates admit it: es. Accepted difference (HK-425): whatlang says Spanish at 0.27, but the text holds more Portuguese function words (5) than Spanish ones (3); the evidence does not back the answer, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "unlisted: Parandasin parseri vea ja nüüd lähevad kõik testid jälle läbi.",
+      "input": "Parandasin parseri vea ja nüüd lähevad kõik testid jälle läbi.",
+      "expected": {
+        "swift": "fi",
+        "core": null
+      },
+      "reason": "Estonian, a language the core does not answer (HK-422). Swift: NLLanguageRecognizer says Finnish at 0.99 with 52 letters; the gates admit it: fi. Accepted difference (HK-425): whatlang says German at 0.39, but õ is no German letter; the evidence does not back the answer, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "unlisted: Ištaisiau klaidą analizatoriuje ir dabar visi testai vėl pra…",
+      "input": "Ištaisiau klaidą analizatoriuje ir dabar visi testai vėl praeina.",
+      "expected": {
+        "swift": null
+      },
+      "reason": "Lithuanian, a language the core does not answer (HK-422). Swift: NLLanguageRecognizer says Slovak at 0.57 with 56 letters; 0.57 is not above 0.7, so it is undecided. The core agrees (HK-425): whatlang says Finnish at 0.38, but ą is no Finnish letter."
+    },
+    {
+      "name": "unlisted: Saya telah membetulkan pepijat dalam penghurai dan kini semu…",
+      "input": "Saya telah membetulkan pepijat dalam penghurai dan kini semua ujian lulus semula.",
+      "expected": {
+        "swift": "id"
+      },
+      "reason": "Malay, a language the core does not answer (HK-422). Swift: NLLanguageRecognizer says Indonesian at 1.00 with 69 letters; the gates admit it: id. The core agrees (HK-425): whatlang says Indonesian at 1.00, the letters fit its alphabet, and its function words point to it alone (4, and no other language's)."
+    },
+    {
+      "name": "unlisted: Исправио сам грешку у парсеру и сада сви тестови поново прол…",
+      "input": "Исправио сам грешку у парсеру и сада сви тестови поново пролазе.",
+      "expected": {
+        "swift": "ru",
+        "core": null
+      },
+      "reason": "Serbian, a language the core does not answer (HK-422). Swift: NLLanguageRecognizer says Russian at 1.00 with 53 letters; the gates admit it: ru. Accepted difference (HK-425): whatlang says Bulgarian at 0.08, but the text holds more Russian function words (2) than Bulgarian ones (1); the evidence does not back the answer, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "unlisted: Ispravio sam grešku u parseru i sada svi testovi ponovo prol…",
+      "input": "Ispravio sam grešku u parseru i sada svi testovi ponovo prolaze.",
+      "expected": {
+        "swift": "hr"
+      },
+      "reason": "Serbian, a language the core does not answer (HK-422). Swift: NLLanguageRecognizer says Croatian at 1.00 with 53 letters; the gates admit it: hr. The core agrees (HK-425): whatlang says Croatian at 1.00, the letters fit its alphabet, and its function words point to it alone (5, against at most 1 English)."
     }
   ]
 }
