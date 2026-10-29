@@ -16,21 +16,21 @@ final class DeviceFixtureTests: XCTestCase {
     func testControlKindTable() throws {
         let fileName = "control-kind.json"
         let file = try TextSafetyFixtures.load(fileName, area: Self.area,
-                                               input: String.self, expected: FixtureJSON.self)
+                                               input: String.self, expected: JSONValue.self)
         TextSafetyFixtures.assertWellFormed(file, fileName)
         for fixtureCase in file.cases {
-            let control: FixtureJSON = .object([
+            let control: JSONValue = .object([
                 "id": .string("c"), "kind": .string(fixtureCase.input),
                 "displayName": .string("C"), "symbolName": .string("circle"),
             ])
             let decoded = try? JSONDecoder().decode(ControlDescriptor.self,
                                                     from: JSONEncoder().encode(control))
-            let actual: FixtureJSON = decoded.map { .string($0.kind.rawValue) } ?? .null
+            let actual: JSONValue = decoded.map { .string($0.kind.rawValue) } ?? .null
             if let failure = TextSafetyFixtures.mismatch(in: fileName, fixtureCase, actual: actual) {
                 XCTFail(failure)
             }
             if let decoded {
-                XCTAssertEqual(try FixtureJSON(encoding: decoded)["kind"], actual,
+                XCTAssertEqual(try JSONValue(encoding: decoded)["kind"], actual,
                                "\(fileName) case \(fixtureCase.name): the kind written back")
             }
         }
@@ -41,12 +41,12 @@ final class DeviceFixtureTests: XCTestCase {
     func testProfileDecodeTable() throws {
         let fileName = "profile-decode.json"
         let file = try TextSafetyFixtures.load(fileName, area: Self.area,
-                                               input: FixtureJSON.self, expected: FixtureJSON.self)
+                                               input: JSONValue.self, expected: JSONValue.self)
         TextSafetyFixtures.assertWellFormed(file, fileName)
         for fixtureCase in file.cases {
             let profile = try? JSONDecoder().decode(DeviceProfile.self,
                                                     from: JSONEncoder().encode(fixtureCase.input))
-            let actual = try profile.map { try FixtureJSON(encoding: $0) } ?? .null
+            let actual = try profile.map { try JSONValue(encoding: $0) } ?? .null
             if let failure = TextSafetyFixtures.mismatch(in: fileName, fixtureCase, actual: actual) {
                 XCTFail(failure)
             }
@@ -58,9 +58,9 @@ final class DeviceFixtureTests: XCTestCase {
     func testDualSenseProfileTable() throws {
         let fileName = "dualsense-profile.json"
         let file = try TextSafetyFixtures.load(fileName, area: Self.area,
-                                               input: FixtureJSON.self, expected: FixtureJSON.self)
+                                               input: JSONValue.self, expected: JSONValue.self)
         TextSafetyFixtures.assertWellFormed(file, fileName)
-        let actual = try FixtureJSON(encoding: DeviceProfile.dualSense)
+        let actual = try JSONValue(encoding: DeviceProfile.dualSense)
         for fixtureCase in file.cases {
             if let failure = TextSafetyFixtures.mismatch(in: fileName, fixtureCase, actual: actual) {
                 XCTFail(failure)
@@ -80,7 +80,7 @@ final class DeviceFixtureTests: XCTestCase {
     func testSlotSelectionTable() throws {
         let fileName = "slot-selection.json"
         let file = try TextSafetyFixtures.load(fileName, area: Self.area,
-                                               input: FixtureJSON.self, expected: FixtureJSON.self)
+                                               input: JSONValue.self, expected: JSONValue.self)
         TextSafetyFixtures.assertWellFormed(file, fileName)
         for fixtureCase in file.cases {
             guard case .array(let listed)? = fixtureCase.input["mostRecentlyConnectedFirst"] else {
@@ -111,7 +111,7 @@ final class DeviceFixtureTests: XCTestCase {
     func testHoldRuleTable() throws {
         let fileName = "hold-rule.json"
         let file = try TextSafetyFixtures.load(fileName, area: Self.area,
-                                               input: FixtureJSON.self, expected: FixtureJSON.self)
+                                               input: JSONValue.self, expected: JSONValue.self)
         TextSafetyFixtures.assertWellFormed(file, fileName)
         var seen = Set<String>()
         for fixtureCase in file.cases {
@@ -119,7 +119,7 @@ final class DeviceFixtureTests: XCTestCase {
                 throw FixtureValueError(description: "\(fileName) case \(fixtureCase.name): no steps")
             }
             var tracker = HoldTracker()
-            var effects: [FixtureJSON] = []
+            var effects: [JSONValue] = []
             for step in steps {
                 let effect: HoldEffect
                 if step["releaseAll"] == .bool(true) {
@@ -137,7 +137,7 @@ final class DeviceFixtureTests: XCTestCase {
                 effects.append(effect.fixtureDescriptor)
                 if let name = effect.fixtureDescriptor["effect"]?.stringValue { seen.insert(name) }
             }
-            let actual: FixtureJSON = .object([
+            let actual: JSONValue = .object([
                 "effects": .array(effects),
                 "owner": tracker.owner.map { .string($0) } ?? .null,
             ])

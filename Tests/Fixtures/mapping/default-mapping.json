@@ -1,7 +1,7 @@
 {
   "description": "The mappings a fresh config ships with: one profile, dualsense, binding all 18 DualSense controls to the v1.3 layout (DESIGN v2.4 B, HK-007). R2 is push-to-talk, L2 dictates to the prompt box, L1 sends the prompt box, the touchpad cycles the permission mode, and the PS button is mappable but deliberately none. Every control is listed explicitly, none included, so the defaults never depend on what a missing key means. Input is {}; expected is the mappings ({profileID: {controlID: <action descriptor>}}).",
   "function": "AppConfig.defaultDeviceMappings() — input {}, expected the default mappings",
-  "verifiedBy": "DESIGN.md v2.4 B; Tests/PowerUpTests/MappingFixtureTests.swift testDefaultMappingTable compares AppConfig.defaultDeviceMappings() and AppConfig.defaultMapping() (keyed by button) with the table. Rust: rust/powerup-core/tests/mapping.rs default_mapping_case compares mapping::default_device_mappings().",
+  "verifiedBy": "DESIGN.md v2.4 B; Tests/PowerUpTests/MappingFixtureTests.swift testDefaultMappingTable compares AppConfig.defaultDeviceMappings() and AppConfig.defaultMapping() (keyed by button), both read from the core through the bridge since slice 2.2, with the table. Rust: rust/powerup-core/tests/mapping.rs default_mapping_case compares mapping::default_device_mappings().",
   "capturedAgainst": "Swift 5.9.2 synthesized Codable (Xcode 15.2), PowerUp at 106773b",
   "cases": [
     {

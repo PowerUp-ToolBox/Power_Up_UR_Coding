@@ -1,7 +1,7 @@
 {
   "description": "The action bound to one control of one profile: the mapping for (profileID, controlID), or none when the profile or the control has no binding (DESIGN v2.4 B). It is the single resolution point every input surface routes through. Ids are compared exactly. Input is {deviceMappings, profile, control}; Mappings are written {profileID: {controlID: <action descriptor>}}, or the string \"defaults\" for the shipped default mappings. Expected is an action descriptor.",
   "function": "AppConfig.action(onProfile:control:) — input {deviceMappings, profile, control}, expected an action descriptor",
-  "verifiedBy": "DESIGN.md v2.4 B; Tests/PowerUpTests/MappingFixtureTests.swift testResolveActionTable sets AppConfig.deviceMappings and calls AppConfig.action(onProfile:control:). Rust: rust/powerup-core/tests/mapping.rs resolve_action_cases runs mapping::resolve_action.",
+  "verifiedBy": "DESIGN.md v2.4 B; Tests/PowerUpTests/MappingFixtureTests.swift testResolveActionTable sets AppConfig.deviceMappings and calls AppConfig.action(onProfile:control:), which calls the core through the bridge since slice 2.2. Rust: rust/powerup-core/tests/mapping.rs resolve_action_cases runs mapping::resolve_action.",
   "capturedAgainst": "Swift 5.9.2 synthesized Codable (Xcode 15.2), PowerUp at 106773b",
   "cases": [
     {

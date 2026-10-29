@@ -11,7 +11,7 @@ final class MappingFixtureTests: XCTestCase {
     private static let area = "mapping"
 
     private struct IntentInput: Decodable {
-        let action: FixtureJSON
+        let action: JSONValue
         let phase: String
     }
 
@@ -20,7 +20,7 @@ final class MappingFixtureTests: XCTestCase {
     func testActionShapeTable() throws {
         let fileName = "action-shape.json"
         let file = try TextSafetyFixtures.load(fileName, area: Self.area,
-                                               input: FixtureJSON.self, expected: String.self)
+                                               input: JSONValue.self, expected: String.self)
         TextSafetyFixtures.assertWellFormed(file, fileName)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -30,6 +30,10 @@ final class MappingFixtureTests: XCTestCase {
             if let failure = TextSafetyFixtures.mismatch(in: fileName, fixtureCase, actual: actual) {
                 XCTFail(failure)
             }
+            // The core's writer, through the bridge, must give the same bytes
+            // as the Swift encoder that still writes config.json.
+            XCTAssertEqual(CoreBridge.wireJSON(of: action), fixtureCase.expected,
+                           "\(fileName) case \(fixtureCase.name): the core's bytes")
         }
     }
 
@@ -40,10 +44,10 @@ final class MappingFixtureTests: XCTestCase {
     func testActionDecodeTable() throws {
         let fileName = "action-decode.json"
         let file = try TextSafetyFixtures.load(fileName, area: Self.area,
-                                               input: FixtureJSON.self, expected: FixtureJSON.self)
+                                               input: JSONValue.self, expected: JSONValue.self)
         TextSafetyFixtures.assertWellFormed(file, fileName)
         for fixtureCase in file.cases {
-            let config: FixtureJSON = .object(["deviceMappings": .object(["p": .object(["c": fixtureCase.input])])])
+            let config: JSONValue = .object(["deviceMappings": .object(["p": .object(["c": fixtureCase.input])])])
             let decoded = try JSONDecoder().decode(AppConfig.self, from: try JSONEncoder().encode(config))
             let actual = decoded.deviceMappings["p"]?["c"]?.fixtureDescriptor ?? .null
             if let failure = TextSafetyFixtures.mismatch(in: fileName, fixtureCase, actual: actual) {
@@ -57,7 +61,7 @@ final class MappingFixtureTests: XCTestCase {
     func testIntentForActionTable() throws {
         let fileName = "intent-for-action.json"
         let file = try TextSafetyFixtures.load(fileName, area: Self.area,
-                                               input: IntentInput.self, expected: FixtureJSON.self)
+                                               input: IntentInput.self, expected: JSONValue.self)
         TextSafetyFixtures.assertWellFormed(file, fileName)
         for fixtureCase in file.cases {
             let action = try Action(fixture: fixtureCase.input.action)
@@ -72,7 +76,7 @@ final class MappingFixtureTests: XCTestCase {
     /// Every action meets both phases, so the table is the whole rule.
     func testIntentForActionTableCoversEveryActionAndPhase() throws {
         let file = try TextSafetyFixtures.load("intent-for-action.json", area: Self.area,
-                                               input: IntentInput.self, expected: FixtureJSON.self)
+                                               input: IntentInput.self, expected: JSONValue.self)
         let covered = try file.cases.map { "\(try Action(fixture: $0.input.action).fixtureName) \($0.input.phase)" }
         let every = Action.fixtureCases.flatMap { ["\($0.fixtureName) began", "\($0.fixtureName) ended"] }
         XCTAssertEqual(Set(covered), Set(every))
@@ -84,7 +88,7 @@ final class MappingFixtureTests: XCTestCase {
     func testIsHoldTable() throws {
         let fileName = "is-hold.json"
         let file = try TextSafetyFixtures.load(fileName, area: Self.area,
-                                               input: FixtureJSON.self, expected: Bool.self)
+                                               input: JSONValue.self, expected: Bool.self)
         TextSafetyFixtures.assertWellFormed(file, fileName)
         for fixtureCase in file.cases {
             let actual = try Action(fixture: fixtureCase.input).isHoldAction
@@ -99,7 +103,7 @@ final class MappingFixtureTests: XCTestCase {
     func testDefaultMappingTable() throws {
         let fileName = "default-mapping.json"
         let file = try TextSafetyFixtures.load(fileName, area: Self.area,
-                                               input: FixtureJSON.self, expected: FixtureJSON.self)
+                                               input: JSONValue.self, expected: JSONValue.self)
         TextSafetyFixtures.assertWellFormed(file, fileName)
         // The button-keyed view the Settings editor reads must agree.
         let buttonKeyed = Dictionary(uniqueKeysWithValues: AppConfig.defaultMapping().map {
@@ -118,7 +122,7 @@ final class MappingFixtureTests: XCTestCase {
     // MARK: resolve-action.json
 
     private struct ResolveInput: Decodable {
-        let deviceMappings: FixtureJSON
+        let deviceMappings: JSONValue
         let profile: String
         let control: String
     }
@@ -126,7 +130,7 @@ final class MappingFixtureTests: XCTestCase {
     func testResolveActionTable() throws {
         let fileName = "resolve-action.json"
         let file = try TextSafetyFixtures.load(fileName, area: Self.area,
-                                               input: ResolveInput.self, expected: FixtureJSON.self)
+                                               input: ResolveInput.self, expected: JSONValue.self)
         TextSafetyFixtures.assertWellFormed(file, fileName)
         for fixtureCase in file.cases {
             var config = AppConfig.defaultConfig()
@@ -147,12 +151,12 @@ final class MappingFixtureTests: XCTestCase {
     func testConfigLoadTable() throws {
         let fileName = "config-load.json"
         let file = try TextSafetyFixtures.load(fileName, area: Self.area,
-                                               input: FixtureJSON.self, expected: FixtureJSON.self)
+                                               input: JSONValue.self, expected: JSONValue.self)
         TextSafetyFixtures.assertWellFormed(file, fileName)
         for fixtureCase in file.cases {
             let data = try JSONEncoder().encode(fixtureCase.input)
             let config = try JSONDecoder().decode(AppConfig.self, from: data)
-            let actual: FixtureJSON = .object([
+            let actual: JSONValue = .object([
                 "deviceMappings": FixtureMappings.descriptor(config.deviceMappings),
                 "backupBeforeSave": .bool(try Self.backupTaken(loading: data)),
             ])
@@ -162,7 +166,7 @@ final class MappingFixtureTests: XCTestCase {
                 fixtureCase.expected["deviceMappings"] ?? .null)
             let normalized = TextSafetyFixtures.StructuredCase(
                 name: fixtureCase.name, input: fixtureCase.input,
-                expected: FixtureJSON.object([
+                expected: JSONValue.object([
                     "deviceMappings": FixtureMappings.descriptor(expectedMappings),
                     "backupBeforeSave": fixtureCase.expected["backupBeforeSave"] ?? .null,
                 ]),
@@ -191,11 +195,11 @@ final class MappingFixtureTests: XCTestCase {
         let every = Set(Action.fixtureCases.map(\.fixtureName))
         XCTAssertEqual(every.count, 19, "Action.fixtureCases must list every case once")
         let hold = try TextSafetyFixtures.load("is-hold.json", area: Self.area,
-                                               input: FixtureJSON.self, expected: Bool.self)
+                                               input: JSONValue.self, expected: Bool.self)
         XCTAssertEqual(try hold.cases.map { try Action(fixture: $0.input).fixtureName }.sorted(),
                        every.sorted())
         let shape = try TextSafetyFixtures.load("action-shape.json", area: Self.area,
-                                                input: FixtureJSON.self, expected: String.self)
+                                                input: JSONValue.self, expected: String.self)
         XCTAssertEqual(Set(try shape.cases.map { try Action(fixture: $0.input).fixtureName }), every)
     }
 }

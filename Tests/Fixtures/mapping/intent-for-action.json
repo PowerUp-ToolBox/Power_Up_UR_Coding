@@ -1,7 +1,7 @@
 {
   "description": "The intent a mapped action produces when its control is pressed (began) or released (ended). The rule is stateless (HK-033): the one-hold-at-a-time bookkeeping belongs to the caller. A hold action (pushToTalk, pushToTalkDraft) gives beginVoiceCapture in its mode (send, draft) on the press and endVoiceCapture on the release. Every other action fires on the press only and gives null on the release; none gives null for both. Input is {action: <action descriptor>, phase}; expected is an intent descriptor ({\"intent\": <Swift case name>} plus \"mode\" for beginVoiceCapture and \"prompt\" for sendPrompt) or null.",
   "function": "IntentMapper.intent(for:phase:) — input {action, phase}, expected an intent descriptor or null",
-  "verifiedBy": "DESIGN.md v2.7 A and C; Tests/PowerUpTests/MappingFixtureTests.swift testIntentForActionTable runs IntentMapper.intent(for:phase:). Rust: rust/powerup-core/tests/mapping.rs intent_for_action_cases runs intent::intent_for.",
+  "verifiedBy": "DESIGN.md v2.7 A and C; Tests/PowerUpTests/MappingFixtureTests.swift testIntentForActionTable runs IntentMapper.intent(for:phase:), which calls the core through the bridge since slice 2.2. Rust: rust/powerup-core/tests/mapping.rs intent_for_action_cases runs intent::intent_for.",
   "capturedAgainst": "Swift 5.9.2 synthesized Codable (Xcode 15.2), PowerUp at 6109234",
   "cases": [
     {

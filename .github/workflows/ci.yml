@@ -54,8 +54,14 @@ jobs:
           test -f build/PowerUp.app/Contents/Resources/AppIcon.icns
           plutil -lint build/PowerUp.app/Contents/Info.plist
           codesign --verify build/PowerUp.app
-          nm build/PowerUp.app/Contents/MacOS/PowerUp | grep -q uniffi_powerup_core_ffi_fn_func_probe_echo \
-            || { echo "::error::the app bundle does not link the Rust core"; exit 1; }
+          # The launch probe, and the device layer the app now runs on (2.2).
+          # nm writes to a file: piped into grep -q it dies of SIGPIPE, which
+          # the runner's pipefail would report as a missing symbol.
+          nm build/PowerUp.app/Contents/MacOS/PowerUp > "$RUNNER_TEMP/powerup-symbols.txt"
+          for symbol in probe_echo resolve_action; do
+            grep -q "uniffi_powerup_core_ffi_fn_func_$symbol" "$RUNNER_TEMP/powerup-symbols.txt" \
+              || { echo "::error::the app bundle does not link the Rust core ($symbol)"; exit 1; }
+          done
 
   # The Rust core (stage 2, ADR 0012) is tested on every OS it will ship on.
   # Runner images are pinned for the same reason as the macOS job above.

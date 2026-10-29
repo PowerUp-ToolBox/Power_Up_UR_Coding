@@ -24,6 +24,14 @@ final class DeviceProfileTests: XCTestCase {
         }
     }
 
+    /// The profile comes from the Rust core while its id stays a Swift
+    /// literal; they must agree, and a failed bridge call (which leaves a
+    /// profile with no controls) must not go unnoticed.
+    func testDualSenseIDMatchesTheCore() {
+        XCTAssertEqual(DeviceProfile.dualSense.id, DeviceProfile.dualSenseID)
+        XCTAssertFalse(DeviceProfile.dualSense.controls.isEmpty)
+    }
+
     // MARK: v2.7 A - the control kind set is button | axis | key
 
     /// A profile written before v2.7 could carry `"kind": "hold"`. Whether an

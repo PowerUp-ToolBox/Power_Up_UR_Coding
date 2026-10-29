@@ -1,48 +1,12 @@
 import Foundation
 @testable import PowerUp
 
-/// Any JSON value, as a shared fixture writes it. The `mapping/` tables hand
-/// arbitrary JSON to the config decoder (an action stored for one control may
-/// be a string, null, an array…), so the input cannot be a typed struct.
-/// Integers and doubles stay apart so a value written back re-encodes as it
-/// was read.
-enum FixtureJSON: Codable, Equatable {
-    case null
-    case bool(Bool)
-    case integer(Int64)
-    case number(Double)
-    case string(String)
-    case array([FixtureJSON])
-    case object([String: FixtureJSON])
-
-    init(from decoder: Decoder) throws {
-        if let container = try? decoder.singleValueContainer() {
-            if container.decodeNil() { self = .null; return }
-            if let value = try? container.decode(Bool.self) { self = .bool(value); return }
-            if let value = try? container.decode(Int64.self) { self = .integer(value); return }
-            if let value = try? container.decode(Double.self) { self = .number(value); return }
-            if let value = try? container.decode(String.self) { self = .string(value); return }
-            if let value = try? container.decode([FixtureJSON].self) { self = .array(value); return }
-            if let value = try? container.decode([String: FixtureJSON].self) { self = .object(value); return }
-        }
-        throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath,
-                                                debugDescription: "Not a JSON value"))
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        switch self {
-        case .null: try container.encodeNil()
-        case .bool(let value): try container.encode(value)
-        case .integer(let value): try container.encode(value)
-        case .number(let value): try container.encode(value)
-        case .string(let value): try container.encode(value)
-        case .array(let value): try container.encode(value)
-        case .object(let value): try container.encode(value)
-        }
-    }
-
-    subscript(key: String) -> FixtureJSON? {
+/// Fixture values are the app's `JSONValue` (CoreBridge.swift): the
+/// `mapping/` tables hand arbitrary JSON to the config decoder (an action
+/// stored for one control may be a string, null, an array…), so the input
+/// cannot be a typed struct.
+extension JSONValue {
+    subscript(key: String) -> JSONValue? {
         guard case .object(let fields) = self else { return nil }
         return fields[key]
     }
@@ -98,7 +62,7 @@ extension Action {
     }
 
     /// `{"case": <name>}`, plus `"prompt"` for sendPrompt.
-    init(fixture descriptor: FixtureJSON) throws {
+    init(fixture descriptor: JSONValue) throws {
         guard let name = descriptor["case"]?.stringValue else {
             throw FixtureValueError(description: "not an action descriptor: \(descriptor)")
         }
@@ -115,7 +79,7 @@ extension Action {
         self = action
     }
 
-    var fixtureDescriptor: FixtureJSON {
+    var fixtureDescriptor: JSONValue {
         if case .sendPrompt(let prompt) = self {
             return .object(["case": .string("sendPrompt"), "prompt": .string(prompt)])
         }
@@ -127,7 +91,7 @@ extension Intent {
     /// `{"intent": <Swift case name>}`, plus `"mode"` for beginVoiceCapture
     /// and `"prompt"` for sendPrompt. Exhaustive, so a new case is a compile
     /// error here rather than a silently unnamed value.
-    var fixtureDescriptor: FixtureJSON {
+    var fixtureDescriptor: JSONValue {
         let name: String
         switch self {
         case .beginVoiceCapture(let mode):
@@ -165,18 +129,18 @@ extension ControlPhase {
     }
 }
 
-extension FixtureJSON {
+extension JSONValue {
     /// The JSON an `Encodable` value writes, read back as a fixture value so
     /// it compares with a table's expected object regardless of key order.
     init<T: Encodable>(encoding value: T) throws {
-        self = try JSONDecoder().decode(FixtureJSON.self, from: JSONEncoder().encode(value))
+        self = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(value))
     }
 }
 
 /// Mappings descriptors: `{profileID: {controlID: <action descriptor>}}`, or
 /// the string `"defaults"` for the shipped default mappings.
 enum FixtureMappings {
-    static func deviceMappings(_ descriptor: FixtureJSON) throws -> [String: DeviceMapping] {
+    static func deviceMappings(_ descriptor: JSONValue) throws -> [String: DeviceMapping] {
         if descriptor == .string("defaults") { return AppConfig.defaultDeviceMappings() }
         guard case .object(let profiles) = descriptor else {
             throw FixtureValueError(description: "not a mappings descriptor: \(descriptor)")
@@ -189,7 +153,7 @@ enum FixtureMappings {
         }
     }
 
-    static func descriptor(_ mappings: [String: DeviceMapping]) -> FixtureJSON {
+    static func descriptor(_ mappings: [String: DeviceMapping]) -> JSONValue {
         .object(mappings.mapValues { .object($0.mapValues(\.fixtureDescriptor)) })
     }
 }
@@ -198,7 +162,7 @@ extension HoldEffect {
     /// `{"effect": <Swift case name>}`, plus `"mode"` for beginCapture and
     /// `"intent"` (an intent descriptor) for deliver. Exhaustive, so a sixth
     /// effect is a compile error here before the tables can miss it.
-    var fixtureDescriptor: FixtureJSON {
+    var fixtureDescriptor: JSONValue {
         switch self {
         case .beginCapture(let mode):
             return .object(["effect": .string("beginCapture"), "mode": .string(mode.rawValue)])
@@ -216,7 +180,7 @@ extension HoldEffect {
 
 extension ConnectedController {
     /// `{"id", "profileID", "displayName"}`, every field required.
-    init(fixture descriptor: FixtureJSON) throws {
+    init(fixture descriptor: JSONValue) throws {
         guard let id = descriptor["id"]?.stringValue,
               let profileID = descriptor["profileID"]?.stringValue,
               let displayName = descriptor["displayName"]?.stringValue else {
@@ -225,7 +189,7 @@ extension ConnectedController {
         self.init(id: id, profileID: profileID, displayName: displayName)
     }
 
-    var fixtureDescriptor: FixtureJSON {
+    var fixtureDescriptor: JSONValue {
         .object(["id": .string(id), "profileID": .string(profileID), "displayName": .string(displayName)])
     }
 }
