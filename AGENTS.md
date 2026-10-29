@@ -81,7 +81,10 @@ clearly without them. CI runs the cargo job on macOS, Windows and Linux.
   `CoreBridgeSession.swift` (DESIGN v2.12). The core returns effects and
   the platform carries them out in order (CONTEXT.md, "Effect"):
   ClaudeService owns the process and pipes, AppState the adapters,
-  config, transcript, speech and remote injector.
+  config, transcript, speech and remote injector. Slice 2.4 is moving the
+  ACP adapter's JSON-RPC rules into `harness::acp`, played against
+  `Tests/Fixtures/harness/acp-*.json`; `ACPAdapter` does not call them
+  until its bridge lands.
 - **Panic rule.** Every public core function is total: it returns its
   value, or a `Result` when it can fail, and never panics. Library code
   never calls `unwrap`, `expect` or `panic!` (clippy denies the first two).
@@ -182,7 +185,8 @@ are in `Tests/PowerUpCoreTests/`.
 - Don't spawn real ACP agents or npx bridges (opencode, `claude-agent-acp`,
   `codex-acp`) from tests or ad-hoc verification — they hit the network and
   run under the user's real agent logins. ACPAdapter is tested against the
-  scripted mock agent (see `ACPAdapterTests`); live wire shapes come from
+  scripted mock agent (`Tests/Fixtures/harness/acp-mock-agent.py`, run by
+  `ACPAdapterTests`); live wire shapes come from
   DESIGN.md's verified probes.
 - The tests pin many wire-protocol details; update tests and DESIGN.md
   together only if the CLI genuinely changes.

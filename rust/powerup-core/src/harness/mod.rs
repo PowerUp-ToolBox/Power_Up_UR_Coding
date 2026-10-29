@@ -4,6 +4,7 @@
 //! reads its stdout lines with the one Foundation-matching JSON reader
 //! (`json`).
 
+pub mod acp;
 pub mod claude;
 pub mod destructive;
 pub(crate) mod json;

@@ -130,6 +130,7 @@ final class ACPAdapterIntegrationTests: XCTestCase {
         XCTAssertEqual(adapter.state, .ready)
         XCTAssertEqual(adapter.sessionID, "mock-session")
         XCTAssertEqual(adapter.modelName, "mock/model-1")
+        try assertTranscript(matchesCase: "mock agent: the handshake gives sessionReady")
     }
 
     func testPromptStreamsToolsPermissionAndCompletion() async throws {
@@ -201,5 +202,50 @@ final class ACPAdapterIntegrationTests: XCTestCase {
         adapter.setModel("bad")
         try await waitForEvent { if case .controlResult("set_model", false, _, "bad") = $0 { return true }; return false }
         XCTAssertEqual(adapter.modelName, "mock/model-2", "a rejected switch must not change the model")
+        try assertTranscript(matchesCase: "mock agent: set_model accepted, then rejected")
+    }
+
+    // MARK: The exchange against the shared table
+
+    /// Checks the mock's record against the "mock agent:" case `name` of
+    /// `Tests/Fixtures/harness/acp-adapter.json`: the lines the mock sent are
+    /// the case's `line` steps, byte for byte and in order, and the lines it
+    /// read are the case's `writeStdin` lines, compared as JSON. That is what
+    /// makes the table's mock lines the real mock's, answering the real
+    /// adapter.
+    private func assertTranscript(matchesCase name: String,
+                                  file: StaticString = #filePath, line: UInt = #line) throws {
+        let fileName = "acp-adapter.json"
+        let table = try TextSafetyFixtures.load(fileName, area: "harness",
+                                                input: JSONValue.self, expected: JSONValue.self)
+        let fixtureCase = try XCTUnwrap(table.cases.first { $0.name == name },
+                                        "\(fileName) has no case \(name)", file: file, line: line)
+        guard case .array(let steps)? = fixtureCase.input["steps"],
+              case .array(let effectLists)? = fixtureCase.expected["effects"] else {
+            throw FixtureValueError(description: "\(fileName) case \(name) has no steps or effects")
+        }
+        let tableSent = steps.compactMap { $0["line"]?.stringValue }
+        let tableWritten = effectLists.flatMap { list -> [JSONValue] in
+            guard case .array(let effects) = list else { return [] }
+            return effects.compactMap { $0["effect"] == .string("writeStdin") ? $0["line"] : nil }
+        }
+
+        var sent: [String] = []
+        var received: [JSONValue] = []
+        let record = try String(contentsOf: recordURL, encoding: .utf8)
+        for entry in record.split(separator: "\n") {
+            let value = try JSONDecoder().decode(JSONValue.self, from: Data(entry.utf8))
+            if let text = value["sent"]?.stringValue {
+                sent.append(text)
+            } else if let text = value["received"]?.stringValue {
+                received.append(try JSONDecoder().decode(JSONValue.self, from: Data(text.utf8)))
+            } else {
+                throw FixtureValueError(description: "an unknown record entry: \(entry)")
+            }
+        }
+        XCTAssertEqual(sent, tableSent, "the mock's lines differ from \(fileName) case \(name)",
+                       file: file, line: line)
+        XCTAssertEqual(received, tableWritten, "the adapter's lines differ from \(fileName) case \(name)",
+                       file: file, line: line)
     }
 }

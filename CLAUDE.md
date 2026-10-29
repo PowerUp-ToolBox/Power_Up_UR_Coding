@@ -92,7 +92,8 @@ core".
 - Don't spawn real ACP agents or npx bridges (opencode, `claude-agent-acp`,
   `codex-acp`) from tests or ad-hoc verification — they hit the network and
   run under the user's real agent logins. ACPAdapter is tested against the
-  scripted mock agent (see `ACPAdapterTests`).
+  scripted mock agent (`Tests/Fixtures/harness/acp-mock-agent.py`, run by
+  `ACPAdapterTests`).
 
 ## Agent skills
 

@@ -3,8 +3,9 @@
 Language-neutral test data that every implementation of PowerUp's rules is
 checked against (PLAN-any-device-any-os.md, ADR 0012): the Swift app's XCTest
 suites play every file, and the Rust core's `cargo test` plays the areas whose
-rules it owns so far (`mapping/` and `device/`, since slice 2.2, and
-`harness/`, `status/` and `session/`, since slice 2.3) and checks the
+rules it owns so far (`mapping/` and `device/`, since slice 2.2,
+`harness/`, `status/` and `session/`, since slice 2.3, and the ACP tables
+of `harness/`, since slice 2.4) and checks the
 format of the rest, picking up
 more as later slices port them. Each implementation loads these files from
 its own source location. Swift resolves
@@ -224,6 +225,50 @@ with Python 3; never copy it. Swift's `ACPAdapterIntegrationTests` drives
 the app's `ACPAdapter` against it. With `--record PATH` it appends one JSON
 object per line to `PATH`: `{"received": <a line it read, without the line
 break>}` and `{"sent": <a line it wrote, without the newline>}`.
+
+The ACP adapter's rules (spec #99, slice 2.4) are two case tables:
+`acp-adapter.json` holds what each call, each raw stdout line of the agent,
+each exit and each timer does, as the effects the platform carries out, and
+`acp-agent-lines.json` what one agent line does in a ready session. They
+use the line input and harness event descriptors above, and these:
+
+| Descriptor | Shape |
+| --- | --- |
+| acp effect | `{"effect": "publish", "state", "sessionID", "modelName", "totalTokens"}`, `{"effect": "spawn", "generation", "executable", "arguments", "projectDir"}`, `{"effect": "writeStdin", "line": <the JSON object of the line>}`, `{"effect": "closeStdin"}`, `{"effect": "terminateAfterGrace", "seconds"}`, `{"effect": "armStartWatchdog", "generation", "seconds"}`, `{"effect": "emit", "event": <harness event>}` |
+| acp step | an object with exactly one of these keys, every field required: `{"start": {projectDir, agentCommand}}` (`agentCommand` a list of strings or `null`), `{"spawned": true}`, `{"spawnFailed": {executable, description}}`, `{"send": <text>}`, `{"setModel": <model>}`, `{"setPermissionMode": <mode>}`, `{"stop": true}`, `{"line": <line input>}`, `{"retiredLine": <line input>}`, `{"terminated": {exitCode, stderrTail}}`, `{"retiredTerminated": {…}}`, `{"watchdog": true}` and `{"retiredWatchdog": true}`. The `retired` steps come from the launch before the current one; the others are for the current launch |
+
+`acp-adapter.json` takes `{steps}` and plays them in order on a fresh
+adapter (JSON-RPC ids count from 1 and are never reset); it expects
+`{effects, snapshot}`: one list of acp effects per step, and the published
+state after the last step (`{state, sessionID, modelName, totalTokens}`).
+A `start` takes only the two fields ACP reads; a runner fills the rest of
+the harness configuration with `"default"` and `null`. Written lines are
+compared as JSON, since key order and escaping are the writer's; every line
+ends with its only newline. A `publish` is pushed before any other effect
+whenever the state changed since the last one, and at the end of a call,
+so a case pins what an observer saw when each event arrived.
+
+`acp-agent-lines.json` takes a line input and expects a list of acp
+effects. Every case starts from the same handshake, which the runners
+check reaches `sessionReady(s1, m1)` first: start `{projectDir
+"/work/app", agentCommand ["agent"]}`, spawned,
+`{"jsonrpc":"2.0","id":1,"result":{}}` and
+`{"jsonrpc":"2.0","id":2,"result":{"sessionId":"s1","models":{"currentModelId":"m1"}}}`.
+
+Cases named `mock agent: …` are the exchange with `acp-mock-agent.py`:
+their `line` steps are the mock's lines byte for byte, and their start
+uses the command the integration tests run (`python3 acp-mock-agent.py` in
+`/tmp`). `ACPAdapterIntegrationTests` runs the mock with `--record` and
+checks that what it sent equals those `line` steps and what it read equals
+the case's `writeStdin` lines, so the table's mock lines are the real
+mock's, answering the real adapter.
+
+The expectations were checked against `ACPAdapter.swift` at `dddf9c6`
+(the last Swift-only version) with a scratch differential harness that
+stubs the process and the timers and compares every written line, every
+event, the state each event saw and the state after each step. The Rust
+runner is `rust/powerup-core/tests/acp.rs` (its helpers are in
+`tests/support`).
 
 ## `session/`: session scenarios (format 1)
 

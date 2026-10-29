@@ -1,0 +1,591 @@
+{
+  "description": "One stdout line of an ACP agent in a ready session, and the effects it gives. Each case starts from the same handshake: start {projectDir \"/work/app\", agentCommand [\"agent\"]}, spawned, {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}} and {\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"s1\",\"models\":{\"currentModelId\":\"m1\"}}}, which must give sessionReady(s1, m1); then the case's line is fed to the same launch. Lines are read with the shared Foundation-matching reader (HK-393) and fields as Swift casts them (HK-403). Only agent_message_chunk and tool_call updates show; thoughts and every other kind are ignored (HK-151). Text lengths count extended grapheme clusters (HK-063).",
+  "function": "one agent line in a ready session ↔ AcpAdapter::stdout_line after the standard handshake — input: a line input; expected: [acp effect]",
+  "verifiedBy": "DESIGN.md v2.0, v2.2 E. Rust: rust/powerup-core/tests/acp.rs acp_agent_lines_cases runs AcpAdapter; the Swift app plays it through CoreBridge from slice 2.4's bridge ticket (#155).",
+  "capturedAgainst": "ACPAdapter.swift at dddf9c6 through a scratch differential harness (Swift 5.9.2, macOS 27.2) that checks every written line, every event and the state each event sees",
+  "cases": [
+    {
+      "name": "a thought is ignored",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"agent_thought_chunk\",\"content\":{\"type\":\"text\",\"text\":\"thinking\"}}}}",
+      "expected": [],
+      "reason": "HK-151: agent_thought_chunk never reaches the reply or the stream."
+    },
+    {
+      "name": "a message chunk streams",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"Hello\"}}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "replyDelta",
+            "text": "Hello"
+          }
+        }
+      ],
+      "reason": "agent_message_chunk text streams as a reply delta."
+    },
+    {
+      "name": "an empty chunk is dropped",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"\"}}}}",
+      "expected": [],
+      "reason": "HK-151: an empty chunk is not a delta."
+    },
+    {
+      "name": "a chunk whose text is not a string is dropped",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":5}}}}",
+      "expected": [],
+      "reason": "HK-403: text reads only as a string."
+    },
+    {
+      "name": "a chunk without content is dropped",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\"}}}",
+      "expected": [],
+      "reason": "No content, nothing to stream."
+    },
+    {
+      "name": "a chunk whose content is not an object is dropped",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":\"Hello\"}}}",
+      "expected": [],
+      "reason": "HK-403: content reads only as an object."
+    },
+    {
+      "name": "the content type is not checked",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"image\",\"text\":\"alt\"}}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "replyDelta",
+            "text": "alt"
+          }
+        }
+      ],
+      "reason": "Any content with text streams; the type is never compared."
+    },
+    {
+      "name": "a chunk keeps its whitespace",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\" a\\n\\tb \"}}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "replyDelta",
+            "text": " a\n\tb "
+          }
+        }
+      ],
+      "reason": "Deltas stream as sent; only the final reply is trimmed."
+    },
+    {
+      "name": "the Claude bridge's toolName wins over the title",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"t1\",\"title\":\"Read src/a.swift\",\"_meta\":{\"claudeCode\":{\"toolName\":\"Read\"}},\"locations\":[{\"path\":\"/work/app/src/a.swift\"}]}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "toolUse",
+            "name": "Read",
+            "detail": "a.swift"
+          }
+        }
+      ],
+      "reason": "HK-149: the bridge's title is a long phrase, so _meta.claudeCode.toolName names the tool."
+    },
+    {
+      "name": "the title names the tool without a toolName",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"t1\",\"title\":\"Edit File\",\"kind\":\"edit\"}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "toolUse",
+            "name": "Edit File",
+            "detail": ""
+          }
+        }
+      ],
+      "reason": "HK-149: opencode sends only a title."
+    },
+    {
+      "name": "a tool with no name is Tool",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"t1\"}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "toolUse",
+            "name": "Tool",
+            "detail": ""
+          }
+        }
+      ],
+      "reason": "HK-149: with neither, the name is Tool."
+    },
+    {
+      "name": "an empty toolName is used",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"t1\",\"title\":\"Read it\",\"_meta\":{\"claudeCode\":{\"toolName\":\"\"}}}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "toolUse",
+            "name": "",
+            "detail": ""
+          }
+        }
+      ],
+      "reason": "HK-149: any string toolName wins, an empty one too."
+    },
+    {
+      "name": "a non-string toolName falls back to the title",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"t1\",\"title\":\"Grep\",\"_meta\":{\"claudeCode\":{\"toolName\":3}}}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "toolUse",
+            "name": "Grep",
+            "detail": ""
+          }
+        }
+      ],
+      "reason": "HK-403: toolName reads only as a string."
+    },
+    {
+      "name": "a non-string title falls back to Tool",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"t1\",\"title\":[\"Edit\"]}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "toolUse",
+            "name": "Tool",
+            "detail": ""
+          }
+        }
+      ],
+      "reason": "HK-403: title reads only as a string."
+    },
+    {
+      "name": "the detail is the first location's file name",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"t1\",\"title\":\"Edit\",\"locations\":[{\"path\":\"/work/app/src/a.swift\",\"line\":3},{\"path\":\"/b.txt\"}],\"rawInput\":{\"command\":\"ls\"}}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "toolUse",
+            "name": "Edit",
+            "detail": "a.swift"
+          }
+        }
+      ],
+      "reason": "HK-150: a path's last component is the short detail; rawInput is not consulted."
+    },
+    {
+      "name": "a folder location keeps its name",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"t1\",\"title\":\"List\",\"locations\":[{\"path\":\"/work/app/src/\"}]}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "toolUse",
+            "name": "List",
+            "detail": "src"
+          }
+        }
+      ],
+      "reason": "HK-150: NSString's lastPathComponent drops a trailing slash."
+    },
+    {
+      "name": "a first location without a path falls through to rawInput",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"t1\",\"title\":\"Run\",\"locations\":[{\"line\":1},{\"path\":\"/work/b.swift\"}],\"rawInput\":{\"command\":\"make\"}}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "toolUse",
+            "name": "Run",
+            "detail": "make"
+          }
+        }
+      ],
+      "reason": "HK-150: only the first location is tried; the second is never looked at."
+    },
+    {
+      "name": "an empty first path falls through to rawInput",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"t1\",\"title\":\"Run\",\"locations\":[{\"path\":\"\"}],\"rawInput\":{\"command\":\"make\"}}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "toolUse",
+            "name": "Run",
+            "detail": "make"
+          }
+        }
+      ],
+      "reason": "HK-150: an empty path is no path."
+    },
+    {
+      "name": "a non-object location empties the list",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"t1\",\"title\":\"Edit\",\"locations\":[{\"path\":\"/work/a.swift\"},5],\"rawInput\":{\"file_path\":\"/work/z.txt\"}}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "toolUse",
+            "name": "Edit",
+            "detail": "/work/z.txt"
+          }
+        }
+      ],
+      "reason": "HK-403: locations casts all-or-nothing to an array of objects, so one bad element hides even a good first one."
+    },
+    {
+      "name": "rawInput keys go in a fixed order",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"t1\",\"title\":\"Bash\",\"rawInput\":{\"command\":\"ls\",\"file_path\":\"/a/b.txt\"}}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "toolUse",
+            "name": "Bash",
+            "detail": "/a/b.txt"
+          }
+        }
+      ],
+      "reason": "HK-150: file_path comes before command whatever order the agent sent them in; a rawInput value is never shortened to a file name."
+    },
+    {
+      "name": "rawInput description",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"t1\",\"title\":\"Task\",\"rawInput\":{\"description\":\"Run the tests\"}}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "toolUse",
+            "name": "Task",
+            "detail": "Run the tests"
+          }
+        }
+      ],
+      "reason": "HK-150: description is a detail key."
+    },
+    {
+      "name": "rawInput pattern",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"t1\",\"title\":\"Grep\",\"rawInput\":{\"pattern\":\"TODO|FIXME\"}}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "toolUse",
+            "name": "Grep",
+            "detail": "TODO|FIXME"
+          }
+        }
+      ],
+      "reason": "HK-150: pattern is a detail key."
+    },
+    {
+      "name": "rawInput url",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"t1\",\"title\":\"Fetch\",\"rawInput\":{\"url\":\"https://example.com/a\"}}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "toolUse",
+            "name": "Fetch",
+            "detail": "https://example.com/a"
+          }
+        }
+      ],
+      "reason": "HK-150: url is a detail key."
+    },
+    {
+      "name": "an empty rawInput value is skipped",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"t1\",\"title\":\"Bash\",\"rawInput\":{\"file_path\":\"\",\"command\":\"ls\"}}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "toolUse",
+            "name": "Bash",
+            "detail": "ls"
+          }
+        }
+      ],
+      "reason": "HK-150: the first non-empty value wins."
+    },
+    {
+      "name": "a non-string rawInput value is skipped",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"t1\",\"title\":\"Bash\",\"rawInput\":{\"file_path\":5,\"command\":\"ls\"}}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "toolUse",
+            "name": "Bash",
+            "detail": "ls"
+          }
+        }
+      ],
+      "reason": "HK-403: values read only as strings."
+    },
+    {
+      "name": "prompt is not an ACP detail key",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"t1\",\"title\":\"Task\",\"rawInput\":{\"prompt\":\"do it\"}}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "toolUse",
+            "name": "Task",
+            "detail": ""
+          }
+        }
+      ],
+      "reason": "HK-150: Claude's list has prompt; ACP's does not."
+    },
+    {
+      "name": "rawInput that is not an object gives no detail",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"t1\",\"title\":\"Bash\",\"rawInput\":\"ls\"}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "toolUse",
+            "name": "Bash",
+            "detail": ""
+          }
+        }
+      ],
+      "reason": "HK-403: rawInput reads only as an object."
+    },
+    {
+      "name": "a detail of 80 clusters is kept",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"t1\",\"title\":\"Bash\",\"rawInput\":{\"command\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "toolUse",
+            "name": "Bash",
+            "detail": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      ],
+      "reason": "HK-150: up to 80 extended grapheme clusters stay whole."
+    },
+    {
+      "name": "a detail of 81 clusters keeps 79 and an ellipsis",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"t1\",\"title\":\"Bash\",\"rawInput\":{\"command\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "toolUse",
+            "name": "Bash",
+            "detail": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa…"
+          }
+        }
+      ],
+      "reason": "HK-150: over 80 clusters it becomes the first 79 and …"
+    },
+    {
+      "name": "the cut counts clusters, not scalars",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"t1\",\"title\":\"Bash\",\"rawInput\":{\"command\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa👍🏽zz\"}}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "toolUse",
+            "name": "Bash",
+            "detail": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa👍🏽…"
+          }
+        }
+      ],
+      "reason": "HK-063, HK-150: a skin-toned emoji is one cluster of two scalars; the cut keeps it whole."
+    },
+    {
+      "name": "a long detail keeps its line breaks",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"t1\",\"title\":\"Bash\",\"rawInput\":{\"command\":\"echo a\\nb\\tc\"}}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "toolUse",
+            "name": "Bash",
+            "detail": "echo a\nb\tc"
+          }
+        }
+      ],
+      "reason": "HK-150: unlike Claude's tool text, the ACP detail is not condensed."
+    },
+    {
+      "name": "tool_call_update is ignored",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"content\":{\"type\":\"text\",\"text\":\"x\"},\"title\":\"x\"}}}",
+      "expected": [],
+      "reason": "HK-151: every update kind other than agent_message_chunk and tool_call is ignored."
+    },
+    {
+      "name": "usage_update is ignored",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"usage_update\",\"content\":{\"type\":\"text\",\"text\":\"x\"},\"title\":\"x\"}}}",
+      "expected": [],
+      "reason": "HK-151: every update kind other than agent_message_chunk and tool_call is ignored."
+    },
+    {
+      "name": "plan is ignored",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"plan\",\"content\":{\"type\":\"text\",\"text\":\"x\"},\"title\":\"x\"}}}",
+      "expected": [],
+      "reason": "HK-151: every update kind other than agent_message_chunk and tool_call is ignored."
+    },
+    {
+      "name": "available_commands_update is ignored",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"available_commands_update\",\"content\":{\"type\":\"text\",\"text\":\"x\"},\"title\":\"x\"}}}",
+      "expected": [],
+      "reason": "HK-151: every update kind other than agent_message_chunk and tool_call is ignored."
+    },
+    {
+      "name": "current_mode_update is ignored",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"current_mode_update\",\"content\":{\"type\":\"text\",\"text\":\"x\"},\"title\":\"x\"}}}",
+      "expected": [],
+      "reason": "HK-151: every update kind other than agent_message_chunk and tool_call is ignored."
+    },
+    {
+      "name": "something_new is ignored",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"something_new\",\"content\":{\"type\":\"text\",\"text\":\"x\"},\"title\":\"x\"}}}",
+      "expected": [],
+      "reason": "HK-151: every update kind other than agent_message_chunk and tool_call is ignored."
+    },
+    {
+      "name": "an update without sessionUpdate is ignored",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"content\":{\"type\":\"text\",\"text\":\"x\"}}}}",
+      "expected": [],
+      "reason": "Defensive parsing: no kind, nothing to do."
+    },
+    {
+      "name": "a non-string sessionUpdate is ignored",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":1,\"content\":{\"type\":\"text\",\"text\":\"x\"}}}}",
+      "expected": [],
+      "reason": "HK-403: the kind reads only as a string."
+    },
+    {
+      "name": "an update that is not an object is ignored",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":\"agent_message_chunk\"}}",
+      "expected": [],
+      "reason": "HK-403: update reads only as an object."
+    },
+    {
+      "name": "an update without params is ignored",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\"}",
+      "expected": [],
+      "reason": "Defensive parsing: no params, no update."
+    },
+    {
+      "name": "an update for another session still applies",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"other\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"hi\"}}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "replyDelta",
+            "text": "hi"
+          }
+        }
+      ],
+      "reason": "HK-402: an update's sessionId is never compared."
+    },
+    {
+      "name": "another notification is ignored",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/other\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"text\":\"x\"}}}}",
+      "expected": [],
+      "reason": "Only session/update is read; any other notification is ignored."
+    },
+    {
+      "name": "a non-string method is ignored",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":5,\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"text\":\"x\"}}}}",
+      "expected": [],
+      "reason": "HK-403: method reads only as a string."
+    },
+    {
+      "name": "jsonrpc is not checked",
+      "input": "{\"method\":\"session/update\",\"params\":{\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"text\":\"x\"}}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "replyDelta",
+            "text": "x"
+          }
+        }
+      ],
+      "reason": "Defensive parsing: a message without the jsonrpc member is read like any other."
+    },
+    {
+      "name": "a line that is not JSON is ignored",
+      "input": "this is not json",
+      "expected": [],
+      "reason": "HK-146: garbage never crashes."
+    },
+    {
+      "name": "an array line is ignored",
+      "input": "[1,2]",
+      "expected": [],
+      "reason": "HK-146: only an object is a message."
+    },
+    {
+      "name": "an empty object is ignored",
+      "input": "{}",
+      "expected": [],
+      "reason": "HK-146: no id and no method, nothing to do."
+    },
+    {
+      "name": "a byte order mark is skipped",
+      "input": "﻿{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"bom\"}}}}",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "replyDelta",
+            "text": "bom"
+          }
+        }
+      ],
+      "reason": "HK-393: the shared reader skips one leading byte order mark."
+    },
+    {
+      "name": "a trailing carriage return is accepted",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"crlf\"}}}}\r",
+      "expected": [
+        {
+          "effect": "emit",
+          "event": {
+            "type": "replyDelta",
+            "text": "crlf"
+          }
+        }
+      ],
+      "reason": "HK-393: CR is JSON whitespace, so a CRLF agent still reads."
+    },
+    {
+      "name": "of two sessionUpdate keys the first wins",
+      "input": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"update\":{\"sessionUpdate\":\"agent_thought_chunk\",\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"text\":\"x\"}}}}",
+      "expected": [],
+      "reason": "HK-393: Foundation keeps the first of two equal keys, so this is a thought."
+    },
+    {
+      "name": "invalid UTF-8 is ignored",
+      "input": {
+        "hex": "7b226a736f6e727063223a22322e30222c226d6574686f64223a2273657373696f6e2f757064617465222c22706172616d73223a7b2273657373696f6e4964223a227331222c22757064617465223a7b2273657373696f6e557064617465223a226167656e745f6d6573736167655f6368756e6b222c22636f6e74656e74223a7b2274797065223a2274657874222c2274657874223a22ff227d7d7d7d"
+      },
+      "expected": [],
+      "reason": "HK-393: a line that is not UTF-8 is not read."
+    },
+    {
+      "name": "a stray response is ignored",
+      "input": "{\"jsonrpc\":\"2.0\",\"id\":42,\"result\":{\"stopReason\":\"end_turn\"}}",
+      "expected": [],
+      "reason": "HK-146: a response to an id we never sent changes nothing."
+    }
+  ]
+}

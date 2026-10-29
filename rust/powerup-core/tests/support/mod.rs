@@ -14,6 +14,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use powerup_core::action::Action;
+use powerup_core::harness::acp::adapter::{AcpAdapterEffect, AcpSnapshot};
 use powerup_core::harness::claude::adapter::{ClaudeAdapterEffect, ClaudeSnapshot};
 use powerup_core::harness::claude::event::ClaudeEvent;
 use powerup_core::harness::{HarnessEvent, HarnessState};
@@ -431,21 +432,73 @@ pub fn adapter_effect_descriptor(effect: &ClaudeAdapterEffect) -> Value {
             "arguments": arguments, "projectDir": project_dir,
         }),
         ClaudeAdapterEffect::WriteStdin(line) => {
-            let text = std::str::from_utf8(line)
-                .unwrap_or_else(|e| panic!("a stdin line is not UTF-8: {e}"));
-            assert!(
-                text.ends_with('\n') && text.matches('\n').count() == 1,
-                "a stdin line is not one line: {text:?}"
-            );
-            let object: Value = serde_json::from_str(text)
-                .unwrap_or_else(|e| panic!("a stdin line is not JSON: {e}: {text:?}"));
-            serde_json::json!({"effect": "writeStdin", "line": object})
+            serde_json::json!({"effect": "writeStdin", "line": stdin_line_object(line)})
         }
         ClaudeAdapterEffect::CloseStdin => serde_json::json!({"effect": "closeStdin"}),
         ClaudeAdapterEffect::TerminateAfterGrace { seconds } => {
             serde_json::json!({"effect": "terminateAfterGrace", "seconds": number_value(*seconds)})
         }
         ClaudeAdapterEffect::Emit(event) => {
+            serde_json::json!({"effect": "emit", "event": harness_event_descriptor(event)})
+        }
+    }
+}
+
+/// The JSON object one written stdin line holds; the line must be UTF-8
+/// and end with its only newline.
+pub fn stdin_line_object(line: &[u8]) -> Value {
+    let text =
+        std::str::from_utf8(line).unwrap_or_else(|e| panic!("a stdin line is not UTF-8: {e}"));
+    assert!(
+        text.ends_with('\n') && text.matches('\n').count() == 1,
+        "a stdin line is not one line: {text:?}"
+    );
+    serde_json::from_str(text).unwrap_or_else(|e| panic!("a stdin line is not JSON: {e}: {text:?}"))
+}
+
+/// `{state, sessionID, modelName, totalTokens}`.
+pub fn acp_snapshot_fields(snapshot: &AcpSnapshot) -> serde_json::Map<String, Value> {
+    let mut fields = serde_json::Map::new();
+    fields.insert("state".into(), harness_state_name(snapshot.state).into());
+    fields.insert("sessionID".into(), snapshot.session_id.clone().into());
+    fields.insert("modelName".into(), snapshot.model_name.clone().into());
+    fields.insert("totalTokens".into(), snapshot.total_tokens.into());
+    fields
+}
+
+/// An acp effect (`Tests/Fixtures/README.md`, the ACP adapter): `{"effect":
+/// <name>}` plus the effect's fields; a written line is the JSON object it
+/// holds.
+pub fn acp_effect_descriptor(effect: &AcpAdapterEffect) -> Value {
+    match effect {
+        AcpAdapterEffect::Publish(snapshot) => {
+            let mut fields = acp_snapshot_fields(snapshot);
+            fields.insert("effect".into(), "publish".into());
+            Value::Object(fields)
+        }
+        AcpAdapterEffect::Spawn {
+            generation,
+            executable,
+            arguments,
+            project_dir,
+        } => serde_json::json!({
+            "effect": "spawn", "generation": generation, "executable": executable,
+            "arguments": arguments, "projectDir": project_dir,
+        }),
+        AcpAdapterEffect::WriteStdin(line) => {
+            serde_json::json!({"effect": "writeStdin", "line": stdin_line_object(line)})
+        }
+        AcpAdapterEffect::CloseStdin => serde_json::json!({"effect": "closeStdin"}),
+        AcpAdapterEffect::TerminateAfterGrace { seconds } => {
+            serde_json::json!({"effect": "terminateAfterGrace", "seconds": number_value(*seconds)})
+        }
+        AcpAdapterEffect::ArmStartWatchdog {
+            generation,
+            seconds,
+        } => serde_json::json!({
+            "effect": "armStartWatchdog", "generation": generation, "seconds": number_value(*seconds),
+        }),
+        AcpAdapterEffect::Emit(event) => {
             serde_json::json!({"effect": "emit", "event": harness_event_descriptor(event)})
         }
     }
