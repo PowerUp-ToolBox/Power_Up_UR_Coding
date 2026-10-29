@@ -201,7 +201,9 @@ The expectations of `claude-adapter.json` were written from
 `ClaudeService.swift` rather than captured, since the Swift adapter needed a
 real process. Since slice 2.3 (#152) `ClaudeService` carries out the core's
 adapter effects, and the Swift runner plays the table through the bridge's
-`CoreBridge.ClaudeAdapter`.
+`CoreBridge.ClaudeAdapter`. `Tests/PowerUpTests/ClaudeFakeCLITests.swift`
+drives the same adapter end to end, through a real pipe to a fake `claude`
+script the test writes.
 
 The Swift runner is `Tests/PowerUpTests/HarnessFixtureTests.swift` (its
 descriptor helpers are in `FixtureValues.swift`; `destructive-actions.json`
