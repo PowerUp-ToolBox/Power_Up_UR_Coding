@@ -1,0 +1,532 @@
+//! One stdout line read as Foundation's `JSONSerialization` reads it
+//! (HK-393), and its fields read as Swift reads them through `NSNumber`
+//! (HK-394).
+//!
+//! serde_json reads differently in ways a line can show: it keeps the last
+//! of two equal keys where Foundation keeps the first, it refuses a byte
+//! order mark and a trailing comma, and it recurses once per nesting level.
+//! The stdout reader thread has a 512 KB stack, and a stack overflow is not
+//! a panic the bridge can catch, so this reader keeps its own stack and
+//! never recurses, and dropping a value is iterative too.
+//!
+//! Measured on macOS 27.2 (Tests/Fixtures/harness/claude-stream.json pins
+//! each rule):
+//! - the line must be valid UTF-8, after one optional leading UTF-8 byte
+//!   order mark;
+//! - the root is an object or an array, with space, tab, LF and CR around
+//!   it and nothing else;
+//! - of two equal keys the first wins;
+//! - one trailing comma after the last member or element is accepted;
+//! - a value (a key included) may begin only while at most 512 containers
+//!   are open, so 513 nested empty arrays read but a value inside them
+//!   does not;
+//! - a number is the RFC 8259 grammar; it reads as the nearest double, a
+//!   number that overflows rejects the line and one that underflows reads
+//!   as zero;
+//! - strings reject raw control characters below U+0020, unknown escapes
+//!   and unpaired surrogates; `\u0000` is an ordinary character.
+//!
+//! Recorded differences, none of which a claude CLI line can show (it
+//! writes UTF-8 JSON whose numbers have at most 17 significant digits):
+//! Foundation also detects UTF-16 and UTF-32 text, which this reader
+//! rejects; it reads a number with more than 17 significant digits as an
+//! NSDecimalNumber and rejects the line when its exponent leaves Decimal's
+//! range, and rejects some exponents of four digits or more; and Swift's
+//! bridged dictionary merges keys that are canonically equivalent but
+//! spelled differently, which this reader keeps apart.
+
+/// A JSON value. Objects keep every member in order; [`JsonValue::get`]
+/// answers the first, as Foundation does.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum JsonValue {
+    Null,
+    Bool(bool),
+    Number(f64),
+    String(String),
+    Array(Vec<JsonValue>),
+    Object(Vec<(String, JsonValue)>),
+}
+
+/// A value may begin only while at most this many containers are open.
+pub(crate) const MAX_OPEN_CONTAINERS: usize = 512;
+
+const BYTE_ORDER_MARK: &[u8] = b"\xEF\xBB\xBF";
+
+impl JsonValue {
+    /// The first member named `key` of an object; `None` for anything else.
+    pub(crate) fn get(&self, key: &str) -> Option<&JsonValue> {
+        self.as_object()?
+            .iter()
+            .find(|(name, _)| name == key)
+            .map(|(_, value)| value)
+    }
+
+    /// Swift's `as? String`: strings only.
+    pub(crate) fn as_str(&self) -> Option<&str> {
+        match self {
+            JsonValue::String(text) => Some(text),
+            _ => None,
+        }
+    }
+
+    /// Swift's `as? Bool` on an NSNumber: a bool, or a number that is
+    /// exactly 0 or 1. Any other number reads as missing.
+    pub(crate) fn as_swift_bool(&self) -> Option<bool> {
+        match self {
+            JsonValue::Bool(flag) => Some(*flag),
+            JsonValue::Number(number) if *number == 0.0 => Some(false),
+            JsonValue::Number(number) if *number == 1.0 => Some(true),
+            _ => None,
+        }
+    }
+
+    /// Swift's `(as? NSNumber)?.doubleValue`: a number, or a bool as 1 or 0.
+    pub(crate) fn as_swift_number(&self) -> Option<f64> {
+        match self {
+            JsonValue::Number(number) => Some(*number),
+            JsonValue::Bool(flag) => Some(if *flag { 1.0 } else { 0.0 }),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_array(&self) -> Option<&[JsonValue]> {
+        match self {
+            JsonValue::Array(items) => Some(items),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_object(&self) -> Option<&[(String, JsonValue)]> {
+        match self {
+            JsonValue::Object(members) => Some(members),
+            _ => None,
+        }
+    }
+
+    /// Moves this value's children onto `into`, leaving it shallow.
+    fn take_children(&mut self, into: &mut Vec<JsonValue>) {
+        match self {
+            JsonValue::Array(items) => into.append(items),
+            JsonValue::Object(members) => into.extend(members.drain(..).map(|(_, value)| value)),
+            _ => {}
+        }
+    }
+}
+
+impl Drop for JsonValue {
+    /// Iterative, so a deep value never uses the call stack to go away.
+    fn drop(&mut self) {
+        let mut pending = Vec::new();
+        self.take_children(&mut pending);
+        while let Some(mut child) = pending.pop() {
+            child.take_children(&mut pending);
+        }
+    }
+}
+
+/// An open container while reading.
+enum Open {
+    Array(Vec<JsonValue>),
+    /// The members so far and the key whose value is being read.
+    Object(Vec<(String, JsonValue)>, Option<String>),
+}
+
+/// `JSONSerialization.jsonObject(with:)` for one line: the value, or `None`
+/// where Foundation would throw.
+pub(crate) fn read(bytes: &[u8]) -> Option<JsonValue> {
+    let bytes = bytes.strip_prefix(BYTE_ORDER_MARK).unwrap_or(bytes);
+    let text = std::str::from_utf8(bytes).ok()?;
+    let mut reader = Reader { text, at: 0 };
+    reader.skip_whitespace();
+    if !matches!(reader.peek(), Some(b'{' | b'[')) {
+        return None;
+    }
+    let root = reader.read_root()?;
+    reader.skip_whitespace();
+    (reader.at == text.len()).then_some(root)
+}
+
+struct Reader<'a> {
+    text: &'a str,
+    at: usize,
+}
+
+impl Reader<'_> {
+    fn peek(&self) -> Option<u8> {
+        self.text.as_bytes().get(self.at).copied()
+    }
+
+    fn skip_whitespace(&mut self) {
+        while matches!(self.peek(), Some(b' ' | b'\t' | b'\n' | b'\r')) {
+            self.at += 1;
+        }
+    }
+
+    fn eat(&mut self, byte: u8) -> bool {
+        if self.peek() == Some(byte) {
+            self.at += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// The whole value from the root's opening bracket, with an explicit
+    /// stack of open containers.
+    fn read_root(&mut self) -> Option<JsonValue> {
+        let mut open: Vec<Open> = Vec::new();
+        loop {
+            // A value begins here.
+            self.skip_whitespace();
+            if open.len() > MAX_OPEN_CONTAINERS {
+                return None;
+            }
+            let mut value = match self.peek()? {
+                b'{' => {
+                    self.at += 1;
+                    self.skip_whitespace();
+                    if self.eat(b'}') {
+                        JsonValue::Object(Vec::new())
+                    } else {
+                        let key = self.read_key(open.len() + 1)?;
+                        open.push(Open::Object(Vec::new(), Some(key)));
+                        continue;
+                    }
+                }
+                b'[' => {
+                    self.at += 1;
+                    self.skip_whitespace();
+                    if self.eat(b']') {
+                        JsonValue::Array(Vec::new())
+                    } else {
+                        open.push(Open::Array(Vec::new()));
+                        continue;
+                    }
+                }
+                b'"' => JsonValue::String(self.read_string()?),
+                b't' => self.read_literal("true", JsonValue::Bool(true))?,
+                b'f' => self.read_literal("false", JsonValue::Bool(false))?,
+                b'n' => self.read_literal("null", JsonValue::Null)?,
+                b'-' | b'0'..=b'9' => JsonValue::Number(self.read_number()?),
+                _ => return None,
+            };
+            // The value is complete: hand it to its container, closing every
+            // container it completes.
+            loop {
+                let depth = open.len();
+                let Some(parent) = open.last_mut() else {
+                    return Some(value);
+                };
+                match parent {
+                    Open::Array(items) => {
+                        items.push(value);
+                        self.skip_whitespace();
+                        if self.eat(b',') {
+                            self.skip_whitespace();
+                            if !self.eat(b']') {
+                                break;
+                            }
+                        } else if !self.eat(b']') {
+                            return None;
+                        }
+                    }
+                    Open::Object(members, key) => {
+                        let name = key.take()?;
+                        members.push((name, value));
+                        self.skip_whitespace();
+                        if self.eat(b',') {
+                            self.skip_whitespace();
+                            if !self.eat(b'}') {
+                                *key = Some(self.read_key(depth)?);
+                                break;
+                            }
+                        } else if !self.eat(b'}') {
+                            return None;
+                        }
+                    }
+                }
+                value = match open.pop()? {
+                    Open::Array(items) => JsonValue::Array(items),
+                    Open::Object(members, _) => JsonValue::Object(members),
+                };
+            }
+        }
+    }
+
+    /// A member's key and its colon; `open` containers are open around it.
+    fn read_key(&mut self, open: usize) -> Option<String> {
+        if open > MAX_OPEN_CONTAINERS || self.peek() != Some(b'"') {
+            return None;
+        }
+        let key = self.read_string()?;
+        self.skip_whitespace();
+        self.eat(b':').then_some(key)
+    }
+
+    fn read_literal(&mut self, word: &str, value: JsonValue) -> Option<JsonValue> {
+        if self.text[self.at..].starts_with(word) {
+            self.at += word.len();
+            Some(value)
+        } else {
+            None
+        }
+    }
+
+    /// `-? (0 | [1-9][0-9]*) (. [0-9]+)? ([eE] [+-]? [0-9]+)?`, read as the
+    /// nearest double; `None` when it overflows.
+    fn read_number(&mut self) -> Option<f64> {
+        let start = self.at;
+        self.eat(b'-');
+        match self.peek()? {
+            b'0' => self.at += 1,
+            b'1'..=b'9' => self.skip_digits(),
+            _ => return None,
+        }
+        if self.eat(b'.') {
+            self.require_digits()?;
+        }
+        if matches!(self.peek(), Some(b'e' | b'E')) {
+            self.at += 1;
+            if matches!(self.peek(), Some(b'+' | b'-')) {
+                self.at += 1;
+            }
+            self.require_digits()?;
+        }
+        let number: f64 = self.text[start..self.at].parse().ok()?;
+        number.is_finite().then_some(number)
+    }
+
+    fn skip_digits(&mut self) {
+        while matches!(self.peek(), Some(b'0'..=b'9')) {
+            self.at += 1;
+        }
+    }
+
+    fn require_digits(&mut self) -> Option<()> {
+        let start = self.at;
+        self.skip_digits();
+        (self.at > start).then_some(())
+    }
+
+    /// A string from its opening quote.
+    fn read_string(&mut self) -> Option<String> {
+        self.at += 1;
+        let mut out = String::new();
+        let mut run = self.at;
+        loop {
+            match self.peek()? {
+                b'"' => {
+                    out.push_str(&self.text[run..self.at]);
+                    self.at += 1;
+                    return Some(out);
+                }
+                b'\\' => {
+                    out.push_str(&self.text[run..self.at]);
+                    self.at += 1;
+                    out.push(self.read_escape()?);
+                    run = self.at;
+                }
+                0x00..=0x1F => return None,
+                _ => self.at += 1,
+            }
+        }
+    }
+
+    /// The character an escape (after its backslash) stands for.
+    fn read_escape(&mut self) -> Option<char> {
+        let escape = self.peek()?;
+        self.at += 1;
+        Some(match escape {
+            b'"' => '"',
+            b'\\' => '\\',
+            b'/' => '/',
+            b'b' => '\u{8}',
+            b'f' => '\u{c}',
+            b'n' => '\n',
+            b'r' => '\r',
+            b't' => '\t',
+            b'u' => {
+                let unit = self.read_hex4()?;
+                match unit {
+                    0xD800..=0xDBFF => {
+                        if !(self.eat(b'\\') && self.eat(b'u')) {
+                            return None;
+                        }
+                        let low = self.read_hex4()?;
+                        if !(0xDC00..=0xDFFF).contains(&low) {
+                            return None;
+                        }
+                        char::from_u32(0x10000 + ((unit - 0xD800) << 10) + (low - 0xDC00))?
+                    }
+                    0xDC00..=0xDFFF => return None,
+                    _ => char::from_u32(unit)?,
+                }
+            }
+            _ => return None,
+        })
+    }
+
+    fn read_hex4(&mut self) -> Option<u32> {
+        let digits = self.text.get(self.at..self.at + 4)?;
+        if !digits.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return None;
+        }
+        self.at += 4;
+        u32::from_str_radix(digits, 16).ok()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn read_str(text: &str) -> Option<JsonValue> {
+        read(text.as_bytes())
+    }
+
+    #[test]
+    fn the_first_of_two_equal_keys_wins() {
+        let value = read_str(r#"{"subtype":"a","subtype":"b"}"#).unwrap();
+        assert_eq!(value.get("subtype").and_then(JsonValue::as_str), Some("a"));
+    }
+
+    #[test]
+    fn one_leading_byte_order_mark_is_skipped() {
+        assert!(read(b"\xEF\xBB\xBF{}").is_some());
+        assert!(read(b"\xEF\xBB\xBF\xEF\xBB\xBF{}").is_none());
+        assert!(read(b"\xEF\xBB\xBF").is_none());
+        assert!(read(b" \xEF\xBB\xBF{}").is_none());
+    }
+
+    #[test]
+    fn a_value_may_begin_inside_at_most_512_open_containers() {
+        let deep = |opened: usize, inner: &str| {
+            format!("{}{inner}{}", "[".repeat(opened), "]".repeat(opened))
+        };
+        assert!(read_str(&deep(513, "")).is_some());
+        assert!(read_str(&deep(514, "")).is_none());
+        assert!(read_str(&deep(512, "1")).is_some());
+        assert!(read_str(&deep(513, "1")).is_none());
+        assert!(read_str(&deep(511, r#"{"a":1}"#)).is_some());
+        assert!(read_str(&deep(512, r#"{"a":1}"#)).is_none());
+        assert!(read_str(&deep(512, "{}")).is_some());
+        let objects = |opened: usize, inner: &str| {
+            format!("{}{inner}{}", r#"{"a":"#.repeat(opened), "}".repeat(opened))
+        };
+        assert!(read_str(&objects(512, "{}")).is_some());
+        assert!(read_str(&objects(512, "1")).is_some());
+        assert!(read_str(&objects(513, "1")).is_none());
+    }
+
+    #[test]
+    fn a_deep_line_does_not_use_the_call_stack() {
+        let worker = std::thread::Builder::new()
+            .stack_size(64 * 1024)
+            .spawn(|| {
+                let line = format!("{}{}", "[".repeat(512), "]".repeat(512));
+                let deep = read_str(&line).is_some();
+                let objects = format!("{}1{}", r#"{"a":"#.repeat(512), "}".repeat(512));
+                deep && read_str(&objects).is_some()
+            })
+            .unwrap();
+        assert!(worker.join().unwrap());
+    }
+
+    #[test]
+    fn numbers_read_like_foundation() {
+        let number =
+            |text: &str| read_str(&format!(r#"{{"n":{text}}}"#)).map(|v| v.get("n").cloned());
+        assert_eq!(number("1e400"), None);
+        assert_eq!(number("1e-400"), Some(Some(JsonValue::Number(0.0))));
+        assert_eq!(
+            number("123456789012345678901234567890"),
+            Some(Some(JsonValue::Number(1.234_567_890_123_456_8e29)))
+        );
+        assert_eq!(number("1E+2"), Some(Some(JsonValue::Number(100.0))));
+        for rejected in ["01", "1.", ".5", "+1", "1e", "-", "NaN", "1e+", "-01"] {
+            assert_eq!(number(rejected), None, "{rejected}");
+        }
+    }
+
+    #[test]
+    fn strings_read_like_foundation() {
+        let string = |text: &str| {
+            read_str(&format!(r#"{{"s":{text}}}"#))
+                .and_then(|v| v.get("s").and_then(JsonValue::as_str).map(str::to_owned))
+        };
+        assert_eq!(string(r#""😀é\/""#).as_deref(), Some("😀é/"));
+        assert_eq!(string(r#""a\u0000b""#).as_deref(), Some("a\u{0}b"));
+        assert_eq!(string("\"\u{7f}\"").as_deref(), Some("\u{7f}"));
+        for rejected in [
+            r#""\ud800""#,
+            r#""\udc00""#,
+            r#""\ud800A""#,
+            r#""\x""#,
+            "\"a\tb\"",
+            "'a'",
+        ] {
+            assert_eq!(string(rejected), None, "{rejected}");
+        }
+    }
+
+    #[test]
+    fn the_root_is_an_object_or_an_array_alone() {
+        assert!(read_str(" \t\r\n{} \r").is_some());
+        assert!(read_str("[1,2]").is_some());
+        for rejected in [
+            "\"x\"",
+            "1",
+            "null",
+            "{} x",
+            "{}\u{0}",
+            "{}\u{c}",
+            "\u{b}{}",
+            "",
+            "{\"a\":1 /* c */}",
+        ] {
+            assert!(read_str(rejected).is_none(), "{rejected:?}");
+        }
+    }
+
+    #[test]
+    fn one_trailing_comma_is_accepted() {
+        assert!(read_str(r#"{"a":1,}"#).is_some());
+        assert!(read_str(r#"{"a":[1 , ],"b":{"c":1,} , }"#).is_some());
+        for rejected in [
+            "{,}",
+            "[,]",
+            r#"{"a":1,,}"#,
+            "[1,,2]",
+            "[1,,]",
+            r#"{"a":1,"#,
+        ] {
+            assert!(read_str(rejected).is_none(), "{rejected}");
+        }
+    }
+
+    #[test]
+    fn only_utf8_is_read() {
+        assert!(read(b"{\"a\":\"\xFF\"}").is_none());
+        assert!(read(b"{\"a\":\"\xC0\xAF\"}").is_none());
+        assert!(read(b"{\"a\":\"\xED\xA0\x80\"}").is_none());
+        // Foundation would detect UTF-16 here; the CLI never writes it.
+        assert!(read(b"{\x00}\x00").is_none());
+    }
+
+    #[test]
+    fn swift_reads_bools_and_numbers_through_nsnumber() {
+        let field = |text: &str| read_str(&format!(r#"{{"f":{text}}}"#)).unwrap();
+        let get = |text: &str| field(text).get("f").cloned().unwrap();
+        assert_eq!(get("1").as_swift_bool(), Some(true));
+        assert_eq!(get("1.0").as_swift_bool(), Some(true));
+        assert_eq!(get("0").as_swift_bool(), Some(false));
+        assert_eq!(get("-0.0").as_swift_bool(), Some(false));
+        assert_eq!(get("2").as_swift_bool(), None);
+        assert_eq!(get("\"true\"").as_swift_bool(), None);
+        assert_eq!(get("true").as_swift_number(), Some(1.0));
+        assert_eq!(get("false").as_swift_number(), Some(0.0));
+        assert_eq!(get("\"0.5\"").as_swift_number(), None);
+        assert_eq!(get("null").as_swift_number(), None);
+        assert_eq!(get("5").as_str(), None);
+    }
+}

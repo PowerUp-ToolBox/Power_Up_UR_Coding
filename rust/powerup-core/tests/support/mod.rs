@@ -14,6 +14,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use powerup_core::action::Action;
+use powerup_core::harness::claude::event::ClaudeEvent;
 use powerup_core::hold::HoldEffect;
 use powerup_core::intent::{ControlPhase, Intent};
 use powerup_core::mapping::{default_device_mappings, DeviceMappings};
@@ -272,6 +273,82 @@ pub fn controller_descriptor(controller: &ConnectedController) -> Value {
         "profileID": controller.profile_id,
         "displayName": controller.display_name,
     })
+}
+
+// Value descriptors (`Tests/Fixtures/README.md`, `harness/`).
+
+/// A number as Swift's JSONEncoder writes it: an integral double inside
+/// Double's exact range is an integer, so a cost of 1.0 equals a table's 1.
+pub fn number_value(number: f64) -> Value {
+    if number.is_finite() && number.fract() == 0.0 && number.abs() < 9_007_199_254_740_992.0 {
+        // Exact: integral and below 2^53.
+        #[allow(clippy::cast_possible_truncation)]
+        return Value::from(number as i64);
+    }
+    serde_json::Number::from_f64(number).map_or(Value::Null, Value::Number)
+}
+
+/// `{"event": <Swift case name>}` plus Swift's field names.
+pub fn claude_event_descriptor(event: &ClaudeEvent) -> Value {
+    match event {
+        ClaudeEvent::Ready { session_id, model } => {
+            serde_json::json!({"event": "ready", "sessionID": session_id, "model": model})
+        }
+        ClaudeEvent::TextDelta(text) => serde_json::json!({"event": "textDelta", "text": text}),
+        ClaudeEvent::AssistantMessage(text) => {
+            serde_json::json!({"event": "assistantMessage", "text": text})
+        }
+        ClaudeEvent::ToolUse { name, detail } => {
+            serde_json::json!({"event": "toolUse", "name": name, "detail": detail})
+        }
+        ClaudeEvent::TurnCompleted {
+            result_text,
+            cost_usd,
+            is_error,
+            subtype,
+        } => serde_json::json!({
+            "event": "turnCompleted",
+            "resultText": result_text,
+            "costUSD": cost_usd.map_or(Value::Null, number_value),
+            "isError": is_error,
+            "subtype": subtype,
+        }),
+        ClaudeEvent::ControlResult {
+            action,
+            ok,
+            detail,
+            value,
+        } => serde_json::json!({
+            "event": "controlResult", "action": action, "ok": ok, "detail": detail, "value": value,
+        }),
+        ClaudeEvent::ProcessError(message) => {
+            serde_json::json!({"event": "processError", "message": message})
+        }
+        ClaudeEvent::Terminated { exit_code } => {
+            serde_json::json!({"event": "terminated", "exitCode": exit_code})
+        }
+    }
+}
+
+/// A line input: a string (the line as UTF-8), or `{"hex": "<bytes>"}`.
+pub fn line_input_bytes(input: &Value) -> Vec<u8> {
+    if let Some(text) = input.as_str() {
+        return text.as_bytes().to_vec();
+    }
+    let hex = input["hex"]
+        .as_str()
+        .unwrap_or_else(|| panic!("not a line input: {input}"));
+    assert!(
+        hex.len().is_multiple_of(2),
+        "odd hex in line input: {input}"
+    );
+    (0..hex.len())
+        .step_by(2)
+        .map(|at| {
+            u8::from_str_radix(&hex[at..at + 2], 16)
+                .unwrap_or_else(|e| panic!("bad hex in line input {input}: {e}"))
+        })
+        .collect()
 }
 
 /// The table at `Tests/Fixtures/<area>/<file>`.

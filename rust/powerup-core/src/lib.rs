@@ -8,12 +8,14 @@
 //! app that holds the microphone permission.
 
 pub mod action;
+pub mod harness;
 pub mod hold;
 pub mod intent;
 pub mod mapping;
 pub mod probe;
 pub mod profile;
 pub mod slots;
+pub mod text;
 pub mod wire;
 
 use std::fmt;

@@ -3,9 +3,10 @@
 Language-neutral test data that every implementation of PowerUp's rules is
 checked against (PLAN-any-device-any-os.md, ADR 0012): the Swift app's XCTest
 suites play every file, and the Rust core's `cargo test` plays the areas whose
-rules it owns so far (`mapping/` and `device/`, since slice 2.2) and checks
-the format of the rest, picking up more as later slices port them. Each
-implementation loads these files from its own source location. Swift resolves
+rules it owns so far (`mapping/` and `device/`, since slice 2.2, and
+`harness/`, since slice 2.3) and checks the format of the rest, picking up
+more as later slices port them. Each implementation loads these files from
+its own source location. Swift resolves
 them relative to `#filePath`, because SwiftPM accepts no resources outside a
 target. Do not copy them into a target.
 
@@ -146,7 +147,8 @@ escaping are the writer's), or `null` when the call writes nothing. Every
 line written ends with one newline and holds no other.
 
 The Swift runner is `Tests/PowerUpTests/HarnessFixtureTests.swift` (its
-descriptor helpers are in `FixtureValues.swift`).
+descriptor helpers are in `FixtureValues.swift`), and the Rust runner is
+`rust/powerup-core/tests/harness.rs` (its helpers are in `tests/support`).
 
 ## `session/`: session scenarios (format 1)
 
