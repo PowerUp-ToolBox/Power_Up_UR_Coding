@@ -14,8 +14,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use powerup_core::action::Action;
+use powerup_core::hold::HoldEffect;
 use powerup_core::intent::{ControlPhase, Intent};
 use powerup_core::mapping::{default_device_mappings, DeviceMappings};
+use powerup_core::slots::ConnectedController;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -233,6 +235,43 @@ pub fn mappings_descriptor(mappings: &DeviceMappings) -> Value {
         })
         .collect::<serde_json::Map<_, _>>()
         .into()
+}
+
+/// `{"effect": <name>}`, plus `"mode"` for beginCapture and `"intent"` (an
+/// intent descriptor) for deliver.
+pub fn effect_descriptor(effect: &HoldEffect) -> Value {
+    match effect {
+        HoldEffect::BeginCapture(mode) => {
+            serde_json::json!({"effect": effect.name(), "mode": mode.name()})
+        }
+        HoldEffect::Deliver(intent) => {
+            serde_json::json!({"effect": effect.name(), "intent": intent_descriptor(intent)})
+        }
+        other => serde_json::json!({"effect": other.name()}),
+    }
+}
+
+/// `{"id", "profileID", "displayName"}`, every field a string.
+pub fn controller_from(descriptor: &Value) -> ConnectedController {
+    let field = |key: &str| {
+        descriptor[key]
+            .as_str()
+            .unwrap_or_else(|| panic!("controller descriptor without a string {key}: {descriptor}"))
+            .to_owned()
+    };
+    ConnectedController {
+        id: field("id"),
+        profile_id: field("profileID"),
+        display_name: field("displayName"),
+    }
+}
+
+pub fn controller_descriptor(controller: &ConnectedController) -> Value {
+    serde_json::json!({
+        "id": controller.id,
+        "profileID": controller.profile_id,
+        "displayName": controller.display_name,
+    })
 }
 
 /// The table at `Tests/Fixtures/<area>/<file>`.
