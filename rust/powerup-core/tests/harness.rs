@@ -4,6 +4,8 @@
 
 mod support;
 
+use powerup_core::harness::claude::launch::launch_arguments;
+use powerup_core::harness::claude::lines::LineBuffer;
 use powerup_core::harness::claude::parse::events_from_line;
 use powerup_core::harness::claude::stdin::{control_request_line, user_turn_line, ControlRequest};
 use serde_json::Value;
@@ -84,4 +86,88 @@ fn claude_stdin_cases() {
             fail(file, &case.name, &case.reason, &case.expected, &actual)
         );
     }
+}
+
+fn text_of(bytes: Vec<u8>) -> Value {
+    Value::String(String::from_utf8(bytes).unwrap_or_else(|e| panic!("a line is not UTF-8: {e}")))
+}
+
+#[test]
+fn claude_lines_cases() {
+    let file = "claude-lines.json";
+    let mut failures = Vec::new();
+    for case in case_table("harness", file).cases {
+        let chunks = case.input["chunks"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{file} case {:?}: no chunks", case.name));
+        let flush = case.input["flush"]
+            .as_bool()
+            .unwrap_or_else(|| panic!("{file} case {:?}: no flush", case.name));
+        let mut buffer = LineBuffer::new();
+        let lines: Vec<Value> = chunks
+            .iter()
+            .map(|chunk| {
+                let finished = buffer.ingest(&line_input_bytes(chunk));
+                Value::Array(finished.into_iter().map(text_of).collect())
+            })
+            .collect();
+        let remainder = if flush {
+            let remainder = buffer.flush().map_or(Value::Null, text_of);
+            assert_eq!(
+                buffer.flush(),
+                None,
+                "{file} case {:?}: a second flush gave bytes",
+                case.name
+            );
+            remainder
+        } else {
+            Value::Null
+        };
+        let actual = serde_json::json!({"lines": lines, "remainder": remainder});
+        if actual != case.expected {
+            failures.push(fail(
+                file,
+                &case.name,
+                &case.reason,
+                &case.expected,
+                &actual,
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn claude_launch_cases() {
+    let file = "claude-launch.json";
+    let mut failures = Vec::new();
+    for case in case_table("harness", file).cases {
+        let field = |key: &str| {
+            case.input[key]
+                .as_str()
+                .unwrap_or_else(|| panic!("{file} case {:?}: no string {key}", case.name))
+        };
+        let resume = &case.input["resumeSessionID"];
+        assert!(
+            resume.is_null() || resume.is_string(),
+            "{file} case {:?}: resumeSessionID must be a string or null",
+            case.name
+        );
+        let actual = Value::from(launch_arguments(
+            field("model"),
+            field("permissionMode"),
+            field("effort"),
+            resume.as_str(),
+        ));
+        if actual != case.expected {
+            failures.push(fail(
+                file,
+                &case.name,
+                &case.reason,
+                &case.expected,
+                &actual,
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
