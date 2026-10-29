@@ -62,14 +62,17 @@ final class ConfigStore: ObservableObject {
     /// entries this build cannot represent (a newer build's action, a
     /// hand-edit) that the tolerant decoder will drop. The decision is the
     /// Rust core's (`mapping::load_device_mappings`, slice 2.2); the copy, its
-    /// `config.pre-profiles.json` name and its once-only rule stay here.
+    /// `config.pre-profiles.json` name and its once-only rule stay here. A
+    /// core that cannot read a file Foundation can counts as lossy too: the
+    /// mappings then fall back to the defaults, and the save would bury the
+    /// user's bindings.
     /// Internal, URL-injected, so tests can exercise it against a temp
     /// directory.
     nonisolated static func backupConfigBeforeLossyLoadIfNeeded(at url: URL, data: Data) {
         guard let value = try? JSONDecoder().decode(JSONValue.self, from: data),
               case .object = value,
               let text = value.jsonText,
-              CoreBridge.loadDeviceMappings(configJSON: text)?.backupBeforeSave == true else { return }
+              CoreBridge.loadDeviceMappings(configJSON: text)?.backupBeforeSave ?? true else { return }
         let backupURL = url.deletingPathExtension().appendingPathExtension("pre-profiles.json")
         guard !FileManager.default.fileExists(atPath: backupURL.path) else { return }
         try? FileManager.default.copyItem(at: url, to: backupURL)

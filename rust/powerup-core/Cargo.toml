@@ -11,7 +11,9 @@ repository.workspace = true
 workspace = true
 
 # Config and fixture data are JSON, written byte for byte as the Swift app
-# writes it (src/wire.rs).
+# writes it (src/wire.rs). unbounded_depth lets config.json nest as deep as
+# Foundation's JSON reader allows, not just serde_json's default 128
+# (mapping::load_device_mappings bounds the depth itself).
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["unbounded_depth"] }

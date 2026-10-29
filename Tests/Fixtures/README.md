@@ -1,11 +1,13 @@
 # Shared fixtures
 
 Language-neutral test data that every implementation of PowerUp's rules is
-checked against: the Swift app's XCTest suites today and the Rust core's
-`cargo test` later (PLAN-any-device-any-os.md, ADR 0012). Each implementation
-loads these files from its own source location. Swift resolves them relative
-to `#filePath`, because SwiftPM accepts no resources outside a target. Do not
-copy them into a target.
+checked against (PLAN-any-device-any-os.md, ADR 0012): the Swift app's XCTest
+suites play every file, and the Rust core's `cargo test` plays the areas whose
+rules it owns so far (`mapping/` and `device/`, since slice 2.2) and checks
+the format of the rest, picking up more as later slices port them. Each
+implementation loads these files from its own source location. Swift resolves
+them relative to `#filePath`, because SwiftPM accepts no resources outside a
+target. Do not copy them into a target.
 
 CI fails if this directory holds no JSON fixtures, from both sides: a CI
 step for the Swift suites, and `the_shared_fixtures_directory_is_not_empty`

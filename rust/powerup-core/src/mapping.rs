@@ -5,6 +5,7 @@
 
 use std::collections::BTreeMap;
 
+use serde::Deserialize;
 use serde_json::{Map, Value};
 
 use crate::action::Action;
@@ -81,12 +82,20 @@ pub struct MappingLoad {
     pub backup_before_save: bool,
 }
 
+/// The deepest nesting of arrays and objects config.json text may have:
+/// exactly what Foundation's JSONDecoder reads (it rejects 513 levels), so
+/// every file the Swift app can decode loads here too. serde_json's own limit
+/// of 128 would reject files the app has always read and silently reset
+/// their bindings; no limit at all would let a hostile file overflow the
+/// stack, which contain() cannot catch.
+pub const MAX_CONFIG_DEPTH: usize = 512;
+
 /// [`load_device_mappings_from`] on config.json text. Fails only when the
-/// text is not JSON or not a JSON object; the caller then treats the file as
-/// unreadable.
+/// text is not JSON, not a JSON object, or nested deeper than
+/// [`MAX_CONFIG_DEPTH`]; the caller then treats the file as unreadable.
 pub fn load_device_mappings(config_json: &str) -> Result<MappingLoad, CoreError> {
-    let value: Value = serde_json::from_str(config_json).map_err(|error| CoreError::Failed {
-        message: format!("config is not JSON: {error}"),
+    let value = parse_config(config_json).map_err(|message| CoreError::Failed {
+        message: format!("config is not JSON: {message}"),
     })?;
     match value {
         Value::Object(config) => Ok(load_device_mappings_from(&config)),
@@ -94,6 +103,50 @@ pub fn load_device_mappings(config_json: &str) -> Result<MappingLoad, CoreError>
             message: "config is not a JSON object".to_owned(),
         }),
     }
+}
+
+/// Parses config.json text with serde_json's recursion limit lifted, after
+/// checking the nesting against [`MAX_CONFIG_DEPTH`] without recursing.
+fn parse_config(text: &str) -> Result<Value, String> {
+    let depth = max_nesting_depth(text);
+    if depth > MAX_CONFIG_DEPTH {
+        return Err(format!(
+            "nested {depth} levels deep, more than {MAX_CONFIG_DEPTH}"
+        ));
+    }
+    let mut deserializer = serde_json::Deserializer::from_str(text);
+    deserializer.disable_recursion_limit();
+    let value = Value::deserialize(&mut deserializer).map_err(|error| error.to_string())?;
+    deserializer.end().map_err(|error| error.to_string())?;
+    Ok(value)
+}
+
+/// How deeply arrays and objects nest in `text`, brackets inside strings not
+/// counted. Malformed text gives some number; the parser rejects it anyway.
+fn max_nesting_depth(text: &str) -> usize {
+    let (mut depth, mut deepest) = (0usize, 0usize);
+    let (mut in_string, mut escaped) = (false, false);
+    for byte in text.bytes() {
+        if in_string {
+            match byte {
+                _ if escaped => escaped = false,
+                b'\\' => escaped = true,
+                b'"' => in_string = false,
+                _ => {}
+            }
+            continue;
+        }
+        match byte {
+            b'"' => in_string = true,
+            b'[' | b'{' => {
+                depth += 1;
+                deepest = deepest.max(depth);
+            }
+            b']' | b'}' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    deepest
 }
 
 /// Loads the mapping subtree of a config.json object, as the Swift app always
@@ -237,6 +290,50 @@ mod tests {
         let load = load_device_mappings("{}").unwrap();
         assert_eq!(load.device_mappings, default_device_mappings());
         assert!(!load.backup_before_save);
+    }
+
+    /// `{"deviceMappings":{"dualsense":{"r2":{"approve":{"note":[[…]]}}}}}`,
+    /// nested `depth` levels in all.
+    fn nested_config(depth: usize) -> String {
+        let arrays = depth - 5;
+        format!(
+            r#"{{"deviceMappings":{{"dualsense":{{"r2":{{"approve":{{"note":{}{}}}}}}}}}}}"#,
+            "[".repeat(arrays),
+            "]".repeat(arrays)
+        )
+    }
+
+    #[test]
+    fn a_deeply_nested_config_keeps_its_bindings() {
+        // Past serde_json's default limit of 128, up to JSONDecoder's 512:
+        // the Swift app has always read these, so the core must too.
+        for depth in [127, 200, 400, MAX_CONFIG_DEPTH] {
+            let load = load_device_mappings(&nested_config(depth)).unwrap();
+            assert_eq!(
+                resolve_action(&load.device_mappings, "dualsense", "r2"),
+                Action::Approve,
+                "depth {depth}"
+            );
+        }
+        assert!(load_device_mappings(&nested_config(MAX_CONFIG_DEPTH + 1)).is_err());
+    }
+
+    #[test]
+    fn the_deepest_config_fits_a_small_thread_stack() {
+        // The app loads its config on the main thread (8 MiB of stack). A
+        // release build fits this in 512 KiB; an unoptimised one in 1 MiB.
+        let text = nested_config(MAX_CONFIG_DEPTH);
+        let worker = std::thread::Builder::new()
+            .stack_size(1024 * 1024)
+            .spawn(move || load_device_mappings(&text).is_ok())
+            .unwrap();
+        assert!(worker.join().unwrap());
+    }
+
+    #[test]
+    fn brackets_inside_strings_do_not_count_as_nesting() {
+        assert_eq!(max_nesting_depth(r#"{"a":"[[[{{\"]]"}"#), 1);
+        assert_eq!(max_nesting_depth(r#"[[],{"b":[1]}]"#), 3);
     }
 
     #[test]

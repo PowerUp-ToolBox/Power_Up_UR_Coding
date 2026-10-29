@@ -2329,7 +2329,9 @@ Functions, each `throws CoreBridgeError`:
 - `resolveAction(deviceMappings:profileId:controlId:) -> CoreAction`
 - `defaultDeviceMappings() -> [String: [String: CoreAction]]`
 - `loadDeviceMappings(configJson:) -> CoreMappingLoad` — takes a config.json
-  object as text; `.Failed` when the text is not a JSON object.
+  object as text; `.Failed` when the text is not a JSON object or nests
+  deeper than 512 levels. That is JSONDecoder's own limit, so any file the
+  app can decode loads; serde_json's default limit of 128 is lifted.
 - `controlKindFromWire(name:) -> CoreControlKind?`
 - `dualsenseProfile() -> CoreDeviceProfile`
 
@@ -2355,14 +2357,17 @@ static func dualSenseProfile() -> DeviceProfile?
 ```
 
 Config text crosses the bridge as `JSONValue` (an internal Codable JSON
-value in CoreBridge.swift) written out with `.sortedKeys`.
+value in CoreBridge.swift) written out with `.sortedKeys`. Its outermost
+object is written by hand and only the members by JSONEncoder, which refuses
+512 levels of nesting that JSONDecoder reads, so every config the app can
+decode reaches the core whole.
 
 **Failure policy.** A bridge error is a core bug: the core never fails or
 panics on these inputs. Each wrapper logs it (subsystem
 `com.powerup.claudepad`, category `core`, `.error`) and returns the inert
 answer: intent → nil, isHold → false, resolve → `.none`, defaults → `[:]`,
-loadDeviceMappings → nil (AppConfig then uses the defaults and ConfigStore
-takes no backup), controlKind → nil (the control fails to decode),
+loadDeviceMappings → nil (AppConfig then uses the defaults, so ConfigStore
+first takes the `config.pre-profiles.json` copy as for any lossy load), controlKind → nil (the control fails to decode),
 dualSenseProfile → nil (`DeviceProfile.dualSense` becomes a profile with no
 controls, which `DeviceProfileTests.testDualSenseIDMatchesTheCore` catches).
 

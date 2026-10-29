@@ -211,8 +211,33 @@ enum JSONValue: Codable, Equatable {
         }
     }
 
-    /// Compact JSON text, keys sorted; nil if it cannot be written.
+    /// Compact JSON text, keys sorted; nil if it cannot be written. The
+    /// outermost array or object is written here and only its members by
+    /// JSONEncoder, which refuses 512 levels of nesting where JSONDecoder
+    /// reads them: a config the app could load must reach the core whole.
     var jsonText: String? {
+        switch self {
+        case .object(let members):
+            var parts: [String] = []
+            for key in members.keys.sorted() {
+                guard let name = JSONValue.string(key).encodedText,
+                      let value = members[key]?.encodedText else { return nil }
+                parts.append(name + ":" + value)
+            }
+            return "{" + parts.joined(separator: ",") + "}"
+        case .array(let items):
+            var parts: [String] = []
+            for item in items {
+                guard let value = item.encodedText else { return nil }
+                parts.append(value)
+            }
+            return "[" + parts.joined(separator: ",") + "]"
+        case .null, .bool, .integer, .number, .string:
+            return encodedText
+        }
+    }
+
+    private var encodedText: String? {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         guard let data = try? encoder.encode(self) else { return nil }

@@ -291,4 +291,28 @@ final class DeviceProfileTests: XCTestCase {
             XCTAssertFalse(FileManager.default.fileExists(atPath: backupURL.path))
         }
     }
+
+    /// Nesting past serde_json's default limit of 128 (here inside an action
+    /// payload the decoder ignores), up to the 512 levels JSONDecoder reads:
+    /// the bindings survive and the backup rule still holds, as before the
+    /// core. The lossy twin proves the file really reached the core.
+    func testDeeplyNestedConfigKeepsItsBindings() throws {
+        for depth in [200, 512] {
+            let arrays = depth - 5
+            let deep = #""r2":{"approve":{"note":"#
+                + String(repeating: "[", count: arrays) + String(repeating: "]", count: arrays) + "}}"
+            let json = #"{"deviceMappings":{"dualsense":{"# + deep + "}}}"
+            let config = try JSONDecoder().decode(AppConfig.self, from: Data(json.utf8))
+            XCTAssertEqual(config.deviceMappings["dualsense"]?["r2"], .approve, "depth \(depth)")
+            try withTempConfig(json) { url, backupURL in
+                ConfigStore.backupConfigBeforeLossyLoadIfNeeded(at: url, data: try Data(contentsOf: url))
+                XCTAssertFalse(FileManager.default.fileExists(atPath: backupURL.path), "depth \(depth)")
+            }
+            let lossy = #"{"deviceMappings":{"dualsense":{"cross":{"fromTheFuture":{}},"# + deep + "}}}"
+            try withTempConfig(lossy) { url, backupURL in
+                ConfigStore.backupConfigBeforeLossyLoadIfNeeded(at: url, data: try Data(contentsOf: url))
+                XCTAssertTrue(FileManager.default.fileExists(atPath: backupURL.path), "depth \(depth)")
+            }
+        }
+    }
 }
