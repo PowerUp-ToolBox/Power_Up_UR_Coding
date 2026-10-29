@@ -1,7 +1,7 @@
 {
   "description": "Reading one Action from the JSON stored for a control, exactly as Swift's synthesized enum Codable does (DESIGN v2.4 B, v2.7 A). The value must be an object. Keys that are not case names are invisible; exactly one case key must remain, and its payload must be an object. sendPrompt needs a string \"_0\" in its payload; other payload keys are ignored. Anything else is not an action. expected is an action descriptor ({\"case\": <case name>} plus \"prompt\" for sendPrompt), or null when the value is not an action and the binding is dropped.",
   "function": "Action decoding — input any JSON value stored for one control, expected an action descriptor or null",
-  "verifiedBy": "DESIGN.md v2.4 B and v2.7 A; Tests/PowerUpTests/MappingFixtureTests.swift testActionDecodeTable decodes an AppConfig from {\"deviceMappings\": {\"p\": {\"c\": input}}} (the production path) and reads the binding for p/c.",
+  "verifiedBy": "DESIGN.md v2.4 B and v2.7 A; Tests/PowerUpTests/MappingFixtureTests.swift testActionDecodeTable decodes an AppConfig from {\"deviceMappings\": {\"p\": {\"c\": input}}} (the production path) and reads the binding for p/c. Rust: rust/powerup-core/tests/mapping.rs action_decode_cases runs Action::from_wire on the input.",
   "capturedAgainst": "Swift 5.9.2 synthesized Codable (Xcode 15.2), PowerUp at 6109234",
   "cases": [
     {

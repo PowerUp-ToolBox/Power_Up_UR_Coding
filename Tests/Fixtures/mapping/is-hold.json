@@ -1,7 +1,7 @@
 {
   "description": "Whether an action holds: it records while its control is down and finishes on release. Only pushToTalk and pushToTalkDraft hold. Holding is a property of the action, never of the control (DESIGN v2.7 C, HK-004). Input is an action descriptor; expected is a bool.",
   "function": "Action.isHoldAction — input an action descriptor, expected a bool",
-  "verifiedBy": "DESIGN.md v2.7 C; Tests/PowerUpTests/MappingFixtureTests.swift testIsHoldTable reads Action.isHoldAction.",
+  "verifiedBy": "DESIGN.md v2.7 C; Tests/PowerUpTests/MappingFixtureTests.swift testIsHoldTable reads Action.isHoldAction. Rust: rust/powerup-core/tests/mapping.rs is_hold_cases runs Action::is_hold.",
   "capturedAgainst": "Swift 5.9.2 synthesized Codable (Xcode 15.2), PowerUp at 6109234",
   "cases": [
     {

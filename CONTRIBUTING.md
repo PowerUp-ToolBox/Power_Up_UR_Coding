@@ -64,7 +64,8 @@ The rules for core work:
 - **Workspace.** `rust/` holds `powerup-core` (the logic), `powerup-core-ffi`
   (the uniffi bridge the macOS app links) and `uniffi-bindgen` (generates the
   Swift side). The compiler is pinned in `rust/rust-toolchain.toml`.
-- **Panic rule.** Every public core function returns a `Result`; library code
+- **Panic rule.** Every public core function is total: it returns its
+  value, or a `Result` when it can fail, and never panics. Library code
   never calls `unwrap`, `expect` or `panic!` (clippy denies the first two).
   The one exception is the bridge probe `probe::panic_with`, which exists to
   test the boundary. The bridge runs every call inside `catch_unwind`, so a

@@ -92,7 +92,8 @@ as input, because it pins what happens to whatever a file holds for one
 control.
 
 The Swift runner is `Tests/PowerUpTests/MappingFixtureTests.swift` (its
-descriptor helpers are in `FixtureValues.swift`).
+descriptor helpers are in `FixtureValues.swift`), and the Rust runner is
+`rust/powerup-core/tests/mapping.rs` (its helpers are in `tests/support`).
 
 ## `session/`: session scenarios (format 1)
 

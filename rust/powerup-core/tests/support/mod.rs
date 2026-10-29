@@ -13,6 +13,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use powerup_core::action::Action;
+use powerup_core::intent::{ControlPhase, Intent};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -145,4 +147,56 @@ pub fn load_case_table(path: &Path) -> CaseTable {
         );
     }
     table
+}
+
+// Value descriptors (`Tests/Fixtures/README.md`, `mapping/`). An unknown name
+// panics with the descriptor, so a fixture typo never reads as a real value.
+
+/// `{"case": <name>}`, plus `"prompt"` for sendPrompt.
+pub fn action_from_descriptor(descriptor: &Value) -> Action {
+    let name = descriptor["case"]
+        .as_str()
+        .unwrap_or_else(|| panic!("not an action descriptor: {descriptor}"));
+    if name == "sendPrompt" {
+        let prompt = descriptor["prompt"]
+            .as_str()
+            .unwrap_or_else(|| panic!("sendPrompt descriptor without a prompt: {descriptor}"));
+        return Action::SendPrompt(prompt.to_owned());
+    }
+    Action::from_wire(&serde_json::json!({ name: {} }))
+        .unwrap_or_else(|| panic!("unknown action case in {descriptor}"))
+}
+
+pub fn action_descriptor(action: &Action) -> Value {
+    match action {
+        Action::SendPrompt(prompt) => serde_json::json!({"case": "sendPrompt", "prompt": prompt}),
+        other => serde_json::json!({"case": other.wire_name()}),
+    }
+}
+
+/// `{"intent": <name>}`, plus `"mode"` for beginVoiceCapture and `"prompt"`
+/// for sendPrompt.
+pub fn intent_descriptor(intent: &Intent) -> Value {
+    match intent {
+        Intent::BeginVoiceCapture(mode) => {
+            serde_json::json!({"intent": intent.name(), "mode": mode.name()})
+        }
+        Intent::SendPrompt(prompt) => {
+            serde_json::json!({"intent": intent.name(), "prompt": prompt})
+        }
+        other => serde_json::json!({"intent": other.name()}),
+    }
+}
+
+pub fn phase_from(name: &Value) -> ControlPhase {
+    match name.as_str() {
+        Some("began") => ControlPhase::Began,
+        Some("ended") => ControlPhase::Ended,
+        _ => panic!("unknown phase {name}"),
+    }
+}
+
+/// The table at `Tests/Fixtures/<area>/<file>`.
+pub fn case_table(area: &str, file: &str) -> CaseTable {
+    load_case_table(&fixtures_dir().join(area).join(file))
 }
