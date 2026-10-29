@@ -44,11 +44,14 @@ pub const HOOK_EVENTS: [&str; 5] = [
 /// through a shell, and the script lives under "Application Support": an
 /// unquoted path with a space splits into a command that does not exist,
 /// and every hook dies silently. So the path goes in single quotes, each
-/// single quote in it written as `'\''`; a quote that a combining mark
-/// joins into another character is not one (as Foundation's
-/// `replacingOccurrences` finds it).
+/// single quote in it written as `'\''`, except one that a combining
+/// (Extend) scalar follows, which Foundation's `replacingOccurrences` never
+/// matched.
 pub fn hook_command(script_path: &str) -> String {
-    format!("'{}'", text::replace_clusters(script_path, "'", "'\\''"))
+    format!(
+        "'{}'",
+        text::replace_unless_extended(script_path, '\'', "'\\''")
+    )
 }
 
 /// The hook script for a listener port and token (HK-184 to HK-186). It

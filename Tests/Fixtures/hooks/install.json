@@ -945,6 +945,20 @@
       "reason": "One UTF-8 byte order mark is read past; the rewrite has none."
     },
     {
+      "name": "a UTF-16 file is refused",
+      "input": {
+        "settings": {
+          "hex": "7b0022006d006f00640065006c0022003a0022006f0070007500730022007d00"
+        },
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": "invalidJSON"
+      },
+      "reason": "Recorded difference (HK-417): Foundation read a UTF-16 or UTF-32 settings.json, the core refuses it as invalid JSON and leaves it untouched. Claude Code reads its settings as UTF-8, so such a file was never one it could use. Synthetic: the Swift app before the core installed into it."
+    },
+    {
       "name": "invalid UTF-8",
       "input": {
         "settings": {

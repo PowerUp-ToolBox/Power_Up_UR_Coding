@@ -87,21 +87,16 @@ pub fn split_on_spaces(text: &str) -> Vec<&str> {
     pieces
 }
 
-/// Foundation's `replacingOccurrences(of: from, with: to)` for a `from`
-/// that is one character: it replaces only a whole cluster equal to
-/// `from`, so a `'` that a combining mark, a spacing mark or a ZWJ follows,
-/// or that a prepended scalar (U+0600 and the like) precedes, is part of
-/// another character and is not replaced. Measured for a single quote with
-/// every scalar before and after it on macOS 27.2: the scalars that stop
-/// the match are exactly those that join the quote's cluster. Clusters are
-/// compared by text, which is canonical equivalence for any `from` that no
-/// other scalar decomposes to (the quote among them).
-pub fn replace_clusters(text: &str, from: &str, to: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for cluster in text.graphemes(true) {
-        out.push_str(if cluster == from { to } else { cluster });
-    }
-    out
+/// Foundation's `replacingOccurrences(of: String(from), with: to)`: every
+/// `from` is replaced except one that a cluster-extending scalar
+/// (Grapheme_Cluster_Break=Extend: a combining mark, a variation selector)
+/// follows. Measured for a single quote against every scalar on macOS 27.2:
+/// exactly the Extend scalars stop the match; a spacing mark or a ZWJ
+/// after it, or a prepended scalar (U+0600) before it, does not, although
+/// each joins the quote's cluster. CR, LF and tab follow the same rule
+/// (`condense`).
+pub fn replace_unless_extended(text: &str, from: char, to: &str) -> String {
+    replace_scalars_unless_extended(text, |scalar| scalar == from, to)
 }
 
 /// Tool and status text as one short line (HK-062, HK-063): CR, LF and tab
@@ -135,12 +130,21 @@ pub fn condense(text: &str, max: usize) -> String {
 /// (see `condense`). The three replacements Swift makes one after another
 /// give the same text as one pass, because a space never extends a cluster.
 fn flatten_breaks(text: &str) -> String {
+    replace_scalars_unless_extended(text, |scalar| matches!(scalar, '\r' | '\n' | '\t'), " ")
+}
+
+/// Each scalar `is_target` picks becomes `to`, unless the next scalar
+/// extends a cluster: Foundation's search skips such a match.
+fn replace_scalars_unless_extended(
+    text: &str,
+    is_target: impl Fn(char) -> bool,
+    to: &str,
+) -> String {
     let mut out = String::with_capacity(text.len());
     let mut scalars = text.chars().peekable();
     while let Some(scalar) = scalars.next() {
-        let is_break = matches!(scalar, '\r' | '\n' | '\t');
-        if is_break && !scalars.peek().is_some_and(|next| extends_a_cluster(*next)) {
-            out.push(' ');
+        if is_target(scalar) && !scalars.peek().is_some_and(|next| extends_a_cluster(*next)) {
+            out.push_str(to);
         } else {
             out.push(scalar);
         }
@@ -240,14 +244,34 @@ mod tests {
     }
 
     #[test]
-    fn replace_clusters_skips_a_quote_inside_another_character() {
-        assert_eq!(replace_clusters("a'b'", "'", "Q"), "aQbQ");
-        assert_eq!(replace_clusters("a'\u{301}b", "'", "Q"), "a'\u{301}b");
-        assert_eq!(replace_clusters("a'\u{903}b", "'", "Q"), "a'\u{903}b");
-        assert_eq!(replace_clusters("a'\u{200D}b", "'", "Q"), "a'\u{200D}b");
-        assert_eq!(replace_clusters("a\u{600}'b", "'", "Q"), "a\u{600}'b");
-        assert_eq!(replace_clusters("''", "'", "Q"), "QQ");
-        assert_eq!(replace_clusters("", "'", "Q"), "");
+    fn replace_unless_extended_skips_only_a_quote_an_extend_scalar_follows() {
+        // Measured with Foundation's replacingOccurrences on macOS 27.2.
+        assert_eq!(replace_unless_extended("a'b'", '\'', "Q"), "aQbQ");
+        assert_eq!(
+            replace_unless_extended("a'\u{301}b", '\'', "Q"),
+            "a'\u{301}b"
+        );
+        assert_eq!(
+            replace_unless_extended("a'\u{FE0F}", '\'', "Q"),
+            "a'\u{FE0F}"
+        );
+        assert_eq!(
+            replace_unless_extended("a'\u{903}b", '\'', "Q"),
+            "aQ\u{903}b"
+        );
+        assert_eq!(
+            replace_unless_extended("a'\u{200D}b", '\'', "Q"),
+            "aQ\u{200D}b"
+        );
+        assert_eq!(
+            replace_unless_extended("a\u{600}'b", '\'', "Q"),
+            "a\u{600}Qb"
+        );
+        assert_eq!(
+            replace_unless_extended("''\u{301}'", '\'', "Q"),
+            "Q'\u{301}Q"
+        );
+        assert_eq!(replace_unless_extended("", '\'', "Q"), "");
     }
 
     #[test]

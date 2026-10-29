@@ -154,6 +154,60 @@ final class HookInstallerTests: XCTestCase {
                        .installed)
     }
 
+    func testInstallFromOlderBuildMissingAnyEventIsOutOfDate() throws {
+        // Whichever of the five events an older install lacks, the state
+        // must never read as installed (#158, HK-188); without Stop it
+        // reads as not installed at all, since Stop is the registration.
+        XCTAssertEqual(HookInstaller.hookEvents,
+                       ["Stop", "UserPromptSubmit", "Notification", "SessionEnd", "PostToolUse"])
+        for event in HookInstaller.hookEvents {
+            try? FileManager.default.removeItem(at: settingsURL)
+            try HookInstaller.install(port: 48738, token: "tok", settingsURL: settingsURL)
+            var root = try readSettingsObject()
+            var hooks = try XCTUnwrap(root["hooks"] as? [String: Any])
+            hooks.removeValue(forKey: event)
+            root["hooks"] = hooks
+            try JSONSerialization.data(withJSONObject: root).write(to: settingsURL)
+
+            let state = HookInstaller.installState(port: 48738, token: "tok", settingsURL: settingsURL)
+            XCTAssertEqual(state, event == "Stop" ? .notInstalled : .outOfDate, "without \(event)")
+
+            try HookInstaller.install(port: 48738, token: "tok", settingsURL: settingsURL)
+            XCTAssertEqual(HookInstaller.installState(port: 48738, token: "tok", settingsURL: settingsURL),
+                           .installed, "reinstalling brings \(event) back")
+        }
+    }
+
+    func testANumberFoundationCannotReadLeavesTheFileUntouched() throws {
+        // The core reads any JSON number, but Foundation refuses one with
+        // more than 17 digits whose exponent Decimal cannot hold; the old
+        // installer refused the file as invalid JSON, and so does the writer
+        // now (HK-417). No backup is taken either.
+        let original = #"{"n": 123456789012345678e-150}"#
+        try writeSettings(original)
+
+        XCTAssertThrowsError(try HookInstaller.install(port: 1, token: "t", settingsURL: settingsURL)) { error in
+            guard case HookInstaller.HookError.invalidSettings? = error as? HookInstaller.HookError else {
+                return XCTFail("expected invalidSettings, got \(error)")
+            }
+        }
+        XCTAssertEqual(try String(contentsOf: settingsURL, encoding: .utf8), original)
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: tempDir.appendingPathComponent("settings.json.powerup-backup-1").path))
+    }
+
+    func testAnUnchangedInstallTakesNoBackup() throws {
+        try HookInstaller.install(port: 48738, token: "tok", settingsURL: settingsURL)
+        let written = try Data(contentsOf: settingsURL)
+
+        try HookInstaller.install(port: 48738, token: "tok", settingsURL: settingsURL)
+
+        XCTAssertEqual(try Data(contentsOf: settingsURL), written)
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: tempDir.appendingPathComponent("settings.json.powerup-backup-1").path),
+                       "an install that changes nothing writes nothing (HK-190)")
+    }
+
     // MARK: Uninstall
 
     func testUninstallRemovesOnlyOursAndPrunesEmpties() throws {
@@ -191,7 +245,7 @@ final class HookInstallerTests: XCTestCase {
         // Our entry sharing a group with someone else's: only ours goes.
         try writeSettings(#"""
         {"hooks": {"Stop": [{"hooks": [
-            {"type": "command", "command": \#(quotedJSON(HookInstaller.hookCommand()))},
+            {"type": "command", "command": \#(quotedJSON(try XCTUnwrap(HookInstaller.hookCommand())))},
             {"type": "command", "command": "/usr/bin/true"}
         ]}]}}
         """#)
@@ -208,21 +262,21 @@ final class HookInstallerTests: XCTestCase {
 
     // MARK: Hook script
 
-    func testHookScriptEscapesShellMetacharactersInToken() {
-        let body = HookInstaller.hookScriptBody(port: 48738, token: #"a"b$c`d\e"#)
+    func testHookScriptEscapesShellMetacharactersInToken() throws {
+        let body = try XCTUnwrap(HookInstaller.hookScriptBody(port: 48738, token: #"a"b$c`d\e"#))
         XCTAssertTrue(body.contains(#"a\"b\$c\`d\\e"#), "token metacharacters must be escaped for bash: \(body)")
         XCTAssertTrue(body.hasPrefix("#!/bin/bash"))
         XCTAssertTrue(body.contains("http://127.0.0.1:48738/event"))
         XCTAssertTrue(body.contains("exit 0"))
     }
 
-    func testHookScriptClampsPortIntoValidRange() {
-        XCTAssertTrue(HookInstaller.hookScriptBody(port: 999999, token: "t").contains("127.0.0.1:65535"))
-        XCTAssertTrue(HookInstaller.hookScriptBody(port: -5, token: "t").contains("127.0.0.1:1/"))
+    func testHookScriptClampsPortIntoValidRange() throws {
+        XCTAssertTrue(try XCTUnwrap(HookInstaller.hookScriptBody(port: 999999, token: "t")).contains("127.0.0.1:65535"))
+        XCTAssertTrue(try XCTUnwrap(HookInstaller.hookScriptBody(port: -5, token: "t")).contains("127.0.0.1:1/"))
     }
 
-    func testHookCommandIsSingleQuoted() {
-        let command = HookInstaller.hookCommand()
+    func testHookCommandIsSingleQuoted() throws {
+        let command = try XCTUnwrap(HookInstaller.hookCommand())
         XCTAssertTrue(command.hasPrefix("'") && command.hasSuffix("'"),
                       "the script path contains spaces and must be quoted: \(command)")
     }

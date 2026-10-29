@@ -35,6 +35,24 @@
       "reason": "Foundation's replacingOccurrences never matches a quote that a combining scalar extends into another character (measured on macOS 27.2); the core keeps that rule."
     },
     {
+      "name": "a quote that a spacing mark follows is escaped",
+      "input": "/tmp/a'ःb/powerup-hook.sh",
+      "expected": "'/tmp/a'\\''ःb/powerup-hook.sh'",
+      "reason": "Only a Grapheme_Cluster_Break=Extend scalar after a quote stops Foundation's match; a spacing mark joins the quote's Character but does not (measured against every scalar, found by the #158 differential)."
+    },
+    {
+      "name": "a quote that a ZWJ follows is escaped",
+      "input": "/tmp/a'‍b/powerup-hook.sh",
+      "expected": "'/tmp/a'\\''‍b/powerup-hook.sh'",
+      "reason": "A ZWJ after the quote does not stop Foundation's match either."
+    },
+    {
+      "name": "a quote after a prepended scalar is escaped",
+      "input": "/tmp/a؀'b/powerup-hook.sh",
+      "expected": "'/tmp/a؀'\\''b/powerup-hook.sh'",
+      "reason": "A Prepend scalar before the quote makes one Character of the two, yet Foundation still replaces the quote."
+    },
+    {
       "name": "non-ASCII path characters are kept as they are",
       "input": "/tmp/项目 Café/powerup-hook.sh",
       "expected": "'/tmp/项目 Café/powerup-hook.sh'",
