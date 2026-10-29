@@ -89,7 +89,13 @@ The rules for core work:
   environment scrub list (`harness::acp`, DESIGN v2.13), played against
   `Tests/Fixtures/harness/acp-*.json` and the scripted mock agent and
   reached through `CoreBridgeACP.swift`; ACPAdapter owns the agent
-  process, its pipes and timers, the install paths and PATH.
+  process, its pipes and timers, the install paths and PATH. Since slice
+  2.5 it also holds the configuration schema (`config`: the defaults, how
+  config.json's bytes read, as `JSONDecoder` reads them, and the bytes it is
+  saved as, as `JSONEncoder` writes them; `json::decoder` and
+  `json::encoder`), played against `Tests/Fixtures/config/` and reached
+  through `CoreBridgeConfig.swift` (DESIGN v2.14); ConfigStore keeps the
+  file, its path, the atomic write and the backups.
 - **Panic rule.** Every public core function is total: it returns its
   value, or a `Result` when it can fail, and never panics. Library code
   never calls `unwrap`, `expect` or `panic!` (clippy denies the first two).

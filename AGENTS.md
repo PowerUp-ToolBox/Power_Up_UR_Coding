@@ -90,7 +90,13 @@ clearly without them. CI runs the cargo job on macOS, Windows and Linux.
   environment scrub list (`harness::acp`, DESIGN v2.13), played against
   `Tests/Fixtures/harness/acp-*.json` and the scripted mock agent and
   reached through `CoreBridgeACP.swift`; ACPAdapter owns the agent
-  process, its pipes and timers, the install paths and PATH.
+  process, its pipes and timers, the install paths and PATH. Since slice
+  2.5 it also holds the configuration schema (`config`: the defaults, how
+  config.json's bytes read, as `JSONDecoder` reads them, and the bytes it is
+  saved as, as `JSONEncoder` writes them; `json::decoder` and
+  `json::encoder`), played against `Tests/Fixtures/config/` and reached
+  through `CoreBridgeConfig.swift` (DESIGN v2.14); ConfigStore keeps the
+  file, its path, the atomic write and the backups.
 - **Panic rule.** Every public core function is total: it returns its
   value, or a `Result` when it can fail, and never panics. Library code
   never calls `unwrap`, `expect` or `panic!` (clippy denies the first two).
@@ -156,13 +162,14 @@ contract change.
 | `HookInstaller.swift` | Installs/manages hooks in `~/.claude/settings.json` |
 | `PowerUpProtocol.swift` | WebSocket upgrade + JSON-RPC message handling |
 | `WebSocketFraming.swift` | Pure RFC 6455 frame codec |
-| `ConfigStore.swift` | Persistent config (JSON, debounced, repairs corruption) |
+| `ConfigStore.swift` | Persistent config file: path, debounced atomic save, corrupt and pre-profiles backups; the schema and bytes are the core's |
 | `TranscriptStore.swift` | Per-project transcript persistence (JSON Lines) |
 | `MainView.swift` / `ComponentViews.swift` / `SettingsView.swift` / `MappingView.swift` | SwiftUI views |
 | `CoreBridge.swift` | Imports the Rust core (with the other `CoreBridge*.swift` files, the only files that do): launch check and the device-layer wrappers (DESIGN v2.10, v2.11) |
 | `CoreBridgeHarness.swift` | Bridge wrappers for the Claude harness: line parser, `LineBuffer`, stdin lines, argv, the `ClaudeAdapter` object (DESIGN v2.12) |
 | `CoreBridgeSession.swift` | Bridge wrappers for the session: the `Session` object and its effects, status derivation, classifier, cycles (DESIGN v2.12) |
 | `CoreBridgeACP.swift` | Bridge wrappers for the ACP harness: the `ACPStateMachine` object and its effects, the permission choice, the agent presets, the environment scrub list (DESIGN v2.13) |
+| `CoreBridgeConfig.swift` | Bridge wrappers for the configuration schema: defaults, load, encode, the project bookkeeping migration, the fixed vocabularies (DESIGN v2.14) |
 
 The Rust core lives in `rust/` (see "The Rust core" above); its bridge tests
 are in `Tests/PowerUpCoreTests/`.

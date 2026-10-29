@@ -49,8 +49,9 @@ The Rust core (stage 2, `rust/`): `(cd rust && cargo test)`. Every Swift
 build links it, so Rust (rustup) and a full Xcode are build requirements;
 `swift test` also runs the bridge tests. Since slice 2.3 the core also runs
 the Claude adapter's rules and AppState's session rules (DESIGN v2.12),
-and since slice 2.4 the ACP adapter's rules (DESIGN v2.13); `cargo test`
-plays `Tests/Fixtures/harness/`, `session/` and `status/`, and needs
+since slice 2.4 the ACP adapter's rules (DESIGN v2.13), and since slice
+2.5 the config schema (DESIGN v2.14); `cargo test` plays
+`Tests/Fixtures/harness/`, `session/`, `status/` and `config/`, and needs
 Python 3 for the mock ACP agent test (skipped without it, except on CI).
 Rules (panic, fixtures, ledger, licenses) are in AGENTS.md, "The Rust
 core".
