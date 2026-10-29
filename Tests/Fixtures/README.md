@@ -438,8 +438,9 @@ Strings are compared scalar for scalar.
 
 `language-agreement.json` is a corpus of natural sentences, each named
 after its kind (`en: …`, `zh-Hant: …`, `mixed: …`, `short: …`, `code: …`,
-`han: …`, `gate: …`, and `unlisted: …` for a language only one of the
-two detectors can name). The language decision is the one rule two
+`fullwidth: …` for full-width forms around few CJK letters, `script: …`
+for text mixing CJK scripts, `han: …`, `gate: …`, and `unlisted: …` for
+a language only one of the two detectors can name). The language decision is the one rule two
 libraries can legitimately disagree on (ADR 0011): the Swift app asks
 NLLanguageRecognizer, the Rust core its own detector, both under the gates
 of `language.json`. Its input is a string and its expected value is
@@ -452,16 +453,23 @@ names it. No other key is allowed in an agreement expectation.
 
 The core's detector is whatlang, restricted to the languages
 NLLanguageRecognizer can answer, with its own confidence gate (above
-0.59 on its scale, where Swift's is 0.7 on the recognizer's): see
+0.59 on its scale, where Swift's is 0.7 on the recognizer's); whatlang's
+zh, ja or ko is a count of scripts, not a statistical answer, so the core
+decides CJK by the script rule of `language.json` alone: see
 `rust/powerup-core/src/speech/language.rs`. `language.json` holds only
 texts on which the two decide alike, so it pins the gates themselves; a
 text on which they cannot agree belongs in `language-agreement.json` with
-its difference recorded. An accepted difference is of one of two kinds:
-the core undecided, so the reply reads in English (HK-421, and HK-422
-for a language whatlang or the recognizer cannot name), or Han-only text
-the Swift app read as Japanese reading as Chinese (HK-420); both runners
-reject any other. The corpus holds 117 sentences, 18 of them accepted
-differences (3 of HK-420, 10 of HK-421, 5 of HK-422).
+its difference recorded. An accepted difference is of one of three
+kinds: the core undecided, so the reply reads in English (HK-421, HK-422
+for a language whatlang or the recognizer cannot name, HK-423 for text
+with no CJK script but full-width forms); CJK text the core decides by its
+script where the recognizer named another CJK language (Han-only Japanese
+reading as Chinese, HK-420; a quoted kana word deciding Japanese, hangul
+deciding Korean, HK-423), which the Rust runner checks is the script
+rule's answer; or German the core reads as French, which only one sentence
+repeated does (HK-424). Both runners reject any other. The corpus holds 144
+sentences, 29 of them accepted differences (4 of HK-420, 11 of HK-421, 5
+of HK-422, 8 of HK-423, 1 of HK-424).
 
 The Swift runner is `Tests/PowerUpTests/SpeechFixtureTests.swift`, which
 plays every table through the bridge (`CoreBridgeSpeech.swift`), compares

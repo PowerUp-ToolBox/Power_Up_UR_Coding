@@ -57,10 +57,12 @@ final class SpeechFixtureTests: XCTestCase {
         }
     }
 
-    /// An accepted difference is a real one, and of the two kinds the
+    /// An accepted difference is a real one, and of the three kinds the
     /// ledger accepts: the core undecided (spoken in English; HK-421,
-    /// HK-422), or Han-only text the Swift app read as Japanese read as
-    /// Chinese (HK-420).
+    /// HK-422, HK-423); CJK text the core decides by its script where the
+    /// recognizer named another CJK language (HK-420, HK-423; the Rust
+    /// runner also checks the core's answer is the script's); or German the
+    /// core reads as French, which only one sentence repeated does (HK-424).
     func testAgreementDifferencesAreRealAndOfAnAcceptedKind() throws {
         let file = try SpeechFixtures.load("language-agreement.json")
         var differences = 0
@@ -69,7 +71,9 @@ final class SpeechFixtureTests: XCTestCase {
             differences += 1
             let swift = fields["swift"]
             XCTAssertNotEqual(swift, core, "\(fixtureCase.name): a recorded difference that is none")
-            XCTAssertTrue(core == .null || (core == .string("zh") && swift == .string("ja")),
+            let cjk: [JSONValue] = [.string("zh"), .string("ja"), .string("ko")]
+            let byScript = cjk.contains(core) && swift.map { cjk.contains($0) } == true
+            XCTAssertTrue(core == .null || byScript || (core == .string("fr") && swift == .string("de")),
                           "\(fixtureCase.name): core \(core) where Swift said \(String(describing: swift))")
         }
         XCTAssertGreaterThan(differences, 0, "the table records its accepted differences")
@@ -145,7 +149,7 @@ final class SpeechFixtureTests: XCTestCase {
         let file = try SpeechFixtures.load("language-agreement.json")
         XCTAssertGreaterThanOrEqual(file.cases.count, 80)
         let kinds = ["en", "de", "fr", "es", "it", "pt", "nl", "zh-Hans", "zh-Hant", "ja", "ko",
-                     "mixed", "short", "code", "han", "gate", "unlisted"]
+                     "mixed", "fullwidth", "script", "short", "code", "han", "gate", "unlisted"]
         for kind in kinds {
             let count = file.cases.filter { $0.name.hasPrefix("\(kind): ") }.count
             XCTAssertGreaterThanOrEqual(count, 4, "language-agreement.json has \(count) \(kind) sentences")

@@ -55,11 +55,16 @@ How the language is decided, honestly stated:
   short or mixed text: any kana means Japanese, hangul means Korean, and
   Chinese characters alone mean Chinese. So a Japanese phrase written only
   in kanji, with no kana at all, reads as Chinese; an ordinary Japanese
-  reply has kana and reads as Japanese.
+  reply has kana and reads as Japanese. Full-width punctuation, digits and
+  letters (`！`, `１２３`, `ＯＫ`) don't count as any of these scripts. A
+  Chinese or Korean reply that quotes a Japanese word in kana (「ログイン」)
+  reads as Japanese, because the kana decide.
 - **When PowerUp isn't sure, it reads in English.** Very short replies
   ("OK", "Done."), lists of names or paths, and the occasional short
   sentence in another language that the detector can't call confidently
-  are read by an English voice rather than risk a wrong one. A few
+  are read by an English voice rather than risk a wrong one. (One known
+  slip: a German sentence repeated word for word can read in a French
+  voice.) A few
   languages macOS can name but PowerUp's detector can't (Icelandic, Kazakh,
   Lao, Tibetan and Cherokee among them) are always read in English.
 - PowerUp's own spoken confirmations (such as "Model: Sonnet") are always

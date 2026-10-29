@@ -13,8 +13,8 @@
 mod support;
 
 use powerup_core::speech::{
-    dominant_language, speech_text, spoken_reply, summary_prompt, usable_summary, voice_language,
-    wants_summary, SENTENCE_ENDERS,
+    cjk_script_language, dominant_language, speech_text, spoken_reply, summary_prompt,
+    usable_summary, voice_language, wants_summary, SENTENCE_ENDERS,
 };
 use serde_json::{json, Value};
 use support::case_table;
@@ -171,9 +171,11 @@ fn language_cases() {
 /// The core's decision must be `expected.core` where the table records an
 /// accepted difference and `expected.swift` everywhere else. A recorded
 /// difference must really differ, so a stale record cannot linger, and it
-/// must be one of the two kinds the ledger accepts: the core undecided,
-/// so the reply reads in English (HK-421, HK-422), or Han-only text the
-/// Swift app read as Japanese reading as Chinese (HK-420). The core never
+/// must be one of the three kinds the ledger accepts: the core undecided,
+/// so the reply reads in English (HK-421, HK-422, HK-423); CJK text the
+/// core decides by its script where the recognizer named another CJK
+/// language (HK-420, HK-423); or German the core reads as French, which
+/// only one sentence repeated does (HK-424). Outside these the core never
 /// names a language the Swift app did not.
 #[test]
 fn language_agreement_cases() {
@@ -196,9 +198,13 @@ fn language_agreement_cases() {
             .unwrap_or_else(|| panic!("{file} case {:?}: no swift decision", case.name));
         let wanted = match fields.get("core") {
             Some(core) => {
+                let input = text(&case.input);
+                let cjk = |value: &Value| matches!(value.as_str(), Some("zh" | "ja" | "ko"));
+                let by_script =
+                    cjk(core) && cjk(swift) && core.as_str() == cjk_script_language(&input);
                 assert!(
-                    core.is_null() || (core == "zh" && swift == "ja"),
-                    "{file} case {:?}: {core} is no accepted kind of difference",
+                    core.is_null() || by_script || (core == "fr" && swift == "de"),
+                    "{file} case {:?}: {core} where Swift said {swift} is no accepted kind of difference",
                     case.name
                 );
                 assert_ne!(

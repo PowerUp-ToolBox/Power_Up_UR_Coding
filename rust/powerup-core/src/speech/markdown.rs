@@ -148,10 +148,20 @@ fn strip_line_markers(
         if !line_starts_at(text, at) {
             return None;
         }
-        let indent_end = run_end(text, at, char::is_whitespace);
-        if indent_end - at > 3 {
+        // `\s{0,3}` looks at four scalars at most, as ICU does: an unbounded
+        // run would rescan a run of blank lines from each of its line
+        // starts, quadratic in its length.
+        let indent = text
+            .get(at..)
+            .unwrap_or_default()
+            .iter()
+            .take(4)
+            .take_while(|scalar| scalar.is_whitespace())
+            .count();
+        if indent > 3 {
             return None;
         }
+        let indent_end = at + indent;
         let marker_end = marker(text, indent_end)?;
         let end = match trailing {
             Trailing::OneOrMore => {
@@ -324,5 +334,39 @@ mod tests {
         assert_eq!(run(strip_links, "![a](b"), "![a](b");
         assert_eq!(run(strip_links, "[](x)"), "");
         assert_eq!(run(strip_links, "[a]\n(b)"), "[a]\n(b)");
+    }
+
+    #[test]
+    fn a_line_marker_looks_at_four_scalars_of_indent_at_most() {
+        assert_eq!(run(strip_headings, "   # x"), "x");
+        assert_eq!(run(strip_headings, "    # x"), "    # x");
+        // Line breaks are indent too (NSRegularExpression on macOS 27.2).
+        assert_eq!(run(strip_quotes, "\n\n\n> x"), "x");
+        assert_eq!(run(strip_bullets, " \t\n- x"), "x");
+        assert_eq!(run(strip_bullets, "\n\n\n\n- x"), "\nx");
+    }
+
+    #[test]
+    fn a_long_run_of_blank_lines_is_one_pass() {
+        // Every line break in the run starts a line; a pass that scanned
+        // the whole run from each took minutes here (ICU's `\s{0,3}` stops
+        // after four scalars).
+        let blank_lines = |run: &str| -> Vec<char> {
+            let mut text = vec!['a'];
+            text.extend(run.chars().cycle().take(200_000));
+            text.push('b');
+            text
+        };
+        let started = std::time::Instant::now();
+        for text in [blank_lines("\n"), blank_lines(" \n")] {
+            for pass in [strip_headings, strip_quotes, strip_bullets] {
+                assert_eq!(pass(&text), text);
+            }
+        }
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed < std::time::Duration::from_secs(5),
+            "six passes over 200,000 blank lines took {elapsed:?}"
+        );
     }
 }

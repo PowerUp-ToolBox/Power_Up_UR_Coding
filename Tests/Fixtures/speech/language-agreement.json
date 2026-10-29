@@ -1,5 +1,5 @@
 {
-  "description": "Agreement between the Swift app's language decision (NLLanguageRecognizer under the gates of language.json) and the Rust core's (whatlang, restricted to the languages NLLanguageRecognizer can answer, under the same gates with the confidence gate re-tuned to above 0.59 for whatlang's scale, HK-421), on natural sentences of the kind replies hold (spec #100 slice 2.5, ticket #160; ADR 0011: the speech text rules are shared, the engines and voices are per OS). expected.swift is the decision the Swift app made (a language code, or null for undecided, read as English). A Rust decision that differs is either resolved toward the Swift one or recorded as an accepted difference: expected gains \"core\" with the core's decision, the reason says why the difference is accepted, and the ledger names it. Two kinds are accepted: the core undecided, so the reply reads in English (HK-421, HK-422), and Han-only text the Swift app read as Japanese reading as Chinese (HK-420). The corpus covers en, de, fr, es, it, pt, nl, simplified and traditional Chinese, ja, ko, mixed CJK and Latin, short strings, Han-only text, text that is no language, code-heavy prose, and languages only one of the two detectors can name (unlisted: the core answers only the languages both whatlang and NLLanguageRecognizer know, HK-422).",
+  "description": "Agreement between the Swift app's language decision (NLLanguageRecognizer under the gates of language.json) and the Rust core's (whatlang, restricted to the languages NLLanguageRecognizer can answer, under the same gates with the confidence gate re-tuned to above 0.59 for whatlang's scale, HK-421; CJK the core decides by its script alone, HK-423), on natural sentences of the kind replies hold (spec #100 slice 2.5, ticket #160; ADR 0011: the speech text rules are shared, the engines and voices are per OS). expected.swift is the decision the Swift app made (a language code, or null for undecided, read as English). A Rust decision that differs is either resolved toward the Swift one or recorded as an accepted difference: expected gains \"core\" with the core's decision, the reason says why the difference is accepted, and the ledger names it. Three kinds are accepted: the core undecided, so the reply reads in English (HK-421, HK-422, HK-423); CJK text the core decides by its script where the recognizer named another CJK language, so Han-only Japanese reads as Chinese (HK-420), a quoted kana word decides Japanese and hangul Korean (HK-423); and German the core reads as French, which only one sentence repeated does (HK-424). The corpus covers en, de, fr, es, it, pt, nl, simplified and traditional Chinese, ja, ko, mixed CJK and Latin, full-width forms, texts mixing CJK scripts, short strings, Han-only text, text that is no language, code-heavy prose, and languages only one of the two detectors can name (unlisted: the core answers only the languages both whatlang and NLLanguageRecognizer know, HK-422).",
   "function": "speech::dominant_language (Swift: CoreBridge.dominantLanguage(of:); until slice 2.5 TTSService.dominantLanguageCode(of:)) — input the text, expected {swift} (plus core for an accepted difference), each a language code or null",
   "verifiedBy": "DESIGN.md v1.2 A, v2.14; Tests/PowerUpTests/SpeechFixtureTests.swift testLanguageAgreementTable plays it through CoreBridge.dominantLanguage(of:) and compares expected.core where the table records an accepted difference, expected.swift everywhere else. Rust: rust/powerup-core/tests/speech.rs language_agreement_cases runs speech::dominant_language and compares expected.core where the table records an accepted difference, expected.swift everywhere else.",
   "capturedAgainst": "Swift 5.9.2 Foundation and NaturalLanguage (Xcode 15.2) on macOS 27.2, PowerUp at 67659a4",
@@ -140,7 +140,25 @@
         "swift": "de",
         "core": null
       },
-      "reason": "A clear German reply routes to a German voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says German at 1.00 with 46 letters; the gates admit it: de. Accepted difference (HK-421): the core's whatlang says French at 0.58, not above its 0.59 gate, so the core is undecided and the reply reads in English instead; a gate that admitted it would read German in a French voice, and the same sentence written twice does pass it as French, which the agreement differential recorded (HK-421)."
+      "reason": "A clear German reply routes to a German voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says German at 1.00 with 46 letters; the gates admit it: de. Accepted difference (HK-421): the core's whatlang says French at 0.58, not above its 0.59 gate, so the core is undecided and the reply reads in English instead; a gate that admitted it would read German in a French voice, and the same sentence written twice does pass it as French (\"de: Bitte prüfe… twice\", HK-424)."
+    },
+    {
+      "name": "de: Bitte prüfe… twice",
+      "input": "Bitte prüfe, ob die neue Konfiguration für dich so passt. Bitte prüfe, ob die neue Konfiguration für dich so passt.",
+      "expected": {
+        "swift": "de",
+        "core": "fr"
+      },
+      "reason": "A German reply that repeats a sentence. Swift: NLLanguageRecognizer says German at 1.00 with 92 letters; the gates admit it: de. Accepted difference (HK-424): whatlang leans French on this sentence (0.58 alone, not above the gate, HK-421), and its confidence grows with the length of text at the same lean, so the sentence written twice passes the gate as French at 0.96 and reads in a French voice. It takes the one sentence repeated: in a differential of 20,000 natural replies built from the corpus, every reply the core read as French was this sentence repeated, and no reply of different German sentences was."
+    },
+    {
+      "name": "de: Bitte prüfe… with a code block",
+      "input": "Bitte prüfe, ob die neue Konfiguration für dich so passt.\n\n\uFFFC",
+      "expected": {
+        "swift": "de",
+        "core": null
+      },
+      "reason": "A German reply with a fenced code block, as spokenReply decides it: the fence is the U+FFFC placeholder (HK-214). Swift: NLLanguageRecognizer says German at 1.00 with 46 letters; the gates admit it: de. Accepted difference (HK-421): the placeholder weighs nothing in the core's statistical answer, so the reply decides as the sentence alone: whatlang says French at 0.58, not above its 0.59 gate, so the core is undecided and the reply reads in English instead. While the placeholder counted as a word for whatlang it added trigrams and with them confidence, and this reply passed the gate as French (HK-424)."
     },
     {
       "name": "fr: J'ai corrigé la fonction parseJSON et tous les tests passen…",
@@ -761,7 +779,7 @@
         "swift": "ja",
         "core": "zh"
       },
-      "reason": "Han-only text: a recognizer answer of zh, ja or ko is trusted whatever its confidence, so Han with no kana can still read as ja (HK-212). Swift: NLLanguageRecognizer says Japanese at 1.00 with 3 letters; its CJK answer is trusted. Accepted difference (HK-420): the core's whatlang decides Han-only text by its script, zh with no kana, and has no lexicon that knows Japanese words written in kanji; a Japanese reply holds kana, which decide ja in both."
+      "reason": "Han-only text: a recognizer answer of zh, ja or ko is trusted whatever its confidence, so Han with no kana can still read as ja (HK-212). Swift: NLLanguageRecognizer says Japanese at 1.00 with 3 letters; its CJK answer is trusted. Accepted difference (HK-420): the core decides CJK by its script alone, Han with no kana is zh, and it has no lexicon that knows Japanese words written in kanji; a Japanese reply holds kana, and any kana decides ja in the core."
     },
     {
       "name": "han: 日本語",
@@ -770,7 +788,7 @@
         "swift": "ja",
         "core": "zh"
       },
-      "reason": "Han-only text: a recognizer answer of zh, ja or ko is trusted whatever its confidence, so Han with no kana can still read as ja (HK-212). Swift: NLLanguageRecognizer says Japanese at 0.58 with 3 letters; its CJK answer is trusted. Accepted difference (HK-420): the core's whatlang decides Han-only text by its script, zh with no kana, and has no lexicon that knows Japanese words written in kanji; a Japanese reply holds kana, which decide ja in both."
+      "reason": "Han-only text: a recognizer answer of zh, ja or ko is trusted whatever its confidence, so Han with no kana can still read as ja (HK-212). Swift: NLLanguageRecognizer says Japanese at 0.58 with 3 letters; its CJK answer is trusted. Accepted difference (HK-420): the core decides CJK by its script alone, Han with no kana is zh, and it has no lexicon that knows Japanese words written in kanji; a Japanese reply holds kana, and any kana decides ja in the core."
     },
     {
       "name": "han: 新幹線",
@@ -779,7 +797,7 @@
         "swift": "ja",
         "core": "zh"
       },
-      "reason": "Han-only text: a recognizer answer of zh, ja or ko is trusted whatever its confidence, so Han with no kana can still read as ja (HK-212). Swift: NLLanguageRecognizer says Japanese at 0.66 with 3 letters; its CJK answer is trusted. Accepted difference (HK-420): the core's whatlang decides Han-only text by its script, zh with no kana, and has no lexicon that knows Japanese words written in kanji; a Japanese reply holds kana, which decide ja in both."
+      "reason": "Han-only text: a recognizer answer of zh, ja or ko is trusted whatever its confidence, so Han with no kana can still read as ja (HK-212). Swift: NLLanguageRecognizer says Japanese at 0.66 with 3 letters; its CJK answer is trusted. Accepted difference (HK-420): the core decides CJK by its script alone, Han with no kana is zh, and it has no lexicon that knows Japanese words written in kanji; a Japanese reply holds kana, and any kana decides ja in the core."
     },
     {
       "name": "han: 大丈夫",
@@ -788,6 +806,215 @@
         "swift": "zh"
       },
       "reason": "Han-only text: a recognizer answer of zh, ja or ko is trusted whatever its confidence, so Han with no kana can still read as ja (HK-212). Swift: NLLanguageRecognizer says Traditional Chinese at 0.44 with 3 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "fullwidth: 完成！！！",
+      "input": "完成！！！",
+      "expected": {
+        "swift": "zh"
+      },
+      "reason": "Full-width forms (U+FF00..U+FFEF: punctuation, digits, Latin letters, halfwidth katakana) are no CJK script; whatlang counts the whole block as hangul, so the core decides CJK by its script rule alone and never from whatlang's zh, ja or ko (HK-423). Swift: NLLanguageRecognizer says Traditional Chinese at 0.50 with 2 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "fullwidth: 好！！",
+      "input": "好！！",
+      "expected": {
+        "swift": "zh"
+      },
+      "reason": "Full-width forms (U+FF00..U+FFEF: punctuation, digits, Latin letters, halfwidth katakana) are no CJK script; whatlang counts the whole block as hangul, so the core decides CJK by its script rule alone and never from whatlang's zh, ja or ko (HK-423). Swift: NLLanguageRecognizer says Traditional Chinese at 0.56 with 1 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "fullwidth: 测试通过（１２／１２）。",
+      "input": "测试通过（１２／１２）。",
+      "expected": {
+        "swift": "zh"
+      },
+      "reason": "Full-width forms (U+FF00..U+FFEF: punctuation, digits, Latin letters, halfwidth katakana) are no CJK script; whatlang counts the whole block as hangul, so the core decides CJK by its script rule alone and never from whatlang's zh, ja or ko (HK-423). Swift: NLLanguageRecognizer says Simplified Chinese at 1.00 with 4 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "fullwidth: ＣＰＵ使用率１００％",
+      "input": "ＣＰＵ使用率１００％",
+      "expected": {
+        "swift": "zh"
+      },
+      "reason": "Full-width forms (U+FF00..U+FFEF: punctuation, digits, Latin letters, halfwidth katakana) are no CJK script; whatlang counts the whole block as hangul, so the core decides CJK by its script rule alone and never from whatlang's zh, ja or ko (HK-423). Swift: NLLanguageRecognizer says Traditional Chinese at 0.49 with 6 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "fullwidth: はい！！！",
+      "input": "はい！！！",
+      "expected": {
+        "swift": "ja"
+      },
+      "reason": "Full-width forms (U+FF00..U+FFEF: punctuation, digits, Latin letters, halfwidth katakana) are no CJK script; whatlang counts the whole block as hangul, so the core decides CJK by its script rule alone and never from whatlang's zh, ja or ko (HK-423). Swift: NLLanguageRecognizer says Japanese at 1.00 with 2 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "fullwidth: ＯＫです",
+      "input": "ＯＫです",
+      "expected": {
+        "swift": "ja"
+      },
+      "reason": "Full-width forms (U+FF00..U+FFEF: punctuation, digits, Latin letters, halfwidth katakana) are no CJK script; whatlang counts the whole block as hangul, so the core decides CJK by its script rule alone and never from whatlang's zh, ja or ko (HK-423). Swift: NLLanguageRecognizer says Polish at 0.29 with 4 letters; script evidence gives ja."
+    },
+    {
+      "name": "fullwidth: 完了しました（ｖ２．０）",
+      "input": "完了しました（ｖ２．０）",
+      "expected": {
+        "swift": "ja"
+      },
+      "reason": "Full-width forms (U+FF00..U+FFEF: punctuation, digits, Latin letters, halfwidth katakana) are no CJK script; whatlang counts the whole block as hangul, so the core decides CJK by its script rule alone and never from whatlang's zh, ja or ko (HK-423). Swift: NLLanguageRecognizer says Japanese at 1.00 with 7 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "fullwidth: テスト結果：１２３件中１２３件成功（１００％）",
+      "input": "テスト結果：１２３件中１２３件成功（１００％）",
+      "expected": {
+        "swift": "ja"
+      },
+      "reason": "Full-width forms (U+FF00..U+FFEF: punctuation, digits, Latin letters, halfwidth katakana) are no CJK script; whatlang counts the whole block as hangul, so the core decides CJK by its script rule alone and never from whatlang's zh, ja or ko (HK-423). Swift: NLLanguageRecognizer says Japanese at 1.00 with 10 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "fullwidth: ＰＲ＃１２３をマージしました",
+      "input": "ＰＲ＃１２３をマージしました",
+      "expected": {
+        "swift": "ja"
+      },
+      "reason": "Full-width forms (U+FF00..U+FFEF: punctuation, digits, Latin letters, halfwidth katakana) are no CJK script; whatlang counts the whole block as hangul, so the core decides CJK by its script rule alone and never from whatlang's zh, ja or ko (HK-423). Swift: NLLanguageRecognizer says Japanese at 1.00 with 10 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "fullwidth: 全角ＡＢＣ",
+      "input": "全角ＡＢＣ",
+      "expected": {
+        "swift": "zh"
+      },
+      "reason": "Full-width forms (U+FF00..U+FFEF: punctuation, digits, Latin letters, halfwidth katakana) are no CJK script; whatlang counts the whole block as hangul, so the core decides CJK by its script rule alone and never from whatlang's zh, ja or ko (HK-423). Swift: NLLanguageRecognizer says Spanish at 0.86 with 5 letters; script evidence gives zh."
+    },
+    {
+      "name": "fullwidth: Ｈｅｌｌｏ\u3000Ｗｏｒｌｄ",
+      "input": "Ｈｅｌｌｏ\u3000Ｗｏｒｌｄ",
+      "expected": {
+        "swift": null
+      },
+      "reason": "Full-width forms (U+FF00..U+FFEF: punctuation, digits, Latin letters, halfwidth katakana) are no CJK script; whatlang counts the whole block as hangul, so the core decides CJK by its script rule alone and never from whatlang's zh, ja or ko (HK-423). Swift: NLLanguageRecognizer says English at 0.31 with 10 letters; that is under 25 letters, so it is undecided."
+    },
+    {
+      "name": "fullwidth: ｶﾀｶﾅ",
+      "input": "ｶﾀｶﾅ",
+      "expected": {
+        "swift": "ja",
+        "core": null
+      },
+      "reason": "Full-width forms (U+FF00..U+FFEF: punctuation, digits, Latin letters, halfwidth katakana) are no CJK script; whatlang counts the whole block as hangul, so the core decides CJK by its script rule alone and never from whatlang's zh, ja or ko (HK-423). Swift: NLLanguageRecognizer says Japanese at 0.74 with 4 letters; its CJK answer is trusted. Accepted difference (HK-423): halfwidth katakana is outside the kana ranges (language.json \"halfwidth katakana is no kana\"), so the text holds no CJK script, whatlang's ko counted full-width forms, and the core is undecided; the reply reads in English."
+    },
+    {
+      "name": "fullwidth: （１２／１２）",
+      "input": "（１２／１２）",
+      "expected": {
+        "swift": "ja",
+        "core": null
+      },
+      "reason": "Full-width forms (U+FF00..U+FFEF: punctuation, digits, Latin letters, halfwidth katakana) are no CJK script; whatlang counts the whole block as hangul, so the core decides CJK by its script rule alone and never from whatlang's zh, ja or ko (HK-423). Swift: NLLanguageRecognizer says Japanese at 0.74 with 0 letters; its CJK answer is trusted. Accepted difference (HK-423): the text holds no letters, only full-width digits and punctuation, which the recognizer took for Japanese; the core is undecided and the reply reads in English."
+    },
+    {
+      "name": "fullwidth: 완료！！！！",
+      "input": "완료！！！！",
+      "expected": {
+        "swift": "ja",
+        "core": "ko"
+      },
+      "reason": "Full-width forms (U+FF00..U+FFEF: punctuation, digits, Latin letters, halfwidth katakana) are no CJK script; whatlang counts the whole block as hangul, so the core decides CJK by its script rule alone and never from whatlang's zh, ja or ko (HK-423). Swift: NLLanguageRecognizer says Japanese at 0.74 with 2 letters; its CJK answer is trusted. Accepted difference (HK-423): the recognizer took the full-width exclamation marks for Japanese; hangul writes only Korean, and the core decides ko, as Swift's own script rule would have."
+    },
+    {
+      "name": "fullwidth: 合計：１，２３４，５６７円",
+      "input": "合計：１，２３４，５６７円",
+      "expected": {
+        "swift": "ja",
+        "core": "zh"
+      },
+      "reason": "Full-width forms (U+FF00..U+FFEF: punctuation, digits, Latin letters, halfwidth katakana) are no CJK script; whatlang counts the whole block as hangul, so the core decides CJK by its script rule alone and never from whatlang's zh, ja or ko (HK-423). Swift: NLLanguageRecognizer says Japanese at 1.00 with 3 letters; its CJK answer is trusted. Accepted difference (HK-420): the core decides CJK by its script alone, Han with no kana is zh, and it has no lexicon that knows Japanese words written in kanji; a Japanese reply holds kana, and any kana decides ja in the core."
+    },
+    {
+      "name": "script: 本日東京地方裁判所判決言渡、被告人無罪確定の模様。",
+      "input": "本日東京地方裁判所判決言渡、被告人無罪確定の模様。",
+      "expected": {
+        "swift": "ja"
+      },
+      "reason": "Text mixing CJK scripts: the core decides by script evidence where the recognizer weighed words (HK-212, HK-423): any kana means ja, else any hangul ko, else Han zh. Swift: NLLanguageRecognizer says Japanese at 0.99 with 23 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "script: 株式会社日本経済新聞社代表取締役社長の挨拶",
+      "input": "株式会社日本経済新聞社代表取締役社長の挨拶",
+      "expected": {
+        "swift": "ja"
+      },
+      "reason": "Text mixing CJK scripts: the core decides by script evidence where the recognizer weighed words (HK-212, HK-423): any kana means ja, else any hangul ko, else Han zh. Swift: NLLanguageRecognizer says Japanese at 1.00 with 21 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "script: 東京タワー",
+      "input": "東京タワー",
+      "expected": {
+        "swift": "ja"
+      },
+      "reason": "Text mixing CJK scripts: the core decides by script evidence where the recognizer weighed words (HK-212, HK-423): any kana means ja, else any hangul ko, else Han zh. Swift: NLLanguageRecognizer says Japanese at 1.00 with 5 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "script: 「設定」を開いて「음성」を選びます。",
+      "input": "「設定」を開いて「음성」を選びます。",
+      "expected": {
+        "swift": "ja"
+      },
+      "reason": "Text mixing CJK scripts: the core decides by script evidence where the recognizer weighed words (HK-212, HK-423): any kana means ja, else any hangul ko, else Han zh. Swift: NLLanguageRecognizer says Japanese at 1.00 with 13 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "script: 설정 화면에서 「音声」을 선택하세요.",
+      "input": "설정 화면에서 「音声」을 선택하세요.",
+      "expected": {
+        "swift": "ko"
+      },
+      "reason": "Text mixing CJK scripts: the core decides by script evidence where the recognizer weighed words (HK-212, HK-423): any kana means ja, else any hangul ko, else Han zh. Swift: NLLanguageRecognizer says Korean at 1.00 with 14 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "script: 我已经更新了「ログイン」页面的样式。",
+      "input": "我已经更新了「ログイン」页面的样式。",
+      "expected": {
+        "swift": "zh",
+        "core": "ja"
+      },
+      "reason": "Text mixing CJK scripts: the core decides by script evidence where the recognizer weighed words (HK-212, HK-423): any kana means ja, else any hangul ko, else Han zh. Swift: NLLanguageRecognizer says Simplified Chinese at 1.00 with 15 letters; its CJK answer is trusted. Accepted difference (HK-423): the core decides CJK by its script, and kana write only Japanese, so the quoted katakana word decides ja, as Swift's own script rule would have; the recognizer read the Chinese around it. The reply reads in a Japanese voice with the English phrases."
+    },
+    {
+      "name": "script: 这个函数叫做「テスト」。",
+      "input": "这个函数叫做「テスト」。",
+      "expected": {
+        "swift": "zh",
+        "core": "ja"
+      },
+      "reason": "Text mixing CJK scripts: the core decides by script evidence where the recognizer weighed words (HK-212, HK-423): any kana means ja, else any hangul ko, else Han zh. Swift: NLLanguageRecognizer says Simplified Chinese at 1.00 with 9 letters; its CJK answer is trusted. Accepted difference (HK-423): the core decides CJK by its script, and kana write only Japanese, so the quoted katakana word decides ja, as Swift's own script rule would have; the recognizer read the Chinese around it. The reply reads in a Japanese voice with the English phrases."
+    },
+    {
+      "name": "script: 中文回复里偶尔引用一个片假名词，比如「サーバー」，不应该读成日语。",
+      "input": "中文回复里偶尔引用一个片假名词，比如「サーバー」，不应该读成日语。",
+      "expected": {
+        "swift": "zh",
+        "core": "ja"
+      },
+      "reason": "Text mixing CJK scripts: the core decides by script evidence where the recognizer weighed words (HK-212, HK-423): any kana means ja, else any hangul ko, else Han zh. Swift: NLLanguageRecognizer says Simplified Chinese at 1.00 with 28 letters; its CJK answer is trusted. Accepted difference (HK-423): the core decides CJK by its script, and kana write only Japanese, so the quoted katakana word decides ja, as Swift's own script rule would have; the recognizer read the Chinese around it. The reply reads in a Japanese voice with the English phrases."
+    },
+    {
+      "name": "script: 이 버튼의 이름은 「ログイン」입니다.",
+      "input": "이 버튼의 이름은 「ログイン」입니다.",
+      "expected": {
+        "swift": "ko",
+        "core": "ja"
+      },
+      "reason": "Text mixing CJK scripts: the core decides by script evidence where the recognizer weighed words (HK-212, HK-423): any kana means ja, else any hangul ko, else Han zh. Swift: NLLanguageRecognizer says Korean at 1.00 with 14 letters; its CJK answer is trusted. Accepted difference (HK-423): kana come before hangul in the script rule, so the quoted katakana word decides ja, as Swift's own script rule would have; the recognizer read the Korean around it."
+    },
+    {
+      "name": "script: 大韓民國 헌법 제１조",
+      "input": "大韓民國 헌법 제１조",
+      "expected": {
+        "swift": "zh",
+        "core": "ko"
+      },
+      "reason": "Text mixing CJK scripts: the core decides by script evidence where the recognizer weighed words (HK-212, HK-423): any kana means ja, else any hangul ko, else Han zh. Swift: NLLanguageRecognizer says Traditional Chinese at 0.94 with 8 letters; its CJK answer is trusted. Accepted difference (HK-423): hangul writes only Korean, and the core decides ko where the recognizer read the Han as Chinese, as Swift's own script rule would have."
     },
     {
       "name": "gate: parseJSON fetchData renderView updateState",

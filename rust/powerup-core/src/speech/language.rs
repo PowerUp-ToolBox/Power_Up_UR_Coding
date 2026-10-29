@@ -1,11 +1,12 @@
 //! The language decision that routes spoken text to a voice (HK-212,
-//! HK-213), in the Swift app's order and with its gates. Swift asked
-//! NLLanguageRecognizer for the statistical answer; the core asks the
-//! pure-Rust `whatlang` detector, restricted to the languages the
-//! recognizer can answer, and holds it to the same gates with the
-//! confidence gate re-tuned for its scale ([`CONFIDENCE_GATE`]).
-//! `Tests/Fixtures/speech/language-agreement.json` pins where the two
-//! agree and records every accepted difference.
+//! HK-213), with the Swift app's gates. Swift asked NLLanguageRecognizer
+//! for the statistical answer; the core asks the pure-Rust `whatlang`
+//! detector, restricted to the languages the recognizer can answer, and
+//! holds it to the same gates with the confidence gate re-tuned for its
+//! scale ([`CONFIDENCE_GATE`]). whatlang has no statistical answer for
+//! CJK, only a count of scripts, so CJK is the script rule's alone
+//! (HK-423). `Tests/Fixtures/speech/language-agreement.json` pins where
+//! the two agree and records every accepted difference.
 
 use whatlang::{Detector, Lang};
 
@@ -27,10 +28,12 @@ pub const CJK_SHARE: f64 = 0.2;
 /// neighbour while identifiers around a Chinese sentence reach 0.54. On
 /// the agreement corpus the gate sits between the most confident wrong
 /// answer (a German sentence whatlang files as French at 0.58) and the
-/// least confident right one (English code prose at 0.60), so on the
-/// corpus the core never names a language outside CJK that the Swift app
-/// did not: where whatlang is less sure than the recognizer was, the core
-/// is undecided and the reply reads in English.
+/// least confident right one (English code prose at 0.60): where whatlang
+/// is less sure than the recognizer was, the core is undecided and the
+/// reply reads in English. Its confidence grows with the length of text at
+/// the same lean, so that German sentence written twice passes the gate as
+/// French, the one corpus case where the core names a language outside
+/// CJK that the Swift app did not (HK-424).
 pub const CONFIDENCE_GATE: f64 = 0.59;
 
 /// The languages whatlang may answer, with the subtag the core returns
@@ -102,24 +105,37 @@ fn subtag(lang: Lang) -> Option<&'static str> {
 /// among [`LANGUAGES`], or `None` when it finds none (no letters of a
 /// script it knows) or names a language outside the list (a script with a
 /// single language, which its allowlist does not filter).
+///
+/// The fence placeholder is read as a space: it carries no letters, but
+/// whatlang reads every scalar outside ASCII punctuation and digits as part
+/// of a word, so each placeholder added trigrams, and with them confidence,
+/// to the reply around it (a German reply with a code block came out
+/// French; HK-214, HK-424).
 fn statistical_answer(text: &str) -> Option<(&'static str, f64)> {
     let languages = LANGUAGES.iter().map(|(lang, _)| *lang).collect();
-    let info = Detector::with_allowlist(languages).detect(text)?;
+    let text = text.replace(super::CODE_PLACEHOLDER, " ");
+    let info = Detector::with_allowlist(languages).detect(&text)?;
     subtag(info.lang()).map(|code| (code, info.confidence()))
 }
 
 /// The dominant language of `text` as a lowercased primary BCP-47 subtag
 /// (`zh` for simplified and traditional Chinese alike), or `None` for
-/// undecided, which callers read as English. In Swift's order:
+/// undecided, which callers read as English:
 ///
 /// 1. Empty text is undecided.
-/// 2. A statistical answer of zh, ja or ko is trusted as it is. whatlang
-///    decides CJK by script alone, so Han with no kana is zh where the
-///    recognizer knew Japanese words written in kanji (HK-420).
-/// 3. Otherwise CJK script decides once CJK scalars are at least 20% of
-///    the Alphabetic scalars ([`cjk_script_language`]): kana, hangul and
-///    Han cannot lie, where the recognizer filed "我修改了 parseJSON() 函数"
-///    as Turkish (HK-212).
+/// 2. CJK decides by its script ([`cjk_script_language`]) once CJK scalars
+///    are at least 20% of the Alphabetic scalars: any kana means ja, else
+///    any hangul ko, else zh. Swift trusted NLLanguageRecognizer's zh, ja or ko
+///    first and fell back to this rule; whatlang's zh, ja or ko is no
+///    statistical answer but a count of scripts, and its counts take the
+///    whole Halfwidth and Fullwidth Forms block for hangul (so "完成！！！"
+///    and "はい！！！" came out ko) and weigh kana against Han by its own
+///    5% share, so the core decides CJK by the script rule alone (HK-420,
+///    HK-423). The rule is also why "我修改了 parseJSON() 函数", which the
+///    recognizer filed as Turkish, is zh (HK-212).
+/// 3. A zh, ja or ko answer from whatlang without that script evidence is
+///    undecided: it counted only full-width forms, digits or punctuation
+///    (HK-423).
 /// 4. Otherwise a statistical answer is admitted only with at least 25
 ///    Alphabetic scalars and a confidence above [`CONFIDENCE_GATE`]
 ///    (HK-213, HK-421).
@@ -127,14 +143,13 @@ pub fn dominant_language(text: &str) -> Option<String> {
     if text.is_empty() {
         return None;
     }
-    let answer = statistical_answer(text);
-    if let Some((code @ ("zh" | "ja" | "ko"), _)) = answer {
-        return Some(code.to_owned());
-    }
     if let Some(script) = cjk_script_language(text) {
         return Some(script.to_owned());
     }
-    let (code, confidence) = answer?;
+    let (code, confidence) = statistical_answer(text)?;
+    if matches!(code, "zh" | "ja" | "ko") {
+        return None;
+    }
     let letters = text.chars().filter(|scalar| scalar.is_alphabetic()).count();
     (letters >= MINIMUM_LETTERS && confidence > CONFIDENCE_GATE).then(|| code.to_owned())
 }
@@ -211,5 +226,52 @@ mod tests {
         // Lao is a script whatlang does not know.
         assert_eq!(statistical_answer("ສະບາຍດີ ສະບາຍດີ ສະບາຍດີ ສະບາຍດີ"), None);
         assert_eq!(dominant_language("1234 5678"), None);
+    }
+
+    #[test]
+    fn full_width_forms_never_decide_a_cjk_language() {
+        // whatlang counts U+FF00..U+FFEF as hangul and says Korean for all
+        // of these; the script rule does not (HK-423).
+        assert_eq!(
+            statistical_answer("完成！！！").map(|(code, _)| code),
+            Some("ko")
+        );
+        assert_eq!(dominant_language("完成！！！").as_deref(), Some("zh"));
+        assert_eq!(dominant_language("はい！！！").as_deref(), Some("ja"));
+        assert_eq!(dominant_language("ＯＫです").as_deref(), Some("ja"));
+        assert_eq!(
+            dominant_language("完了しました（ｖ２．０）").as_deref(),
+            Some("ja")
+        );
+        assert_eq!(dominant_language("（１２／１２）"), None);
+        assert_eq!(dominant_language("Ｈｅｌｌｏ\u{3000}Ｗｏｒｌｄ"), None);
+    }
+
+    #[test]
+    fn any_kana_decides_japanese_however_much_han() {
+        // whatlang answers Chinese where kana are 5% or less of Han and kana.
+        let japanese = "株式会社日本経済新聞社代表取締役社長の挨拶";
+        assert_eq!(
+            statistical_answer(japanese).map(|(code, _)| code),
+            Some("zh")
+        );
+        assert_eq!(dominant_language(japanese).as_deref(), Some("ja"));
+    }
+
+    #[test]
+    fn the_fence_placeholder_weighs_nothing() {
+        for reply in [
+            "Bitte prüfe, ob die neue Konfiguration für dich so passt.",
+            "I refactored the parser so it handles empty arrays, and every test passes now.",
+        ] {
+            let alone = statistical_answer(reply);
+            for fenced in [
+                format!("{reply}\n\n\u{FFFC}"),
+                format!("\u{FFFC} {reply} \u{FFFC}\u{FFFC}"),
+            ] {
+                assert_eq!(statistical_answer(&fenced), alone, "{fenced:?}");
+                assert_eq!(dominant_language(&fenced), dominant_language(reply));
+            }
+        }
     }
 }
