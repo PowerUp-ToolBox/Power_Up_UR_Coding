@@ -4,8 +4,8 @@
 //! is stored, or a file written by one reads as changed to the other. serde_json
 //! escapes exactly what `JSONEncoder` escapes (`"`, `\`, the C0 controls with
 //! the short forms and lowercase `\u00xx`), except `/`: Swift writes `\/`,
-//! serde_json writes it raw. The formatter here adds that one escape. The pretty
-//! config writer of slice 2.5 needs the same rule.
+//! serde_json writes it raw. The formatter here adds that one escape, and the
+//! pretty config writer (`json::encoder`) shares it.
 
 use std::io;
 
@@ -39,14 +39,24 @@ impl Formatter for SwiftCompactFormatter {
     where
         W: ?Sized + io::Write,
     {
-        for (index, part) in fragment.split('/').enumerate() {
-            if index > 0 {
-                writer.write_all(b"\\/")?;
-            }
-            writer.write_all(part.as_bytes())?;
-        }
-        Ok(())
+        write_slash_escaped(writer, fragment)
     }
+}
+
+/// Writes an unescaped string fragment from serde_json with `/` as `\/`, as
+/// Swift's `JSONEncoder` writes it. serde_json escapes everything else the
+/// way Swift does.
+pub(crate) fn write_slash_escaped<W>(writer: &mut W, fragment: &str) -> io::Result<()>
+where
+    W: ?Sized + io::Write,
+{
+    for (index, part) in fragment.split('/').enumerate() {
+        if index > 0 {
+            writer.write_all(b"\\/")?;
+        }
+        writer.write_all(part.as_bytes())?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

@@ -45,6 +45,13 @@
 //! text, members in the order they were built, strings escaped as Swift
 //! escapes them, without recursion either (an agent's id is echoed back as
 //! read, however deep).
+//!
+//! config.json is read by the app's other Foundation reader, `JSONDecoder`,
+//! whose tolerances differ; [`decoder`] reads it that way, and [`encoder`]
+//! writes what `JSONEncoder` writes.
+
+pub(crate) mod decoder;
+pub(crate) mod encoder;
 
 use crate::{wire, CoreError};
 

@@ -4,8 +4,8 @@ Language-neutral test data that every implementation of PowerUp's rules is
 checked against (PLAN-any-device-any-os.md, ADR 0012): the Swift app's XCTest
 suites play every file, and the Rust core's `cargo test` plays the areas whose
 rules it owns so far (`mapping/` and `device/`, since slice 2.2,
-`harness/`, `status/` and `session/`, since slice 2.3, and the ACP tables
-of `harness/`, since slice 2.4) and checks the
+`harness/`, `status/` and `session/`, since slice 2.3, the ACP tables
+of `harness/`, since slice 2.4, and `config/`, since slice 2.5) and checks the
 format of the rest, picking up
 more as later slices port them. Each implementation loads these files from
 its own source location. Swift resolves
@@ -325,7 +325,9 @@ comparison is byte for byte: the first case is a config.json the macOS app
 wrote, which must save back unchanged. `mapping/config-load.json` keeps the
 mapping subtree's own cases.
 
-The Swift runner is `Tests/PowerUpTests/ConfigFixtureTests.swift`.
+The Swift runner is `Tests/PowerUpTests/ConfigFixtureTests.swift`, and the
+Rust runner is `rust/powerup-core/tests/config.rs`, which also plays
+`mapping/config-load.json` through the whole config decoder.
 
 ## `session/`: session scenarios (format 1)
 

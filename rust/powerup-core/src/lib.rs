@@ -8,6 +8,7 @@
 //! app that holds the microphone permission.
 
 pub mod action;
+pub mod config;
 pub mod harness;
 pub mod hold;
 pub mod intent;
