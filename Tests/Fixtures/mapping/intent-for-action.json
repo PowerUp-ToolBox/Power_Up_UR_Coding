@@ -1,0 +1,471 @@
+{
+  "description": "The intent a mapped action produces when its control is pressed (began) or released (ended). The rule is stateless (HK-033): the one-hold-at-a-time bookkeeping belongs to the caller. A hold action (pushToTalk, pushToTalkDraft) gives beginVoiceCapture in its mode (send, draft) on the press and endVoiceCapture on the release. Every other action fires on the press only and gives null on the release; none gives null for both. Input is {action: <action descriptor>, phase}; expected is an intent descriptor ({\"intent\": <Swift case name>} plus \"mode\" for beginVoiceCapture and \"prompt\" for sendPrompt) or null.",
+  "function": "IntentMapper.intent(for:phase:) — input {action, phase}, expected an intent descriptor or null",
+  "verifiedBy": "DESIGN.md v2.7 A and C; Tests/PowerUpTests/MappingFixtureTests.swift testIntentForActionTable runs IntentMapper.intent(for:phase:).",
+  "capturedAgainst": "Swift 5.9.2 synthesized Codable (Xcode 15.2), PowerUp at 6109234",
+  "cases": [
+    {
+      "name": "none began",
+      "input": {
+        "action": {
+          "case": "none"
+        },
+        "phase": "began"
+      },
+      "expected": null,
+      "reason": "none does nothing on either phase."
+    },
+    {
+      "name": "none ended",
+      "input": {
+        "action": {
+          "case": "none"
+        },
+        "phase": "ended"
+      },
+      "expected": null,
+      "reason": "none does nothing on either phase."
+    },
+    {
+      "name": "pushToTalk began",
+      "input": {
+        "action": {
+          "case": "pushToTalk"
+        },
+        "phase": "began"
+      },
+      "expected": {
+        "intent": "beginVoiceCapture",
+        "mode": "send"
+      },
+      "reason": "A hold action begins a capture on the press, in its own mode."
+    },
+    {
+      "name": "pushToTalk ended",
+      "input": {
+        "action": {
+          "case": "pushToTalk"
+        },
+        "phase": "ended"
+      },
+      "expected": {
+        "intent": "endVoiceCapture"
+      },
+      "reason": "A hold action ends the capture on the release (HK-004)."
+    },
+    {
+      "name": "sendPrompt began",
+      "input": {
+        "action": {
+          "case": "sendPrompt",
+          "prompt": "Continue"
+        },
+        "phase": "began"
+      },
+      "expected": {
+        "intent": "sendPrompt",
+        "prompt": "Continue"
+      },
+      "reason": "A non-hold action fires once, on the press."
+    },
+    {
+      "name": "sendPrompt ended",
+      "input": {
+        "action": {
+          "case": "sendPrompt",
+          "prompt": "Continue"
+        },
+        "phase": "ended"
+      },
+      "expected": null,
+      "reason": "A non-hold action does nothing on the release."
+    },
+    {
+      "name": "approve began",
+      "input": {
+        "action": {
+          "case": "approve"
+        },
+        "phase": "began"
+      },
+      "expected": {
+        "intent": "approve"
+      },
+      "reason": "A non-hold action fires once, on the press."
+    },
+    {
+      "name": "approve ended",
+      "input": {
+        "action": {
+          "case": "approve"
+        },
+        "phase": "ended"
+      },
+      "expected": null,
+      "reason": "A non-hold action does nothing on the release."
+    },
+    {
+      "name": "reject began",
+      "input": {
+        "action": {
+          "case": "reject"
+        },
+        "phase": "began"
+      },
+      "expected": {
+        "intent": "reject"
+      },
+      "reason": "A non-hold action fires once, on the press."
+    },
+    {
+      "name": "reject ended",
+      "input": {
+        "action": {
+          "case": "reject"
+        },
+        "phase": "ended"
+      },
+      "expected": null,
+      "reason": "A non-hold action does nothing on the release."
+    },
+    {
+      "name": "interrupt began",
+      "input": {
+        "action": {
+          "case": "interrupt"
+        },
+        "phase": "began"
+      },
+      "expected": {
+        "intent": "interrupt"
+      },
+      "reason": "A non-hold action fires once, on the press."
+    },
+    {
+      "name": "interrupt ended",
+      "input": {
+        "action": {
+          "case": "interrupt"
+        },
+        "phase": "ended"
+      },
+      "expected": null,
+      "reason": "A non-hold action does nothing on the release."
+    },
+    {
+      "name": "stopSpeaking began",
+      "input": {
+        "action": {
+          "case": "stopSpeaking"
+        },
+        "phase": "began"
+      },
+      "expected": {
+        "intent": "stopSpeaking"
+      },
+      "reason": "A non-hold action fires once, on the press."
+    },
+    {
+      "name": "stopSpeaking ended",
+      "input": {
+        "action": {
+          "case": "stopSpeaking"
+        },
+        "phase": "ended"
+      },
+      "expected": null,
+      "reason": "A non-hold action does nothing on the release."
+    },
+    {
+      "name": "replayLastReply began",
+      "input": {
+        "action": {
+          "case": "replayLastReply"
+        },
+        "phase": "began"
+      },
+      "expected": {
+        "intent": "replayLastReply"
+      },
+      "reason": "A non-hold action fires once, on the press."
+    },
+    {
+      "name": "replayLastReply ended",
+      "input": {
+        "action": {
+          "case": "replayLastReply"
+        },
+        "phase": "ended"
+      },
+      "expected": null,
+      "reason": "A non-hold action does nothing on the release."
+    },
+    {
+      "name": "toggleTTS began",
+      "input": {
+        "action": {
+          "case": "toggleTTS"
+        },
+        "phase": "began"
+      },
+      "expected": {
+        "intent": "toggleTTS"
+      },
+      "reason": "A non-hold action fires once, on the press."
+    },
+    {
+      "name": "toggleTTS ended",
+      "input": {
+        "action": {
+          "case": "toggleTTS"
+        },
+        "phase": "ended"
+      },
+      "expected": null,
+      "reason": "A non-hold action does nothing on the release."
+    },
+    {
+      "name": "newSession began",
+      "input": {
+        "action": {
+          "case": "newSession"
+        },
+        "phase": "began"
+      },
+      "expected": {
+        "intent": "newSession"
+      },
+      "reason": "A non-hold action fires once, on the press."
+    },
+    {
+      "name": "newSession ended",
+      "input": {
+        "action": {
+          "case": "newSession"
+        },
+        "phase": "ended"
+      },
+      "expected": null,
+      "reason": "A non-hold action does nothing on the release."
+    },
+    {
+      "name": "showWindow began",
+      "input": {
+        "action": {
+          "case": "showWindow"
+        },
+        "phase": "began"
+      },
+      "expected": {
+        "intent": "showWindow"
+      },
+      "reason": "A non-hold action fires once, on the press."
+    },
+    {
+      "name": "showWindow ended",
+      "input": {
+        "action": {
+          "case": "showWindow"
+        },
+        "phase": "ended"
+      },
+      "expected": null,
+      "reason": "A non-hold action does nothing on the release."
+    },
+    {
+      "name": "cycleModel began",
+      "input": {
+        "action": {
+          "case": "cycleModel"
+        },
+        "phase": "began"
+      },
+      "expected": {
+        "intent": "cycleModel"
+      },
+      "reason": "A non-hold action fires once, on the press."
+    },
+    {
+      "name": "cycleModel ended",
+      "input": {
+        "action": {
+          "case": "cycleModel"
+        },
+        "phase": "ended"
+      },
+      "expected": null,
+      "reason": "A non-hold action does nothing on the release."
+    },
+    {
+      "name": "cycleEffort began",
+      "input": {
+        "action": {
+          "case": "cycleEffort"
+        },
+        "phase": "began"
+      },
+      "expected": {
+        "intent": "cycleEffort"
+      },
+      "reason": "A non-hold action fires once, on the press."
+    },
+    {
+      "name": "cycleEffort ended",
+      "input": {
+        "action": {
+          "case": "cycleEffort"
+        },
+        "phase": "ended"
+      },
+      "expected": null,
+      "reason": "A non-hold action does nothing on the release."
+    },
+    {
+      "name": "cyclePermissionMode began",
+      "input": {
+        "action": {
+          "case": "cyclePermissionMode"
+        },
+        "phase": "began"
+      },
+      "expected": {
+        "intent": "cyclePermissionMode"
+      },
+      "reason": "A non-hold action fires once, on the press."
+    },
+    {
+      "name": "cyclePermissionMode ended",
+      "input": {
+        "action": {
+          "case": "cyclePermissionMode"
+        },
+        "phase": "ended"
+      },
+      "expected": null,
+      "reason": "A non-hold action does nothing on the release."
+    },
+    {
+      "name": "cycleProject began",
+      "input": {
+        "action": {
+          "case": "cycleProject"
+        },
+        "phase": "began"
+      },
+      "expected": {
+        "intent": "cycleProject"
+      },
+      "reason": "A non-hold action fires once, on the press."
+    },
+    {
+      "name": "cycleProject ended",
+      "input": {
+        "action": {
+          "case": "cycleProject"
+        },
+        "phase": "ended"
+      },
+      "expected": null,
+      "reason": "A non-hold action does nothing on the release."
+    },
+    {
+      "name": "cycleFocus began",
+      "input": {
+        "action": {
+          "case": "cycleFocus"
+        },
+        "phase": "began"
+      },
+      "expected": {
+        "intent": "cycleFocus"
+      },
+      "reason": "A non-hold action fires once, on the press."
+    },
+    {
+      "name": "cycleFocus ended",
+      "input": {
+        "action": {
+          "case": "cycleFocus"
+        },
+        "phase": "ended"
+      },
+      "expected": null,
+      "reason": "A non-hold action does nothing on the release."
+    },
+    {
+      "name": "pushToTalkDraft began",
+      "input": {
+        "action": {
+          "case": "pushToTalkDraft"
+        },
+        "phase": "began"
+      },
+      "expected": {
+        "intent": "beginVoiceCapture",
+        "mode": "draft"
+      },
+      "reason": "A hold action begins a capture on the press, in its own mode."
+    },
+    {
+      "name": "pushToTalkDraft ended",
+      "input": {
+        "action": {
+          "case": "pushToTalkDraft"
+        },
+        "phase": "ended"
+      },
+      "expected": {
+        "intent": "endVoiceCapture"
+      },
+      "reason": "A hold action ends the capture on the release (HK-004)."
+    },
+    {
+      "name": "sendDraft began",
+      "input": {
+        "action": {
+          "case": "sendDraft"
+        },
+        "phase": "began"
+      },
+      "expected": {
+        "intent": "sendDraft"
+      },
+      "reason": "A non-hold action fires once, on the press."
+    },
+    {
+      "name": "sendDraft ended",
+      "input": {
+        "action": {
+          "case": "sendDraft"
+        },
+        "phase": "ended"
+      },
+      "expected": null,
+      "reason": "A non-hold action does nothing on the release."
+    },
+    {
+      "name": "toggleControlMode began",
+      "input": {
+        "action": {
+          "case": "toggleControlMode"
+        },
+        "phase": "began"
+      },
+      "expected": {
+        "intent": "toggleControlMode"
+      },
+      "reason": "A non-hold action fires once, on the press."
+    },
+    {
+      "name": "toggleControlMode ended",
+      "input": {
+        "action": {
+          "case": "toggleControlMode"
+        },
+        "phase": "ended"
+      },
+      "expected": null,
+      "reason": "A non-hold action does nothing on the release."
+    }
+  ]
+}
