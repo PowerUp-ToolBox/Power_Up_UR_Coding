@@ -4,7 +4,7 @@
 //! types across versions, and a field of the wrong type reads as missing.
 
 use super::event::ClaudeEvent;
-use super::json::{self, JsonValue};
+use crate::harness::json::{self, JsonValue};
 use crate::text;
 
 /// Tried in this order for a tool's detail, before any other key (HK-061).

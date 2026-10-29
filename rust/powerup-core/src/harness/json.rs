@@ -1,6 +1,6 @@
-//! One stdout line read as Foundation's `JSONSerialization` reads it
-//! (HK-393), and its fields read as Swift reads them through `NSNumber`
-//! (HK-394).
+//! One harness stdout line (the claude CLI's stream-json, an ACP agent's
+//! JSON-RPC) read as Foundation's `JSONSerialization` reads it (HK-393),
+//! and its fields read as Swift reads them through `NSNumber` (HK-394).
 //!
 //! serde_json reads differently in ways a line can show: it keeps the last
 //! of two equal keys where Foundation keeps the first, it refuses a byte
