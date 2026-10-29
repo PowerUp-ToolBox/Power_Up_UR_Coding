@@ -794,6 +794,13 @@ pub fn is_destructive(
     contain(|| Ok(destructive::is_destructive(&kind, &title, &detail)))
 }
 
+/// The substrings that make a request destructive, in the core's order;
+/// the Swift suite counts its fixture cases against them.
+#[uniffi::export]
+pub fn destructive_patterns() -> Result<Vec<String>, CoreBridgeError> {
+    contain(|| Ok(owned(&destructive::PATTERNS)))
+}
+
 fn owned(values: &[&str]) -> Vec<String> {
     values.iter().map(|&value| value.to_owned()).collect()
 }
@@ -1185,6 +1192,10 @@ mod tests {
         assert_eq!(
             is_destructive(String::new(), "Bash".to_string(), "git push -f".to_string()),
             Ok(true)
+        );
+        assert_eq!(
+            destructive_patterns().unwrap().len(),
+            destructive::PATTERNS.len()
         );
         assert_eq!(effort_cycle().unwrap().last(), Some(&"max".to_string()));
         assert_eq!(permission_mode_cycle().unwrap().len(), 3);

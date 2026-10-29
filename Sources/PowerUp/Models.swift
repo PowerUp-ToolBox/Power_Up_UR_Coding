@@ -273,8 +273,9 @@ struct AppConfig: Codable, Equatable {
 
     // MARK: Fixed option sets
 
-    /// Aliases a fresh config cycles through with the Cycle Model action.
-    static let defaultModelCycle: [String] = ["sonnet", "opus", "haiku", "fable"]
+    /// Aliases a fresh config cycles through with the Cycle Model action
+    /// (the core's list, DESIGN v2.12).
+    static let defaultModelCycle: [String] = CoreBridge.defaultModelCycle()
 
     /// Every value the effort setting can take (`default` = don't pass `--effort`).
     /// "max" is surfaced as **Ultra**: maximum CLI effort plus dynamic
@@ -282,26 +283,19 @@ struct AppConfig: Codable, Equatable {
     /// `claude -p --effort max` is accepted by the CLI.
     static let effortOptions: [String] = ["default", "low", "medium", "high", "xhigh", "max"]
 
-    /// Cycle order for the Cycle Effort action — "default" is not part of it.
-    static let effortCycle: [String] = ["low", "medium", "high", "xhigh", "max"]
+    /// Cycle order for the Cycle Effort action — "default" is not part of it
+    /// (HK-009). The session rules step through it in the core.
+    static let effortCycle: [String] = CoreBridge.effortCycle()
 
     /// Human name for an effort value ("max" reads as Ultra everywhere).
     static func effortDisplayName(_ effort: String) -> String {
-        switch effort {
-        case "default": return "Default"
-        case "low": return "Low"
-        case "medium": return "Medium"
-        case "high": return "High"
-        case "xhigh": return "Extra High"
-        case "max": return "Ultra"
-        default: return effort
-        }
+        CoreBridge.effortDisplayName(effort)
     }
 
     /// Cycle order for the Cycle Permission Mode action. `bypassPermissions` is
     /// deliberately excluded: a stray button press must never turn on
-    /// auto-approve-everything (it stays available in Settings).
-    static let permissionModeCycle: [String] = ["acceptEdits", "plan", "default"]
+    /// auto-approve-everything (it stays available in Settings; HK-008).
+    static let permissionModeCycle: [String] = CoreBridge.permissionModeCycle()
 
     /// Where controller and voice input is delivered.
     static let controlModeOptions: [String] = ["builtin", "remote"]
@@ -313,13 +307,7 @@ struct AppConfig: Codable, Equatable {
     static let acpAgentOptions: [String] = ["opencode", "claudeBridge", "codexBridge", "custom"]
 
     static func acpAgentDisplayName(_ agent: String) -> String {
-        switch agent {
-        case "opencode": return "opencode"
-        case "claudeBridge": return "Claude Code (ACP bridge)"
-        case "codexBridge": return "Codex (ACP bridge)"
-        case "custom": return "Custom command"
-        default: return agent
-        }
+        CoreBridge.acpAgentDisplayName(agent)
     }
 
     /// How remote mode reaches the session it drives. cmux (socket, no

@@ -78,10 +78,7 @@ final class AppState: ObservableObject {
     /// (optimistic); only when the config says "default" does the chip fall
     /// back to whatever the ACTIVE harness reported (Claude adapter or ACP agent).
     var modelChipLabel: String {
-        let configured = configStore.config.model
-        if configured != "default", !configured.isEmpty { return configured }
-        if let reported = harnessReportedModel, !reported.isEmpty { return reported }
-        return "default"
+        CoreBridge.modelChipLabel(configured: configStore.config.model, reported: harnessReportedModel)
     }
 
     private func acpAdapterInstance() -> ACPAdapter {
@@ -193,8 +190,8 @@ final class AppState: ObservableObject {
     /// the session). Long legitimate turns can exceed it — the tradeoff is a
     /// too-early idle that self-corrects on the next hook, versus an amber
     /// light no event will ever clear. Internal so the status tests can pin
-    /// the 15 minutes their fixture rows assume.
-    static let remoteTurnExpiry: TimeInterval = 15 * 60
+    /// the 15 minutes their fixture rows assume; the core owns the value.
+    static var remoteTurnExpiry: TimeInterval { CoreBridge.remoteTurnExpiry }
 
     /// Read-back focus in remote mode: nil = everything (default), else only
     /// this session id is spoken/haptic'd and drives the working light; other
@@ -1368,22 +1365,18 @@ final class AppState: ObservableObject {
 
     /// The turn table with expired entries dropped: an entry survives only
     /// while its last sign of life is strictly newer than `now - expiry`.
-    /// Pure; pinned by Tests/Fixtures/status/remote-turns.json.
+    /// Pure, in the core; pinned by Tests/Fixtures/status/remote-turns.json.
     nonisolated static func liveRemoteTurns(_ turns: [String: Date],
                                             now: Date,
                                             expiry: TimeInterval) -> [String: Date] {
-        let cutoff = now.addingTimeInterval(-expiry)
-        return turns.filter { $0.value > cutoff }
+        CoreBridge.liveRemoteTurns(turns, now: now, expiry: expiry)
     }
 
     /// Whether a remote turn lights the bar: any live entry, or — with a
-    /// focus set — only the focused session's (DESIGN v2.2 §B). Pure; pinned
-    /// by Tests/Fixtures/status/remote-turns.json.
+    /// focus set — only the focused session's (DESIGN v2.2 §B). Pure, in the
+    /// core; pinned by Tests/Fixtures/status/remote-turns.json.
     nonisolated static func remoteTurnIsActive(_ turns: [String: Date], focus: String?) -> Bool {
-        if let focus {
-            return turns[focus] != nil
-        }
-        return !turns.isEmpty
+        CoreBridge.remoteTurnIsActive(turns, focus: focus)
     }
 
     // MARK: - Carrying out the session's effects
@@ -1603,30 +1596,29 @@ final class AppState: ObservableObject {
         applyLight(for: newStatus)
     }
 
-    /// Pure status derivation (DESIGN v2.6; the full precedence table is
-    /// Tests/Fixtures/status/derivation.json). Live activity outranks the
-    /// missing controller: the pad is optional — voice capture can be started
-    /// from the mic button or the keyboard, replies still speak, and turns
-    /// still run — so "No Controller" is only the *resting* state, never a
-    /// mask over what the app is doing right now.
+    /// Pure status derivation, in the core (DESIGN v2.6, v2.12; the full
+    /// precedence table is Tests/Fixtures/status/derivation.json). Live
+    /// activity outranks the missing controller: the pad is optional — voice
+    /// capture can be started from the mic button or the keyboard, replies
+    /// still speak, and turns still run — so "No Controller" is only the
+    /// *resting* state, never a mask over what the app is doing right now.
     nonisolated static func derivedStatus(controllerConnected: Bool,
                                           isPTTActive: Bool,
                                           isSpeaking: Bool,
                                           isWorking: Bool) -> AppStatus {
-        if isPTTActive { return .listening }
-        if isSpeaking { return .speaking }
-        if isWorking { return .thinking }
-        return controllerConnected ? .idle : .noController
+        CoreBridge.derivedStatus(controllerConnected: controllerConnected, isPTTActive: isPTTActive,
+                                 isSpeaking: isSpeaking, isWorking: isWorking)
     }
 
     /// The `isWorking` input to `derivedStatus` (DESIGN v2.6 §B): the harness
     /// is working, or — in remote mode only — a hooked session's turn is
     /// active. A remote-turn flag left over in built-in mode never counts.
-    /// Pure; pinned by Tests/Fixtures/status/working.json.
+    /// Pure, in the core; pinned by Tests/Fixtures/status/working.json.
     nonisolated static func derivedIsWorking(harnessState: HarnessState,
                                              isRemoteMode: Bool,
                                              remoteTurnActive: Bool) -> Bool {
-        harnessState == .working || (isRemoteMode && remoteTurnActive)
+        CoreBridge.derivedIsWorking(harnessState: harnessState, isRemoteMode: isRemoteMode,
+                                    remoteTurnActive: remoteTurnActive)
     }
 
     private func applyLight(for status: AppStatus) {

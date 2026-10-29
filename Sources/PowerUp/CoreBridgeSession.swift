@@ -311,6 +311,12 @@ extension CoreBridge {
         }
     }
 
+    /// The substrings that make a request destructive, in the core's
+    /// order; empty when the core fails.
+    static func destructivePatterns() -> [String] {
+        call("destructivePatterns", fallback: []) { try PowerUpCore.destructivePatterns() }
+    }
+
     // MARK: Cycles
 
     /// The effort cycle (HK-009); empty when the core fails.
