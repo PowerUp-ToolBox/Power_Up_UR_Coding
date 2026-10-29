@@ -148,7 +148,9 @@ contract change.
 | `ConfigStore.swift` | Persistent config (JSON, debounced, repairs corruption) |
 | `TranscriptStore.swift` | Per-project transcript persistence (JSON Lines) |
 | `MainView.swift` / `ComponentViews.swift` / `SettingsView.swift` / `MappingView.swift` | SwiftUI views |
-| `CoreBridge.swift` | The only file that imports the Rust core: launch check and the device-layer wrappers (DESIGN v2.10, v2.11) |
+| `CoreBridge.swift` | Imports the Rust core (with the two `CoreBridge*.swift` files, the only files that do): launch check and the device-layer wrappers (DESIGN v2.10, v2.11) |
+| `CoreBridgeHarness.swift` | Bridge wrappers for the Claude harness: line parser, `LineBuffer`, stdin lines, argv, the `ClaudeAdapter` object (DESIGN v2.12) |
+| `CoreBridgeSession.swift` | Bridge wrappers for the session: the `Session` object and its effects, status derivation, classifier, cycles (DESIGN v2.12) |
 
 The Rust core lives in `rust/` (see "The Rust core" above); its bridge tests
 are in `Tests/PowerUpCoreTests/`.

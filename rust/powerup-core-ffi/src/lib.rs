@@ -14,6 +14,7 @@ uniffi::setup_scaffolding!();
 mod device;
 mod harness;
 mod mapping;
+mod session;
 
 /// An error a core call reports to Swift.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Error)]
