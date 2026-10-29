@@ -1,0 +1,364 @@
+{
+  "description": "The argv the claude CLI is launched with (HK-077, HK-080). -p, --verbose, --input-format stream-json, --output-format stream-json and --include-partial-messages always come first, in that order: stream-json output refuses to run without --verbose, and text deltas need --include-partial-messages. --model follows unless the model is empty or \"default\" (the CLI's own default), --permission-mode whenever the mode is non-empty (\"default\" is a real mode and is passed), --effort unless it is empty or \"default\" (no flag means the CLI's default; \"max\" is accepted, verified live), and --resume with the trimmed id unless it trims to nothing. Values other than the resume id are passed as given.",
+  "function": "ClaudeService.launchArguments(model:permissionMode:effort:resumeSessionID:) ↔ powerup_core::harness::claude::launch::launch_arguments — input {model, permissionMode, effort, resumeSessionID: string|null}; expected: the argument list",
+  "verifiedBy": "DESIGN.md v1.1 A (verified live against claude CLI v2.1.243); Tests/PowerUpTests/HarnessFixtureTests.swift testClaudeLaunchTable plays it through ClaudeService.launchArguments.",
+  "capturedAgainst": "The Swift app (ClaudeService.launchArguments and IOChannel) of PowerUp at ae3de75 (launchArguments extracted unchanged), built with Swift 5.9.2 (Xcode 15.2) and run on macOS 27.2; the flags themselves were verified live against claude CLI v2.1.243 (DESIGN.md v1.1 A)",
+  "cases": [
+    {
+      "name": "the shipped defaults",
+      "input": {
+        "model": "default",
+        "permissionMode": "acceptEdits",
+        "effort": "default",
+        "resumeSessionID": null
+      },
+      "expected": [
+        "-p",
+        "--verbose",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--include-partial-messages",
+        "--permission-mode",
+        "acceptEdits"
+      ],
+      "reason": "A fresh config (model default, permission acceptEdits, effort default) passes only the permission mode (HK-077)."
+    },
+    {
+      "name": "an explicit model is passed",
+      "input": {
+        "model": "sonnet",
+        "permissionMode": "acceptEdits",
+        "effort": "default",
+        "resumeSessionID": null
+      },
+      "expected": [
+        "-p",
+        "--verbose",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--include-partial-messages",
+        "--model",
+        "sonnet",
+        "--permission-mode",
+        "acceptEdits"
+      ],
+      "reason": "A chosen model alias reaches the CLI as --model (HK-077)."
+    },
+    {
+      "name": "an empty model is omitted",
+      "input": {
+        "model": "",
+        "permissionMode": "acceptEdits",
+        "effort": "default",
+        "resumeSessionID": null
+      },
+      "expected": [
+        "-p",
+        "--verbose",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--include-partial-messages",
+        "--permission-mode",
+        "acceptEdits"
+      ],
+      "reason": "No model means the CLI's default (HK-077)."
+    },
+    {
+      "name": "the default model is omitted",
+      "input": {
+        "model": "default",
+        "permissionMode": "plan",
+        "effort": "default",
+        "resumeSessionID": null
+      },
+      "expected": [
+        "-p",
+        "--verbose",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--include-partial-messages",
+        "--permission-mode",
+        "plan"
+      ],
+      "reason": "\"default\" is the adapter's default, not a model name the CLI knows (HK-077)."
+    },
+    {
+      "name": "max effort is passed",
+      "input": {
+        "model": "opus",
+        "permissionMode": "acceptEdits",
+        "effort": "max",
+        "resumeSessionID": null
+      },
+      "expected": [
+        "-p",
+        "--verbose",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--include-partial-messages",
+        "--model",
+        "opus",
+        "--permission-mode",
+        "acceptEdits",
+        "--effort",
+        "max"
+      ],
+      "reason": "Ultra is --effort max, which claude -p accepts (verified live; HK-080)."
+    },
+    {
+      "name": "a named effort is passed",
+      "input": {
+        "model": "default",
+        "permissionMode": "acceptEdits",
+        "effort": "low",
+        "resumeSessionID": null
+      },
+      "expected": [
+        "-p",
+        "--verbose",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--include-partial-messages",
+        "--permission-mode",
+        "acceptEdits",
+        "--effort",
+        "low"
+      ],
+      "reason": "Effort is a launch flag: there is no live effort switch, so a change restarts the session (HK-077)."
+    },
+    {
+      "name": "the default effort is omitted",
+      "input": {
+        "model": "default",
+        "permissionMode": "acceptEdits",
+        "effort": "default",
+        "resumeSessionID": null
+      },
+      "expected": [
+        "-p",
+        "--verbose",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--include-partial-messages",
+        "--permission-mode",
+        "acceptEdits"
+      ],
+      "reason": "\"default\" effort means send no flag (HK-077)."
+    },
+    {
+      "name": "an empty effort is omitted",
+      "input": {
+        "model": "default",
+        "permissionMode": "acceptEdits",
+        "effort": "",
+        "resumeSessionID": null
+      },
+      "expected": [
+        "-p",
+        "--verbose",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--include-partial-messages",
+        "--permission-mode",
+        "acceptEdits"
+      ],
+      "reason": "An empty effort sends no flag either (HK-077)."
+    },
+    {
+      "name": "an empty permission mode is omitted",
+      "input": {
+        "model": "default",
+        "permissionMode": "",
+        "effort": "default",
+        "resumeSessionID": null
+      },
+      "expected": [
+        "-p",
+        "--verbose",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--include-partial-messages"
+      ],
+      "reason": "Without a mode the CLI uses its own (HK-077)."
+    },
+    {
+      "name": "the default permission mode is passed",
+      "input": {
+        "model": "default",
+        "permissionMode": "default",
+        "effort": "default",
+        "resumeSessionID": null
+      },
+      "expected": [
+        "-p",
+        "--verbose",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--include-partial-messages",
+        "--permission-mode",
+        "default"
+      ],
+      "reason": "\"default\" is a real permission mode, unlike the model's \"default\", so it is passed through (HK-077)."
+    },
+    {
+      "name": "a resume id is passed",
+      "input": {
+        "model": "default",
+        "permissionMode": "acceptEdits",
+        "effort": "default",
+        "resumeSessionID": "abc-123"
+      },
+      "expected": [
+        "-p",
+        "--verbose",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--include-partial-messages",
+        "--permission-mode",
+        "acceptEdits",
+        "--resume",
+        "abc-123"
+      ],
+      "reason": "Resuming keeps the conversation's context (HK-077)."
+    },
+    {
+      "name": "a resume id is trimmed",
+      "input": {
+        "model": "default",
+        "permissionMode": "acceptEdits",
+        "effort": "default",
+        "resumeSessionID": "  abc-123\n"
+      },
+      "expected": [
+        "-p",
+        "--verbose",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--include-partial-messages",
+        "--permission-mode",
+        "acceptEdits",
+        "--resume",
+        "abc-123"
+      ],
+      "reason": "A stored id with stray whitespace still resumes (HK-077)."
+    },
+    {
+      "name": "a whitespace resume id is omitted",
+      "input": {
+        "model": "default",
+        "permissionMode": "acceptEdits",
+        "effort": "default",
+        "resumeSessionID": " \t\n"
+      },
+      "expected": [
+        "-p",
+        "--verbose",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--include-partial-messages",
+        "--permission-mode",
+        "acceptEdits"
+      ],
+      "reason": "An id that trims to nothing starts a fresh session (HK-077)."
+    },
+    {
+      "name": "an empty resume id is omitted",
+      "input": {
+        "model": "default",
+        "permissionMode": "acceptEdits",
+        "effort": "default",
+        "resumeSessionID": ""
+      },
+      "expected": [
+        "-p",
+        "--verbose",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--include-partial-messages",
+        "--permission-mode",
+        "acceptEdits"
+      ],
+      "reason": "An empty id starts a fresh session (HK-077)."
+    },
+    {
+      "name": "every flag together, in order",
+      "input": {
+        "model": "haiku",
+        "permissionMode": "bypassPermissions",
+        "effort": "xhigh",
+        "resumeSessionID": "s-1"
+      },
+      "expected": [
+        "-p",
+        "--verbose",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--include-partial-messages",
+        "--model",
+        "haiku",
+        "--permission-mode",
+        "bypassPermissions",
+        "--effort",
+        "xhigh",
+        "--resume",
+        "s-1"
+      ],
+      "reason": "The order is model, permission mode, effort, resume (HK-077)."
+    },
+    {
+      "name": "values other than the resume id are not trimmed",
+      "input": {
+        "model": " sonnet",
+        "permissionMode": "plan ",
+        "effort": "low",
+        "resumeSessionID": null
+      },
+      "expected": [
+        "-p",
+        "--verbose",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--include-partial-messages",
+        "--model",
+        " sonnet",
+        "--permission-mode",
+        "plan ",
+        "--effort",
+        "low"
+      ],
+      "reason": "Only the resume id is trimmed; settings values arrive already clean, and the argv passes them as given (HK-077)."
+    }
+  ]
+}

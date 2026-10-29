@@ -216,27 +216,10 @@ final class ClaudeService: ObservableObject {
 
         ClaudeService.ignoreSIGPIPEOnce()
 
-        var arguments = [
-            "-p",
-            "--verbose",                    // REQUIRED: stream-json output refuses to run without it
-            "--input-format", "stream-json",
-            "--output-format", "stream-json",
-            "--include-partial-messages"
-        ]
-        if !model.isEmpty && model != "default" {
-            arguments.append(contentsOf: ["--model", model])
-        }
-        if !permissionMode.isEmpty {
-            arguments.append(contentsOf: ["--permission-mode", permissionMode])
-        }
-        // There is no live effort switch — "default" simply means: don't pass the flag.
-        if !effort.isEmpty && effort != "default" {
-            arguments.append(contentsOf: ["--effort", effort])
-        }
-        if let resumeSessionID = resumeSessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !resumeSessionID.isEmpty {
-            arguments.append(contentsOf: ["--resume", resumeSessionID])
-        }
+        let arguments = ClaudeService.launchArguments(model: model,
+                                                      permissionMode: permissionMode,
+                                                      effort: effort,
+                                                      resumeSessionID: resumeSessionID)
 
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: binaryPath)
@@ -355,6 +338,36 @@ final class ClaudeService: ObservableObject {
             pendingStdinPayloads.removeAll()
             for payload in queued { write(payload, to: handle) }
         }
+    }
+
+    /// The claude CLI's argv for one launch. Internal so `HarnessFixtureTests`
+    /// can play `harness/claude-launch.json`.
+    nonisolated static func launchArguments(model: String,
+                                            permissionMode: String,
+                                            effort: String,
+                                            resumeSessionID: String?) -> [String] {
+        var arguments = [
+            "-p",
+            "--verbose",                    // REQUIRED: stream-json output refuses to run without it
+            "--input-format", "stream-json",
+            "--output-format", "stream-json",
+            "--include-partial-messages"
+        ]
+        if !model.isEmpty && model != "default" {
+            arguments.append(contentsOf: ["--model", model])
+        }
+        if !permissionMode.isEmpty {
+            arguments.append(contentsOf: ["--permission-mode", permissionMode])
+        }
+        // There is no live effort switch — "default" simply means: don't pass the flag.
+        if !effort.isEmpty && effort != "default" {
+            arguments.append(contentsOf: ["--effort", effort])
+        }
+        if let resumeSessionID = resumeSessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !resumeSessionID.isEmpty {
+            arguments.append(contentsOf: ["--resume", resumeSessionID])
+        }
+        return arguments
     }
 
     /// Sends a user turn: one JSON envelope + newline on stdin.

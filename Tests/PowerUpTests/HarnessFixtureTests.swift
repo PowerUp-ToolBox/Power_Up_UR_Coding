@@ -2,10 +2,10 @@ import XCTest
 @testable import PowerUp
 
 /// Plays the `Tests/Fixtures/harness/` case tables (spec #98, slice 2.3)
-/// against the Swift app: what one stdout line of the claude CLI parses
-/// into, and what each call writes on its stdin. The Rust core plays the
-/// same files (`rust/powerup-core/tests/harness.rs`), so the two can only
-/// agree.
+/// against the Swift app: how stdout bytes become lines, what one line of
+/// the claude CLI parses into, what each call writes on its stdin, and the
+/// argv a launch passes. The Rust core plays the same files
+/// (`rust/powerup-core/tests/harness.rs`), so the two can only agree.
 final class HarnessFixtureTests: XCTestCase {
 
     private static let area = "harness"
@@ -77,6 +77,66 @@ final class HarnessFixtureTests: XCTestCase {
                     XCTAssertNil(actual["subtype"], "\(fileName) case \(fixtureCase.name): the flat shape")
                 }
             }
+            if let failure = TextSafetyFixtures.mismatch(in: fileName, fixtureCase, actual: actual) {
+                XCTFail(failure)
+            }
+        }
+    }
+
+    // MARK: claude-lines.json
+
+    private struct LinesInput: Decodable {
+        let chunks: [JSONValue]
+        let flush: Bool
+    }
+
+    private struct LinesExpected: Decodable, Equatable {
+        let lines: [[String]]
+        let remainder: String?
+    }
+
+    func testClaudeLinesTable() throws {
+        let fileName = "claude-lines.json"
+        let file = try TextSafetyFixtures.load(fileName, area: Self.area,
+                                               input: LinesInput.self, expected: LinesExpected.self)
+        TextSafetyFixtures.assertWellFormed(file, fileName)
+        for fixtureCase in file.cases {
+            let io = IOChannel()
+            var lines: [[String]] = []
+            for chunk in fixtureCase.input.chunks {
+                lines.append(io.ingestStdout(try FixtureLine.bytes(chunk)).map { String(decoding: $0, as: UTF8.self) })
+            }
+            var remainder: String?
+            if fixtureCase.input.flush {
+                remainder = io.flushStdoutRemainder().map { String(decoding: $0, as: UTF8.self) }
+                // A flush empties the buffer.
+                XCTAssertNil(io.flushStdoutRemainder(), "\(fileName) case \(fixtureCase.name): a second flush gave bytes")
+            }
+            let actual = LinesExpected(lines: lines, remainder: remainder)
+            if let failure = TextSafetyFixtures.mismatch(in: fileName, fixtureCase, actual: actual) {
+                XCTFail(failure)
+            }
+        }
+    }
+
+    // MARK: claude-launch.json
+
+    private struct LaunchInput: Decodable {
+        let model: String
+        let permissionMode: String
+        let effort: String
+        let resumeSessionID: String?
+    }
+
+    func testClaudeLaunchTable() throws {
+        let fileName = "claude-launch.json"
+        let file = try TextSafetyFixtures.load(fileName, area: Self.area,
+                                               input: LaunchInput.self, expected: [String].self)
+        TextSafetyFixtures.assertWellFormed(file, fileName)
+        for fixtureCase in file.cases {
+            let input = fixtureCase.input
+            let actual = ClaudeService.launchArguments(model: input.model, permissionMode: input.permissionMode,
+                                                       effort: input.effort, resumeSessionID: input.resumeSessionID)
             if let failure = TextSafetyFixtures.mismatch(in: fileName, fixtureCase, actual: actual) {
                 XCTFail(failure)
             }

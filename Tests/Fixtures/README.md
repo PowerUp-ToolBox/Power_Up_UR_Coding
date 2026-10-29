@@ -124,9 +124,11 @@ are in `tests/support`).
 ## `harness/`: case tables for the Claude adapter
 
 The built-in Claude harness's wire rules (spec #98, slice 2.3):
-`claude-stream.json` holds what one stdout line of the `claude` CLI's
-stream-json output parses into, and `claude-stdin.json` what each call
-writes on its stdin. Both are ordinary case tables, with these descriptors:
+`claude-lines.json` holds how the `claude` CLI's stdout bytes become lines,
+`claude-stream.json` what one line of its stream-json output parses into,
+`claude-stdin.json` what each call writes on its stdin, and
+`claude-launch.json` the argv a launch passes. All are ordinary case
+tables, with these descriptors:
 
 | Descriptor | Shape |
 | --- | --- |
@@ -145,6 +147,18 @@ the file as plain strings of brackets.
 expects the JSON object of the line written, compared as JSON (key order and
 escaping are the writer's), or `null` when the call writes nothing. Every
 line written ends with one newline and holds no other.
+
+`claude-lines.json` takes `{chunks, flush}`, a list of line inputs read
+from the pipe in order and whether the stream then ends, and expects
+`{lines, remainder}`: one list of strings per chunk (the lines that chunk
+finishes, newline removed) and what the end-of-stream flush gives (`null`
+when there is no flush or nothing was buffered). Both runners also check
+that a second flush gives nothing. The 16 MiB runaway-line guard is too
+large for a case and is a unit test on each side.
+
+`claude-launch.json` takes `{model, permissionMode, effort,
+resumeSessionID}` (`resumeSessionID` may be `null`) and expects the
+argument list, in order.
 
 The Swift runner is `Tests/PowerUpTests/HarnessFixtureTests.swift` (its
 descriptor helpers are in `FixtureValues.swift`), and the Rust runner is
