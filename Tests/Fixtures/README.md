@@ -27,6 +27,9 @@ case table's `verifiedBy` sentence.
 - One subdirectory per area: `session/` (scenarios), `text-safety/`,
   `status/`, `mapping/`, `device/` and `harness/` (case tables).
 - Plain JSON only, with no comments and no implementation-specific shapes.
+  The one exception is `harness/acp-mock-agent.py`, the scripted ACP agent
+  both suites run as a process (see [the ACP adapter](#harness-the-acp-adapter)):
+  the JSON loaders list only `.json` files, so it is invisible to them.
 - Every file starts with a header and gives a `reason` for each thing it
   pins. There are two formats:
   - Session scenarios (`session/`) use `formatVersion`, `name`,
@@ -209,6 +212,18 @@ The Swift runner is `Tests/PowerUpTests/HarnessFixtureTests.swift` (its
 descriptor helpers are in `FixtureValues.swift`; `destructive-actions.json`
 is played by `DestructiveActionClassifierTests`), and the Rust runner is
 `rust/powerup-core/tests/harness.rs` (its helpers are in `tests/support`).
+
+## `harness/`: the ACP adapter
+
+`acp-mock-agent.py` is the scripted ACP agent (JSON-RPC 2.0, one JSON
+object per line over stdio): it answers `initialize`, `session/new`,
+`session/prompt` (a thought, a reply chunk, a tool call and a permission
+request, then the rest of the reply and the usage) and
+`session/set_model`, with no real harness and no network. Run it in place
+with Python 3; never copy it. Swift's `ACPAdapterIntegrationTests` drives
+the app's `ACPAdapter` against it. With `--record PATH` it appends one JSON
+object per line to `PATH`: `{"received": <a line it read, without the line
+break>}` and `{"sent": <a line it wrote, without the newline>}`.
 
 ## `session/`: session scenarios (format 1)
 

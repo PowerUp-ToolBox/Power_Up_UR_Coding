@@ -70,22 +70,29 @@ final class ACPAdapterUnitTests: XCTestCase {
 
 /// Runs the real adapter against a python mock speaking ACP over stdio —
 /// initialize, session/new, streamed updates, a permission request, and
-/// set_model, without any real harness or network.
+/// set_model, without any real harness or network. The mock is the shared
+/// fixture `Tests/Fixtures/harness/acp-mock-agent.py`, run in place; it
+/// records every line it reads and writes, so a test can check the exchange
+/// against the matching "mock agent:" case of `acp-adapter.json`.
 @MainActor
 final class ACPAdapterIntegrationTests: XCTestCase {
 
     private var adapter: ACPAdapter!
     private var events: [HarnessEvent] = []
-    private var scriptURL: URL!
+    private var recordURL: URL!
+
+    private static let scriptURL = TextSafetyFixtures.directory(area: "harness")
+        .appendingPathComponent("acp-mock-agent.py")
 
     private static let python = "/usr/bin/python3"
 
     override func setUpWithError() throws {
         try XCTSkipUnless(FileManager.default.isExecutableFile(atPath: Self.python),
                           "python3 unavailable")
-        scriptURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("mock-acp-\(UUID().uuidString).py")
-        try Self.mockAgentScript.write(to: scriptURL, atomically: true, encoding: .utf8)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: Self.scriptURL.path),
+                      "the mock agent fixture is missing: \(Self.scriptURL.path)")
+        recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mock-acp-record-\(UUID().uuidString).jsonl")
 
         adapter = ACPAdapter()
         events = []
@@ -95,7 +102,7 @@ final class ACPAdapterIntegrationTests: XCTestCase {
     override func tearDown() async throws {
         adapter?.stop()
         adapter = nil
-        if let scriptURL { try? FileManager.default.removeItem(at: scriptURL) }
+        if let recordURL { try? FileManager.default.removeItem(at: recordURL) }
     }
 
     private func startAdapter() {
@@ -103,7 +110,7 @@ final class ACPAdapterIntegrationTests: XCTestCase {
             projectDir: URL(fileURLWithPath: "/tmp", isDirectory: true),
             model: "default", permissionMode: "default", effort: "default",
             resumeSessionID: nil, binaryPathOverride: nil,
-            agentCommand: [Self.python, scriptURL.path]))
+            agentCommand: [Self.python, Self.scriptURL.path, "--record", recordURL.path]))
     }
 
     private func waitForEvent(timeout: TimeInterval = 10,
@@ -195,67 +202,4 @@ final class ACPAdapterIntegrationTests: XCTestCase {
         try await waitForEvent { if case .controlResult("set_model", false, _, "bad") = $0 { return true }; return false }
         XCTAssertEqual(adapter.modelName, "mock/model-2", "a rejected switch must not change the model")
     }
-
-    // MARK: The mock agent
-
-    private static let mockAgentScript = #"""
-    import json, sys
-
-    def send(obj):
-        sys.stdout.write(json.dumps(obj) + "\n")
-        sys.stdout.flush()
-
-    for line in sys.stdin:
-        line = line.strip()
-        if not line:
-            continue
-        m = json.loads(line)
-        method, mid = m.get("method"), m.get("id")
-        if method == "initialize":
-            send({"jsonrpc": "2.0", "id": mid, "result": {
-                "protocolVersion": 1,
-                "agentInfo": {"name": "MockAgent", "version": "1.0"}}})
-        elif method == "session/new":
-            send({"jsonrpc": "2.0", "id": mid, "result": {
-                "sessionId": "mock-session",
-                "models": {"currentModelId": "mock/model-1"}}})
-        elif method == "session/prompt":
-            sid = m["params"]["sessionId"]
-            def update(u):
-                send({"jsonrpc": "2.0", "method": "session/update",
-                      "params": {"sessionId": sid, "update": u}})
-            update({"sessionUpdate": "agent_thought_chunk",
-                    "content": {"type": "text", "text": "thinking"}})
-            update({"sessionUpdate": "agent_message_chunk",
-                    "content": {"type": "text", "text": "Working. "}})
-            update({"sessionUpdate": "tool_call", "toolCallId": "t1",
-                    "title": "Edit File", "kind": "edit",
-                    "locations": [{"path": "/tmp/a.swift", "line": 1}]})
-            send({"jsonrpc": "2.0", "id": 100, "method": "session/request_permission",
-                  "params": {"sessionId": sid,
-                             "toolCall": {"title": "Edit a.swift", "kind": "edit",
-                                          "rawInput": {"file_path": "/tmp/a.swift"}},
-                             "options": [
-                                 {"optionId": "allow-always", "name": "Always", "kind": "allow_always"},
-                                 {"optionId": "allow-once", "name": "Once", "kind": "allow_once"},
-                                 {"optionId": "reject-once", "name": "No", "kind": "reject_once"}]}})
-            chosen = "cancelled"
-            for reply_line in sys.stdin:
-                r = json.loads(reply_line)
-                if r.get("id") == 100:
-                    outcome = r.get("result", {}).get("outcome", {})
-                    if outcome.get("outcome") == "selected":
-                        chosen = outcome.get("optionId", "cancelled")
-                    break
-            update({"sessionUpdate": "agent_message_chunk",
-                    "content": {"type": "text", "text": "choice=" + chosen}})
-            send({"jsonrpc": "2.0", "id": mid, "result": {"stopReason": "end_turn",
-                  "usage": {"inputTokens": 100, "outputTokens": 50}}})
-        elif method == "session/set_model":
-            if m["params"].get("modelId") == "bad":
-                send({"jsonrpc": "2.0", "id": mid,
-                      "error": {"code": -32602, "message": "unknown model"}})
-            else:
-                send({"jsonrpc": "2.0", "id": mid, "result": {}})
-    """#
 }
