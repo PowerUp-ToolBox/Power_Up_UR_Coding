@@ -130,7 +130,7 @@ final class AppStateAudioDeviceScenarioTests: XCTestCase {
 
     /// The persisted choice as it is on disk right now.
     private func persistedConfig() throws -> AppConfig {
-        try JSONDecoder().decode(AppConfig.self, from: Data(contentsOf: env.configURL))
+        try AppConfig.decoded(from: Data(contentsOf: env.configURL))
     }
 
     /// One full R2 hold that hears `text` and is released.

@@ -1,3 +1,4 @@
+import AVFAudio
 import XCTest
 @testable import PowerUp
 
@@ -7,7 +8,7 @@ import XCTest
 final class AppConfigTests: XCTestCase {
 
     private func decode(_ json: String) throws -> AppConfig {
-        try JSONDecoder().decode(AppConfig.self, from: Data(json.utf8))
+        try AppConfig.decoded(from: Data(json.utf8))
     }
 
     // MARK: v2.7 A - the on-disk config bytes do not move
@@ -163,7 +164,7 @@ final class AppConfigTests: XCTestCase {
 
     func testExistingOnDiskConfigReencodesByteIdentically() throws {
         let fixture = Data(onDiskConfigFixture.utf8)
-        let config = try JSONDecoder().decode(AppConfig.self, from: fixture)
+        let config = try AppConfig.decoded(from: fixture)
         XCTAssertEqual(try ConfigStore.encode(config), fixture,
                        "the rename must not move a byte of an existing config.json")
         // The renamed vocabulary resolves the same bindings the fixture holds.
@@ -204,8 +205,8 @@ final class AppConfigTests: XCTestCase {
         var config = AppConfig.defaultConfig()
         config.controllerDeviceID = "dualsense-B0:1C:30:11:22:33"
 
-        let data = try JSONEncoder().encode(config)
-        let decoded = try JSONDecoder().decode(AppConfig.self, from: data)
+        let data = try ConfigStore.encode(config)
+        let decoded = try AppConfig.decoded(from: data)
         XCTAssertEqual(decoded.controllerDeviceID, "dualsense-B0:1C:30:11:22:33")
         XCTAssertEqual(decoded, config, "the whole config survives the round trip")
 
@@ -309,8 +310,8 @@ final class AppConfigTests: XCTestCase {
         config.listenerToken = "secret"
         config.mapping[.ps] = .sendPrompt("hello there")
 
-        let data = try JSONEncoder().encode(config)
-        let decoded = try JSONDecoder().decode(AppConfig.self, from: data)
+        let data = try ConfigStore.encode(config)
+        let decoded = try AppConfig.decoded(from: data)
         XCTAssertEqual(decoded, config)
     }
 
@@ -318,13 +319,37 @@ final class AppConfigTests: XCTestCase {
         // Since ADR 0006 the stored shape is deviceMappings:
         // {profileId: {controlId: action}} — keyed objects all the way down.
         let config = AppConfig.defaultConfig()
-        let data = try JSONEncoder().encode(config)
+        let data = try ConfigStore.encode(config)
         let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         let profiles = try XCTUnwrap(root["deviceMappings"] as? [String: Any],
                                      "deviceMappings must encode as {profileId: …}")
         let dualsense = try XCTUnwrap(profiles[DeviceProfile.dualSenseID] as? [String: Any],
                                       "a profile's mapping must encode as {controlId: action}, not a flat array")
         XCTAssertNotNil(dualsense["r2"])
+    }
+
+    // MARK: The core's defaults
+
+    /// The core writes the default rate as the literal 0.5 so it never links
+    /// Apple's speech framework (HK-159); it must stay AVFoundation's default.
+    func testDefaultRateIsAVSpeechDefault() {
+        XCTAssertEqual(AppConfig.defaultConfig().ttsRate, AVSpeechUtteranceDefaultSpeechRate)
+    }
+
+    /// The literals the app falls back to if the core ever fails are the
+    /// core's own defaults and vocabularies.
+    func testCoreUnavailableDefaultsMatchTheCore() throws {
+        XCTAssertEqual(try XCTUnwrap(CoreBridge.defaultConfig()), AppConfig.coreUnavailableDefaults)
+        let vocabulary = try XCTUnwrap(CoreBridge.configVocabulary())
+        XCTAssertEqual(vocabulary, CoreBridge.ConfigVocabulary(
+            harnessKinds: ["claude", "acp"],
+            acpAgents: ["opencode", "claudeBridge", "codexBridge", "custom"],
+            controlModes: ["builtin", "remote"],
+            remoteTargetKinds: ["cmux", "app", "frontmost"]))
+        XCTAssertEqual(AppConfig.harnessKindOptions, vocabulary.harnessKinds)
+        XCTAssertEqual(AppConfig.acpAgentOptions, vocabulary.acpAgents)
+        XCTAssertEqual(AppConfig.controlModeOptions, vocabulary.controlModes)
+        XCTAssertEqual(AppConfig.remoteTargetKinds, vocabulary.remoteTargetKinds)
     }
 
     // MARK: Tolerant decoding

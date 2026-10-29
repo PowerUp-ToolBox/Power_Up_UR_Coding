@@ -158,7 +158,9 @@ pub enum ConfigLoad {
 }
 
 /// Reads config.json's bytes as the Swift app always has (HK-155 to
-/// HK-159). Every key is optional and read on its own: a missing key, a
+/// HK-159). The file is corrupt when it does not scan, its root is not an
+/// object or one of the root's keys does not convert. Every key is optional
+/// and read on its own: a missing key, a
 /// null, a value of the wrong type or one that does not convert takes the
 /// key's default and never costs the rest of the file. Optional strings
 /// read empty as absent; `summaryModel` is trimmed and falls back to haiku
@@ -170,11 +172,13 @@ pub fn load_config(bytes: &[u8]) -> ConfigLoad {
     let Some(root) = read_document(bytes) else {
         return ConfigLoad::Corrupt;
     };
-    if !matches!(root, Decoded::Object(_)) {
+    // The root's keys are all converted when it is read, so one bad key
+    // fails the file; a nested object's keys only fail the field reading it.
+    let Some(keyed) = root.keyed() else {
         return ConfigLoad::Corrupt;
-    }
+    };
     let defaults = AppConfig::default();
-    let get = |key: &str| root.get(key);
+    let get = |key: &str| keyed.get(key);
     let optional = |key: &str| {
         get(key)
             .and_then(Decoded::as_string)

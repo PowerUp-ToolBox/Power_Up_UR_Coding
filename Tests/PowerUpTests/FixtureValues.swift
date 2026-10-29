@@ -1,7 +1,7 @@
 import Foundation
 @testable import PowerUp
 
-/// Fixture values are the app's `JSONValue` (CoreBridge.swift): the
+/// Fixture values are `JSONValue` (at the end of this file): the
 /// `mapping/` tables hand arbitrary JSON to the config decoder (an action
 /// stored for one control may be a string, null, an array…), so the input
 /// cannot be a typed struct.
@@ -381,5 +381,85 @@ extension CoreBridge.ACPEffect {
         case .emit(let event):
             return .object(["effect": .string("emit"), "event": event.fixtureDescriptor])
         }
+    }
+}
+
+// MARK: - Any JSON value
+
+/// Any JSON value: the generic shape the fixture tables are read into.
+/// Integers and doubles stay apart so a value re-encodes as it was read.
+/// (It carried config text across the bridge until slice 2.5, when the core
+/// took the whole config.json; only the tests use it now.)
+enum JSONValue: Codable, Equatable {
+    case null
+    case bool(Bool)
+    case integer(Int64)
+    case number(Double)
+    case string(String)
+    case array([JSONValue])
+    case object([String: JSONValue])
+
+    /// Never throws on valid JSON: a value none of the cases can hold (a
+    /// number past Double's range) reads as null, which no mapping position
+    /// accepts either.
+    init(from decoder: Decoder) throws {
+        guard let container = try? decoder.singleValueContainer() else {
+            self = .null
+            return
+        }
+        if container.decodeNil() { self = .null; return }
+        if let value = try? container.decode(Bool.self) { self = .bool(value); return }
+        if let value = try? container.decode(Int64.self) { self = .integer(value); return }
+        if let value = try? container.decode(Double.self) { self = .number(value); return }
+        if let value = try? container.decode(String.self) { self = .string(value); return }
+        if let value = try? container.decode([JSONValue].self) { self = .array(value); return }
+        if let value = try? container.decode([String: JSONValue].self) { self = .object(value); return }
+        self = .null
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .null: try container.encodeNil()
+        case .bool(let value): try container.encode(value)
+        case .integer(let value): try container.encode(value)
+        case .number(let value): try container.encode(value)
+        case .string(let value): try container.encode(value)
+        case .array(let value): try container.encode(value)
+        case .object(let value): try container.encode(value)
+        }
+    }
+
+    /// Compact JSON text, keys sorted; nil if it cannot be written. The
+    /// outermost array or object is written here and only its members by
+    /// JSONEncoder, which refuses 512 levels of nesting where JSONDecoder
+    /// reads them: a config the app could load must reach the core whole.
+    var jsonText: String? {
+        switch self {
+        case .object(let members):
+            var parts: [String] = []
+            for key in members.keys.sorted() {
+                guard let name = JSONValue.string(key).encodedText,
+                      let value = members[key]?.encodedText else { return nil }
+                parts.append(name + ":" + value)
+            }
+            return "{" + parts.joined(separator: ",") + "}"
+        case .array(let items):
+            var parts: [String] = []
+            for item in items {
+                guard let value = item.encodedText else { return nil }
+                parts.append(value)
+            }
+            return "[" + parts.joined(separator: ",") + "]"
+        case .null, .bool, .integer, .number, .string:
+            return encodedText
+        }
+    }
+
+    private var encodedText: String? {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let data = try? encoder.encode(self) else { return nil }
+        return String(data: data, encoding: .utf8)
     }
 }

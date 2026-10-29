@@ -22,18 +22,14 @@ final class MappingFixtureTests: XCTestCase {
         let file = try TextSafetyFixtures.load(fileName, area: Self.area,
                                                input: JSONValue.self, expected: String.self)
         TextSafetyFixtures.assertWellFormed(file, fileName)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
         for fixtureCase in file.cases {
             let action = try Action(fixture: fixtureCase.input)
-            let actual = String(decoding: try encoder.encode(action), as: UTF8.self)
+            // The core writes actions into config.json since slice 2.5, so
+            // its bytes, through the bridge, are the ones pinned.
+            let actual = CoreBridge.wireJSON(of: action) ?? "the core failed"
             if let failure = TextSafetyFixtures.mismatch(in: fileName, fixtureCase, actual: actual) {
                 XCTFail(failure)
             }
-            // The core's writer, through the bridge, must give the same bytes
-            // as the Swift encoder that still writes config.json.
-            XCTAssertEqual(CoreBridge.wireJSON(of: action), fixtureCase.expected,
-                           "\(fileName) case \(fixtureCase.name): the core's bytes")
         }
     }
 
@@ -48,7 +44,7 @@ final class MappingFixtureTests: XCTestCase {
         TextSafetyFixtures.assertWellFormed(file, fileName)
         for fixtureCase in file.cases {
             let config: JSONValue = .object(["deviceMappings": .object(["p": .object(["c": fixtureCase.input])])])
-            let decoded = try JSONDecoder().decode(AppConfig.self, from: try JSONEncoder().encode(config))
+            let decoded = try AppConfig.decoded(from: try JSONEncoder().encode(config))
             let actual = decoded.deviceMappings["p"]?["c"]?.fixtureDescriptor ?? .null
             if let failure = TextSafetyFixtures.mismatch(in: fileName, fixtureCase, actual: actual) {
                 XCTFail(failure)
@@ -155,7 +151,7 @@ final class MappingFixtureTests: XCTestCase {
         TextSafetyFixtures.assertWellFormed(file, fileName)
         for fixtureCase in file.cases {
             let data = try JSONEncoder().encode(fixtureCase.input)
-            let config = try JSONDecoder().decode(AppConfig.self, from: data)
+            let config = try AppConfig.decoded(from: data)
             let actual: JSONValue = .object([
                 "deviceMappings": FixtureMappings.descriptor(config.deviceMappings),
                 "backupBeforeSave": .bool(try Self.backupTaken(loading: data)),

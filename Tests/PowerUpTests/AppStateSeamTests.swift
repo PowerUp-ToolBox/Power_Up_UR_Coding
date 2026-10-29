@@ -127,7 +127,7 @@ final class AppStateSeamTests: XCTestCase {
 
         XCTAssertFalse(store.config.listenerToken.isEmpty)
         let data = try Data(contentsOf: env.configURL)
-        let onDisk = try JSONDecoder().decode(AppConfig.self, from: data)
+        let onDisk = try AppConfig.decoded(from: data)
         XCTAssertEqual(onDisk.listenerToken, store.config.listenerToken)
     }
 
@@ -143,6 +143,29 @@ final class AppStateSeamTests: XCTestCase {
         XCTAssertTrue(app.isRemoteMode)
         // Adopting the stored mode runs none of the mode-switch side effects.
         XCTAssertTrue(app.transcript.isEmpty)
+    }
+
+    /// A config from before several folders were remembered (HK-164): the
+    /// folder joins the recents and the single lastSessionID becomes its
+    /// session, and the store is saved with both.
+    func testInitSeedsTheProjectBookkeeping() throws {
+        env.tearDown()
+        var config = AppConfig.defaultConfig()
+        config.projectDir = "/tmp/powerup-seed-project"
+        config.lastSessionID = "3f2b1a4c-1111-2222-3333-444455556666"
+        config.recentProjectDirs = ["/tmp/other"]
+        config.listenerToken = "test-token"
+        env = try AppStateTestEnvironment(config: config)
+
+        let app = env.makeAppState()
+
+        XCTAssertEqual(app.configStore.config.recentProjectDirs,
+                       ["/tmp/powerup-seed-project", "/tmp/other"])
+        XCTAssertEqual(app.configStore.config.sessionIDsByProject,
+                       ["/tmp/powerup-seed-project": "3f2b1a4c-1111-2222-3333-444455556666"])
+        app.configStore.save()
+        let onDisk = try AppConfig.decoded(from: Data(contentsOf: env.configURL))
+        XCTAssertEqual(onDisk.recentProjectDirs, app.configStore.config.recentProjectDirs)
     }
 
     func testInitRestoresTheProjectTranscriptFromTheSandbox() throws {

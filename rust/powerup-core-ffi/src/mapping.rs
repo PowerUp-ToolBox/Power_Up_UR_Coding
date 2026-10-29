@@ -1,7 +1,8 @@
 //! The mapping half of the device layer (slice 2.2): the intent rule, the
 //! hold flag, an action's wire bytes, action resolution, the default
-//! mappings, the config mapping subtree, the control-kind rule and the
-//! built-in DualSense profile.
+//! mappings, the control-kind rule and the built-in DualSense profile. The
+//! config mapping subtree crosses inside the whole config since slice 2.5
+//! (`config`).
 //!
 //! The types here are the uniffi faces of their `powerup-core` twins and
 //! carry a `Core` prefix, so they never collide with the Swift app's own
@@ -12,7 +13,7 @@ use std::collections::HashMap;
 
 use powerup_core::action::Action;
 use powerup_core::intent::{intent_for, ControlPhase, Intent, VoiceCaptureMode};
-use powerup_core::mapping::{self, DeviceMappings, MappingLoad};
+use powerup_core::mapping::{self, DeviceMappings};
 use powerup_core::profile::{self, ControlDescriptor, ControlKind, DeviceProfile};
 
 use crate::{contain, CoreBridgeError};
@@ -105,15 +106,6 @@ pub struct CoreDeviceProfile {
 
 /// Profile id → (control id → action), as uniffi carries it.
 pub type CoreDeviceMappings = HashMap<String, HashMap<String, CoreAction>>;
-
-/// What loading a config's mapping subtree decided: the mappings the app
-/// runs with, and whether the file must be copied before the next save
-/// rewrites it lossily (HK-014).
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
-pub struct CoreMappingLoad {
-    pub device_mappings: CoreDeviceMappings,
-    pub backup_before_save: bool,
-}
 
 impl From<Action> for CoreAction {
     fn from(action: Action) -> Self {
@@ -315,15 +307,6 @@ impl From<CoreDeviceProfile> for DeviceProfile {
     }
 }
 
-impl From<MappingLoad> for CoreMappingLoad {
-    fn from(load: MappingLoad) -> Self {
-        CoreMappingLoad {
-            device_mappings: to_bridge_mappings(load.device_mappings),
-            backup_before_save: load.backup_before_save,
-        }
-    }
-}
-
 pub(crate) fn to_bridge_mappings(mappings: DeviceMappings) -> CoreDeviceMappings {
     mappings
         .into_iter()
@@ -389,14 +372,6 @@ pub fn resolve_action(
 #[uniffi::export]
 pub fn default_device_mappings() -> Result<CoreDeviceMappings, CoreBridgeError> {
     contain(|| Ok(to_bridge_mappings(mapping::default_device_mappings())))
-}
-
-/// Resolves a config.json object's mapping subtree: tolerance, legacy
-/// migration, the new key winning, and the backup decision. Fails when the
-/// text is not a JSON object.
-#[uniffi::export]
-pub fn load_device_mappings(config_json: String) -> Result<CoreMappingLoad, CoreBridgeError> {
-    contain(|| mapping::load_device_mappings(&config_json).map(Into::into))
 }
 
 /// The kind a profile file's string reads as; the pre-v2.7 `hold` reads as a
@@ -530,29 +505,5 @@ mod tests {
         assert_eq!(resolve("dualsense", "cross"), Ok(CoreAction::Approve));
         assert_eq!(resolve("dualsense", "pedal"), Ok(CoreAction::None));
         assert_eq!(resolve("streamdeck", "cross"), Ok(CoreAction::None));
-    }
-
-    #[test]
-    fn a_config_that_is_not_an_object_is_a_failed_error() {
-        for text in ["[]", "not json", "\"x\"", ""] {
-            assert!(
-                matches!(
-                    load_device_mappings(text.to_string()),
-                    Err(CoreBridgeError::Failed { .. })
-                ),
-                "{text:?} should fail"
-            );
-        }
-        let load = load_device_mappings(r#"{"mapping":{"cross":{"approve":{}}}}"#.to_string());
-        assert_eq!(
-            load,
-            Ok(CoreMappingLoad {
-                device_mappings: HashMap::from([(
-                    "dualsense".to_string(),
-                    HashMap::from([("cross".to_string(), CoreAction::Approve)])
-                )]),
-                backup_before_save: true,
-            })
-        );
     }
 }

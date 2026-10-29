@@ -113,8 +113,28 @@ final class HermeticStorageTests: XCTestCase {
         app.configStore.config.listenerPort = 50123
         app.configStore.save()
 
-        let onDisk = try JSONDecoder().decode(AppConfig.self, from: Data(contentsOf: env.configURL))
+        let onDisk = try AppConfig.decoded(from: Data(contentsOf: env.configURL))
         XCTAssertEqual(onDisk.listenerPort, 50123)
+    }
+
+    /// A config.json the core calls corrupt is moved aside to
+    /// config.json.bak (replacing an older one) and the store runs on the
+    /// defaults (HK-160); all inside the sandbox.
+    func testACorruptConfigIsMovedAsideAndDefaultsLoad() throws {
+        let backupURL = env.directory.appendingPathComponent("config.json.bak")
+        try Data("old backup".utf8).write(to: backupURL)
+        let corrupt = Data(#"{"model":"opus""#.utf8)
+        try corrupt.write(to: env.configURL)
+
+        let store = env.makeConfigStore()
+
+        XCTAssertEqual(try Data(contentsOf: backupURL), corrupt)
+        XCTAssertEqual(store.config.model, AppConfig.defaultConfig().model)
+        // The fresh token is minted and saved, so a readable file replaces it.
+        let onDisk = try AppConfig.decoded(from: Data(contentsOf: env.configURL))
+        XCTAssertEqual(onDisk.listenerToken, store.config.listenerToken)
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: env.directory.appendingPathComponent("config.pre-profiles.json").path))
     }
 
     // MARK: After a test the seams stay parked away from the real folders

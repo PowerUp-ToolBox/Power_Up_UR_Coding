@@ -115,7 +115,7 @@ final class DeviceProfileTests: XCTestCase {
     }
 
     func testEncodeWritesDeviceMappingsAndNoLegacyKey() throws {
-        let data = try JSONEncoder().encode(AppConfig.defaultConfig())
+        let data = try ConfigStore.encode(AppConfig.defaultConfig())
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         XCTAssertNotNil(object["deviceMappings"], "new shape must be written")
         XCTAssertNil(object["mapping"], "legacy key must not be written")
@@ -124,7 +124,7 @@ final class DeviceProfileTests: XCTestCase {
     func testRoundTripPreservesForeignProfiles() throws {
         var config = AppConfig.defaultConfig()
         config.deviceMappings["streamdeck-test"] = ["key-1": .approve, "key-2": .interrupt]
-        let decoded = try JSONDecoder().decode(AppConfig.self, from: JSONEncoder().encode(config))
+        let decoded = try AppConfig.decoded(from: ConfigStore.encode(config))
         XCTAssertEqual(decoded.deviceMappings["streamdeck-test"]?["key-1"], .approve)
         XCTAssertEqual(decoded.deviceMappings["streamdeck-test"]?["key-2"], .interrupt)
         XCTAssertEqual(decoded.deviceMappings[DeviceProfile.dualSenseID],
@@ -148,7 +148,7 @@ final class DeviceProfileTests: XCTestCase {
     """.utf8)
 
     func testLegacyMappingMigratesLosslessly() throws {
-        let config = try JSONDecoder().decode(AppConfig.self, from: legacyFixture)
+        let config = try AppConfig.decoded(from: legacyFixture)
         let migrated = try XCTUnwrap(config.deviceMappings[DeviceProfile.dualSenseID])
         XCTAssertEqual(migrated["r2"], .pushToTalk)
         XCTAssertEqual(migrated["cross"], .approve)
@@ -160,8 +160,8 @@ final class DeviceProfileTests: XCTestCase {
     }
 
     func testMigratedConfigEncodesInNewShapeOnly() throws {
-        let config = try JSONDecoder().decode(AppConfig.self, from: legacyFixture)
-        let data = try JSONEncoder().encode(config)
+        let config = try AppConfig.decoded(from: legacyFixture)
+        let data = try ConfigStore.encode(config)
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         XCTAssertNotNil(object["deviceMappings"])
         XCTAssertNil(object["mapping"])
@@ -174,13 +174,13 @@ final class DeviceProfileTests: XCTestCase {
             "mapping": {"cross": {"approve": {}}}
         }
         """.utf8)
-        let config = try JSONDecoder().decode(AppConfig.self, from: both)
+        let config = try AppConfig.decoded(from: both)
         XCTAssertEqual(config.action(onProfile: DeviceProfile.dualSenseID, control: "cross"),
                        .interrupt)
     }
 
     func testNeitherKeyFallsBackToDefaults() throws {
-        let config = try JSONDecoder().decode(AppConfig.self, from: Data("{}".utf8))
+        let config = try AppConfig.decoded(from: Data("{}".utf8))
         XCTAssertEqual(config.deviceMappings, AppConfig.defaultDeviceMappings())
     }
 
@@ -228,7 +228,7 @@ final class DeviceProfileTests: XCTestCase {
             }
         }
         """.utf8)
-        let config = try JSONDecoder().decode(AppConfig.self, from: json)
+        let config = try AppConfig.decoded(from: json)
         XCTAssertEqual(config.deviceMappings[DeviceProfile.dualSenseID]?["r2"], .pushToTalk)
         XCTAssertNil(config.deviceMappings[DeviceProfile.dualSenseID]?["cross"],
                      "the unknown action drops")
@@ -245,7 +245,7 @@ final class DeviceProfileTests: XCTestCase {
             }
         }
         """.utf8)
-        let config = try JSONDecoder().decode(AppConfig.self, from: json)
+        let config = try AppConfig.decoded(from: json)
         XCTAssertEqual(config.deviceMappings[DeviceProfile.dualSenseID]?["r2"], .pushToTalk)
         XCTAssertNil(config.deviceMappings["broken"])
     }
@@ -285,7 +285,7 @@ final class DeviceProfileTests: XCTestCase {
     }
 
     func testHealthyConfigIsNotBackedUp() throws {
-        let data = try JSONEncoder().encode(AppConfig.defaultConfig())
+        let data = try ConfigStore.encode(AppConfig.defaultConfig())
         try withTempConfig(String(decoding: data, as: UTF8.self)) { url, backupURL in
             ConfigStore.backupConfigBeforeLossyLoadIfNeeded(at: url, data: try Data(contentsOf: url))
             XCTAssertFalse(FileManager.default.fileExists(atPath: backupURL.path))
@@ -302,7 +302,7 @@ final class DeviceProfileTests: XCTestCase {
             let deep = #""r2":{"approve":{"note":"#
                 + String(repeating: "[", count: arrays) + String(repeating: "]", count: arrays) + "}}"
             let json = #"{"deviceMappings":{"dualsense":{"# + deep + "}}}"
-            let config = try JSONDecoder().decode(AppConfig.self, from: Data(json.utf8))
+            let config = try AppConfig.decoded(from: Data(json.utf8))
             XCTAssertEqual(config.deviceMappings["dualsense"]?["r2"], .approve, "depth \(depth)")
             try withTempConfig(json) { url, backupURL in
                 ConfigStore.backupConfigBeforeLossyLoadIfNeeded(at: url, data: try Data(contentsOf: url))

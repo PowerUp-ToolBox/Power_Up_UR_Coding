@@ -27,14 +27,13 @@ final class SummaryServiceTests: XCTestCase {
     }
 
     func testConfigDefaultsAreOffAndHaiku() throws {
-        let decoded = try JSONDecoder().decode(AppConfig.self, from: Data("{}".utf8))
+        let decoded = try AppConfig.decoded(from: Data("{}".utf8))
         XCTAssertFalse(decoded.speakSummaries, "summaries cost tokens — must be opt-in")
         XCTAssertEqual(decoded.summaryModel, "haiku")
     }
 
     func testBlankSummaryModelFallsBackToDefault() throws {
-        let decoded = try JSONDecoder().decode(AppConfig.self,
-                                               from: Data(#"{"summaryModel":"  "}"#.utf8))
+        let decoded = try AppConfig.decoded(from: Data(#"{"summaryModel":"  "}"#.utf8))
         XCTAssertEqual(decoded.summaryModel, "haiku")
     }
 }

@@ -48,17 +48,17 @@ final class AudioDeviceTests: XCTestCase {
     // MARK: AppConfig fields
 
     func testAudioUIDsDecodeAndDefaultToNil() throws {
-        let empty = try JSONDecoder().decode(AppConfig.self, from: Data("{}".utf8))
+        let empty = try AppConfig.decoded(from: Data("{}".utf8))
         XCTAssertNil(empty.audioInputUID)
         XCTAssertNil(empty.audioOutputUID)
 
-        let set = try JSONDecoder().decode(AppConfig.self, from: Data(
+        let set = try AppConfig.decoded(from: Data(
             #"{"audioInputUID": "mic-uid", "audioOutputUID": "out-uid"}"#.utf8))
         XCTAssertEqual(set.audioInputUID, "mic-uid")
         XCTAssertEqual(set.audioOutputUID, "out-uid")
 
         // Empty strings normalize to nil like every other optional string.
-        let blank = try JSONDecoder().decode(AppConfig.self, from: Data(
+        let blank = try AppConfig.decoded(from: Data(
             #"{"audioInputUID": "", "audioOutputUID": ""}"#.utf8))
         XCTAssertNil(blank.audioInputUID)
         XCTAssertNil(blank.audioOutputUID)
@@ -68,8 +68,7 @@ final class AudioDeviceTests: XCTestCase {
         var config = AppConfig.defaultConfig()
         config.audioInputUID = "88-C9-E8:input"
         config.audioOutputUID = "BuiltInSpeakerDevice"
-        let decoded = try JSONDecoder().decode(AppConfig.self,
-                                               from: JSONEncoder().encode(config))
+        let decoded = try AppConfig.decoded(from: ConfigStore.encode(config))
         XCTAssertEqual(decoded, config)
     }
 }

@@ -8,15 +8,18 @@
 //!    zero bytes and transcoded first (a lone surrogate fails the file, an
 //!    odd trailing byte is ignored); space, tab, LF and CR may stand
 //!    between tokens; at most 512 containers may be open; one trailing
-//!    comma is accepted; keys are unescaped strictly here, so a bad key
-//!    fails the file. Scalars are only delimited: a number is a run of
+//!    comma is accepted. Strings and numbers are only delimited, keys
+//!    included: a number is a run of
 //!    `[0-9.eE+-]` that starts with `-` or a digit, a string runs to the
 //!    next unescaped quote (a backslash skips one byte, `\u` four more,
 //!    whatever they are), and literals are spelled exactly.
 //! 2. A conversion when a field reads a value ([`Decoded::as_string`] and
 //!    friends), which can fail that one field: a malformed number, a bad
 //!    escape, a raw control character or invalid UTF-8 in a string. An
-//!    unread value is never checked.
+//!    object's keys are converted all at once when it is read as a keyed
+//!    container ([`Decoded::keyed`]), and one bad key fails that read: for
+//!    the root that is the whole file, for a nested object only the field
+//!    that reads it. An unread value is never checked.
 //!
 //! Of two equal keys the first wins. Everything here was measured with
 //! Swift 5.9.2 on macOS 27.2 (`Tests/Fixtures/config/round-trip.json` and
@@ -39,9 +42,9 @@ pub(crate) enum Decoded {
     /// The raw bytes between the quotes, escapes not yet processed.
     String(Box<[u8]>),
     Array(Vec<Decoded>),
-    /// Keys unescaped at scan time; equal keys are all kept and
-    /// [`Decoded::get`] answers the first.
-    Object(Vec<(String, Decoded)>),
+    /// Keys raw, as their strings' bytes, until [`Decoded::keyed`] reads
+    /// them; equal keys are all kept.
+    Object(Vec<(Box<[u8]>, Decoded)>),
 }
 
 /// At most this many arrays and objects may be open at once.
@@ -134,7 +137,7 @@ fn utf32(bytes: &[u8], big_endian: bool) -> Option<Cow<'static, [u8]>> {
 enum Open {
     Array(Vec<Decoded>),
     /// The members so far and the key whose value is being scanned.
-    Object(Vec<(String, Decoded)>, String),
+    Object(Vec<(Box<[u8]>, Decoded)>, Box<[u8]>),
 }
 
 struct Scanner<'a> {
@@ -238,13 +241,13 @@ impl Scanner<'_> {
         }
     }
 
-    /// A member's key, converted strictly, then its colon and the
+    /// A member's key (raw, like any string), then its colon and the
     /// whitespace before its value.
-    fn key(&mut self) -> Option<String> {
+    fn key(&mut self) -> Option<Box<[u8]>> {
         if self.peek() != Some(b'"') {
             return None;
         }
-        let key = convert_string(self.raw_string()?)?;
+        let key: Box<[u8]> = self.raw_string()?.into();
         self.skip_whitespace();
         if !self.eat(b':') {
             return None;
@@ -477,16 +480,44 @@ fn decimal_to_int(token: &str) -> Option<i64> {
     Some(if negative { -magnitude } else { magnitude })
 }
 
+/// An object read as a keyed container: every key converted.
+pub(crate) struct Keyed<'a> {
+    members: Vec<(String, &'a Decoded)>,
+}
+
+impl<'a> Keyed<'a> {
+    /// The first member named `key`.
+    pub(crate) fn get(&self, key: &str) -> Option<&'a Decoded> {
+        self.members
+            .iter()
+            .find(|(name, _)| name == key)
+            .map(|(_, value)| *value)
+    }
+
+    /// The members in order, the first of equal keys only.
+    fn first_of_each(&self) -> Vec<(&str, &'a Decoded)> {
+        let mut seen = std::collections::HashSet::new();
+        self.members
+            .iter()
+            .filter(|(key, _)| seen.insert(key.as_str()))
+            .map(|(key, value)| (key.as_str(), *value))
+            .collect()
+    }
+}
+
 impl Decoded {
-    /// The first member named `key` of an object; `None` for anything else.
-    pub(crate) fn get(&self, key: &str) -> Option<&Decoded> {
-        match self {
-            Decoded::Object(members) => members
-                .iter()
-                .find(|(name, _)| name == key)
-                .map(|(_, value)| value),
-            _ => None,
-        }
+    /// The object read as a keyed container, its keys converted with the
+    /// string rules; `None` for anything but an object, or when one key
+    /// does not convert.
+    pub(crate) fn keyed(&self) -> Option<Keyed<'_>> {
+        let Decoded::Object(members) = self else {
+            return None;
+        };
+        let members = members
+            .iter()
+            .map(|(key, value)| Some((convert_string(key)?, value)))
+            .collect::<Option<Vec<_>>>()?;
+        Some(Keyed { members })
     }
 
     /// Swift's `String` decode (see [`convert_string`]).
@@ -570,31 +601,27 @@ impl Decoded {
         }
     }
 
-    /// Swift's `[String: String]` decode: the first of equal keys, then
-    /// every value a string, or nothing.
+    /// Swift's `[String: String]` decode: every key converted, the first
+    /// of equal keys, then every value a string, or nothing.
     pub(crate) fn as_string_map(&self) -> Option<BTreeMap<String, String>> {
-        let Decoded::Object(members) = self else {
-            return None;
-        };
-        let mut map = BTreeMap::new();
-        for (key, value) in members {
-            if !map.contains_key(key) {
-                map.insert(key.clone(), value.as_string()?);
-            }
-        }
-        Some(map)
+        self.keyed()?
+            .first_of_each()
+            .into_iter()
+            .map(|(key, value)| Some((key.to_owned(), value.as_string()?)))
+            .collect()
     }
 
     /// The value as the app's `JSONValue` read it for the mapping subtree:
     /// null, then Bool, Int64, Double, String, array and object in turn,
     /// and null for a value none of them can hold (a malformed number or
-    /// string). Objects keep the first of equal keys. Iterative, so the
+    /// string, an object with a key that does not convert). Objects keep
+    /// the first of equal keys. Iterative, so the
     /// deepest file never uses the call stack here.
     pub(crate) fn to_mapping_value(&self) -> Value {
         enum Step<'a> {
             Convert(&'a Decoded),
             CloseArray(usize),
-            CloseObject(Vec<&'a str>),
+            CloseObject(Vec<String>),
         }
         let mut steps = vec![Step::Convert(self)];
         let mut done: Vec<Value> = Vec::new();
@@ -617,17 +644,16 @@ impl Decoded {
                         steps.push(Step::CloseArray(items.len()));
                         steps.extend(items.iter().rev().map(Step::Convert));
                     }
-                    Decoded::Object(members) => {
-                        let mut seen = std::collections::HashSet::new();
-                        let kept: Vec<&(String, Decoded)> = members
-                            .iter()
-                            .filter(|(key, _)| seen.insert(key.as_str()))
-                            .collect();
-                        steps.push(Step::CloseObject(
-                            kept.iter().map(|(key, _)| key.as_str()).collect(),
-                        ));
-                        steps.extend(kept.iter().rev().map(|(_, value)| Step::Convert(value)));
-                    }
+                    Decoded::Object(_) => match value.keyed() {
+                        Some(keyed) => {
+                            let kept = keyed.first_of_each();
+                            steps.push(Step::CloseObject(
+                                kept.iter().map(|(key, _)| (*key).to_owned()).collect(),
+                            ));
+                            steps.extend(kept.iter().rev().map(|(_, value)| Step::Convert(value)));
+                        }
+                        None => done.push(Value::Null),
+                    },
                 },
                 Step::CloseArray(count) => {
                     let items = done.split_off(done.len().saturating_sub(count));
@@ -635,8 +661,7 @@ impl Decoded {
                 }
                 Step::CloseObject(keys) => {
                     let values = done.split_off(done.len().saturating_sub(keys.len()));
-                    let map: Map<String, Value> =
-                        keys.into_iter().map(str::to_owned).zip(values).collect();
+                    let map: Map<String, Value> = keys.into_iter().zip(values).collect();
                     done.push(Value::Object(map));
                 }
             }
@@ -689,6 +714,10 @@ mod tests {
             r#"{"a":[1,],"b":2 ,}"#,
             r#"{"a\u0000b":1}"#,
             " \r\n\t{}\n ",
+            // Keys are only delimited by the scan.
+            r#"{"\udc00":1}"#,
+            "{\"a\tb\":1}",
+            r#"{"q\x":1}"#,
         ] {
             assert!(read_document(loads.as_bytes()).is_some(), "{loads}");
         }
@@ -703,9 +732,7 @@ mod tests {
             r#"{"o":truex}"#,
             r#"{"o":True}"#,
             r#"{"o":nul}"#,
-            r#"{"\udc00":1}"#,
-            "{\"a\tb\":1}",
-            r#"{"q\x":1}"#,
+            r#"{"\u12":1}"#,
             "{,}",
             r#"{"a":[,]}"#,
             r#"{"a":[1,,]}"#,
@@ -771,7 +798,9 @@ mod tests {
                 .collect()
         };
         let read = |bytes: Vec<u8>| {
-            read_document(&bytes).and_then(|d| d.get("m").and_then(Decoded::as_string))
+            let document = read_document(&bytes)?;
+            let keyed = document.keyed()?;
+            keyed.get("m").and_then(Decoded::as_string)
         };
         let e = Some("é".to_owned());
         assert_eq!(
@@ -829,14 +858,28 @@ mod tests {
             let mut text = br#"{"f":""#.to_vec();
             text.extend_from_slice(bytes);
             text.extend_from_slice(br#""}"#);
-            read_document(&text).unwrap().get("f").unwrap().as_string()
+            let document = read_document(&text).unwrap();
+            let keyed = document.keyed().unwrap();
+            keyed.get("f").unwrap().as_string()
         };
         assert_eq!(raw(b"\xFF"), None);
         assert_eq!(raw(b"\xA9"), None);
         assert_eq!(raw(b"\xC0\xAF"), None);
         assert_eq!(raw(b"\xED\xA0\x80"), None);
-        // A key with invalid UTF-8 fails the whole file.
-        assert!(read_document(b"{\"\xFF\":1}").is_none());
+        // Keys convert with the same rules when their object is read; one
+        // bad key fails that read.
+        for bad in [
+            &b"{\"\xFF\":1}"[..],
+            b"{\"a\tb\":1}",
+            br#"{"\q":1}"#,
+            br#"{"\udc00":1}"#,
+        ] {
+            assert!(read_document(bad).unwrap().keyed().is_none());
+        }
+        assert!(field(r#"{"a":"1","\q":"2"}"#).as_string_map().is_none());
+        let keyed = read_document(br#"{"mo\u0064el":1,"\ufeffx":2}"#).unwrap();
+        let keyed = keyed.keyed().unwrap();
+        assert!(keyed.get("model").is_some() && keyed.get("\u{FEFF}x").is_some());
     }
 
     #[test]
@@ -967,11 +1010,11 @@ mod tests {
 
     #[test]
     fn the_mapping_view_reads_like_jsonvalue() {
-        let value =
-            field(r#"{"a":[1,1.5,"\q",01,true,null,{"k":"v","k":"w"}],"a":0}"#).to_mapping_value();
+        let value = field(r#"{"a":[1,1.5,"\q",01,true,null,{"k":"v","k":"w"},{"\q":1}],"a":0}"#)
+            .to_mapping_value();
         assert_eq!(
             value,
-            serde_json::json!({"a": [1, 1.5, null, null, true, null, {"k": "v"}]})
+            serde_json::json!({"a": [1, 1.5, null, null, true, null, {"k": "v"}, null]})
         );
     }
 }

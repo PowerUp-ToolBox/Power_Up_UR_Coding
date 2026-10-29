@@ -1,8 +1,8 @@
 import XCTest
 @testable import PowerUp
 
-/// Plays `Tests/Fixtures/config/round-trip.json`: config.json bytes loaded the
-/// way ConfigStore loads them, then saved again. The saved text is compared
+/// Plays `Tests/Fixtures/config/round-trip.json` through the bridge:
+/// config.json bytes loaded the way ConfigStore loads them, then saved again. The saved text is compared
 /// byte for byte, so the table pins the real on-disk writer, and the
 /// pre-profiles copy runs in a temporary directory, never the real
 /// Application Support folder.
@@ -16,9 +16,15 @@ final class ConfigFixtureTests: XCTestCase {
         for fixtureCase in file.cases {
             let data = try FixtureLine.bytes(fixtureCase.input)
             var saved = JSONValue.null
-            if let config = try? JSONDecoder().decode(AppConfig.self, from: data) {
+            switch CoreBridge.loadConfig(data) {
+            case .loaded(let config, _)?:
                 let text = try XCTUnwrap(String(data: try ConfigStore.encode(config), encoding: .utf8))
                 saved = .array(text.components(separatedBy: "\n").map(JSONValue.string))
+            case .corrupt?:
+                break
+            case nil:
+                XCTFail("\(fileName) case \(fixtureCase.name): the core failed")
+                continue
             }
             let actual: JSONValue = .object([
                 "saved": saved,

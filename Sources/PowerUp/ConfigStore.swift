@@ -38,19 +38,30 @@ final class ConfigStore: ObservableObject {
         }
     }
 
+    /// The config the file holds, or the defaults. The reading is the
+    /// core's (DESIGN v2.14); the file decisions are made here: a file that
+    /// cannot be read or is corrupt is moved aside to config.json.bak
+    /// (HK-160), and one the next save would rewrite lossily is copied once
+    /// to config.pre-profiles.json first (HK-014). A core failure is never
+    /// taken for corruption: the file stays, copied once, and the app runs on
+    /// the defaults.
     private static func loadOrDefault(from url: URL) -> AppConfig {
         guard FileManager.default.fileExists(atPath: url.path) else {
             return AppConfig.defaultConfig()
         }
-        do {
-            let data = try Data(contentsOf: url)
-            backupConfigBeforeLossyLoadIfNeeded(at: url, data: data)
-            let decoder = JSONDecoder()
-            let decoded = try decoder.decode(AppConfig.self, from: data)
-            return decoded
-        } catch {
-            // Corrupt config: back it up and start fresh rather than crashing.
+        guard let data = try? Data(contentsOf: url) else {
             backupCorruptFile(at: url)
+            return AppConfig.defaultConfig()
+        }
+        switch CoreBridge.loadConfig(data) {
+        case .loaded(let config, let backupBeforeSave)?:
+            if backupBeforeSave { copyOnceToPreProfiles(url) }
+            return config
+        case .corrupt?:
+            backupCorruptFile(at: url)
+            return AppConfig.defaultConfig()
+        case nil:
+            copyOnceToPreProfiles(url)
             return AppConfig.defaultConfig()
         }
     }
@@ -61,18 +72,22 @@ final class ConfigStore: ObservableObject {
     /// migrated into `deviceMappings`; (2) a `deviceMappings` containing
     /// entries this build cannot represent (a newer build's action, a
     /// hand-edit) that the tolerant decoder will drop. The decision is the
-    /// Rust core's (`mapping::load_device_mappings`, slice 2.2); the copy, its
-    /// `config.pre-profiles.json` name and its once-only rule stay here. A
-    /// core that cannot read a file Foundation can counts as lossy too: the
-    /// mappings then fall back to the defaults, and the save would bury the
-    /// user's bindings.
+    /// Rust core's (`config::load_config`, from the mapping layer since
+    /// slice 2.2); the copy, its `config.pre-profiles.json` name and its
+    /// once-only rule stay here. A core that fails counts as lossy too: the
+    /// app then runs on the defaults, and the save would bury the file.
     /// Internal, URL-injected, so tests can exercise it against a temp
     /// directory.
     nonisolated static func backupConfigBeforeLossyLoadIfNeeded(at url: URL, data: Data) {
-        guard let value = try? JSONDecoder().decode(JSONValue.self, from: data),
-              case .object = value,
-              let text = value.jsonText,
-              CoreBridge.loadDeviceMappings(configJSON: text)?.backupBeforeSave ?? true else { return }
+        switch CoreBridge.loadConfig(data) {
+        case .loaded(_, true)?, nil: copyOnceToPreProfiles(url)
+        case .loaded(_, false)?, .corrupt?: break
+        }
+    }
+
+    /// Copies config.json to config.pre-profiles.json unless a copy is
+    /// already there: the first copy is the one worth keeping.
+    nonisolated private static func copyOnceToPreProfiles(_ url: URL) {
         let backupURL = url.deletingPathExtension().appendingPathExtension("pre-profiles.json")
         guard !FileManager.default.fileExists(atPath: backupURL.path) else { return }
         try? FileManager.default.copyItem(at: url, to: backupURL)
@@ -101,12 +116,12 @@ final class ConfigStore: ObservableObject {
     }
 
     /// The exact bytes `save()` writes — pretty-printed, key-sorted, escaped
-    /// slashes and all. Kept in one place so the byte-identity fixture test
-    /// pins the real on-disk writer rather than a copy of its settings.
+    /// slashes and all, JSONEncoder's bytes as the core writes them
+    /// (`config::encode_config`). Kept in one place so the byte-identity
+    /// fixture test pins the real on-disk writer.
     nonisolated static func encode(_ config: AppConfig) throws -> Data {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return try encoder.encode(config)
+        guard let data = CoreBridge.encodeConfig(config) else { throw ConfigFileError.coreUnavailable }
+        return data
     }
 
     func save() {

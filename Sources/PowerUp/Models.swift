@@ -1,5 +1,4 @@
 import Foundation
-import AVFAudio
 
 // MARK: - ControllerButton
 
@@ -63,10 +62,9 @@ enum ControllerButton: String, Codable, CaseIterable, Identifiable, Hashable {
 
 // MARK: - Action
 
-/// Encodable only: the Rust core decodes actions (slice 2.2). This
-/// synthesized encoder is still the config writer until slice 2.5, and the
-/// shared `mapping/action-shape.json` table pins it to the core's bytes.
-enum Action: Encodable, Hashable {
+/// A plain value: the Rust core reads actions (slice 2.2) and, since slice
+/// 2.5, writes them into config.json too (`mapping/action-shape.json`).
+enum Action: Hashable {
     case none
     case pushToTalk               // hold to record, release to send transcript to Claude
     case sendPrompt(String)       // send a fixed text prompt to Claude
@@ -189,14 +187,14 @@ typealias DeviceMapping = [String: Action]
 
 // MARK: - AppConfig
 
-struct AppConfig: Codable, Equatable {
+struct AppConfig: Equatable {
     var projectDir: String?               // absolute path of the coding project; nil = not chosen
     var model: String                     // "default" | "sonnet" | "opus" | "haiku" | "fable"
     var permissionMode: String            // "acceptEdits" (default) | "default" | "plan" | "bypassPermissions"
     var claudePath: String?               // manual override of the claude binary path
     var lastSessionID: String?            // for --resume across app launches
     var ttsEnabled: Bool
-    var ttsRate: Float                    // AVSpeechUtterance rate; default AVSpeechUtteranceDefaultSpeechRate
+    var ttsRate: Float                    // AVSpeechUtterance rate; default 0.5, AVSpeechUtteranceDefaultSpeechRate
     var ttsVoiceID: String?               // AVSpeechSynthesisVoice identifier; nil = best available en voice
     var maxSpokenChars: Int               // cap spoken reply length; 0 = no limit; default 1500
     var speakSummaries: Bool              // long replies: speak a model-written 1-2 sentence conclusion; default false
@@ -297,14 +295,20 @@ struct AppConfig: Codable, Equatable {
     /// auto-approve-everything (it stays available in Settings; HK-008).
     static let permissionModeCycle: [String] = CoreBridge.permissionModeCycle()
 
+    /// The fixed vocabularies come from the core (`config` module), so a new
+    /// value is added once; the literals are the fallback for a core that
+    /// fails, pinned equal to the core's by AppConfigTests.
+    private static let vocabulary = CoreBridge.configVocabulary()
+
     /// Where controller and voice input is delivered.
-    static let controlModeOptions: [String] = ["builtin", "remote"]
+    static let controlModeOptions: [String] = vocabulary?.controlModes ?? ["builtin", "remote"]
 
     /// Which adapter runs the built-in session.
-    static let harnessKindOptions: [String] = ["claude", "acp"]
+    static let harnessKindOptions: [String] = vocabulary?.harnessKinds ?? ["claude", "acp"]
 
     /// Preset agents the ACP adapter can spawn (plus a custom command).
-    static let acpAgentOptions: [String] = ["opencode", "claudeBridge", "codexBridge", "custom"]
+    static let acpAgentOptions: [String] = vocabulary?.acpAgents
+        ?? ["opencode", "claudeBridge", "codexBridge", "custom"]
 
     static func acpAgentDisplayName(_ agent: String) -> String {
         CoreBridge.acpAgentDisplayName(agent)
@@ -312,7 +316,7 @@ struct AppConfig: Codable, Equatable {
 
     /// How remote mode reaches the session it drives. cmux (socket, no
     /// permission) comes first; the two keystroke-injection kinds follow.
-    static let remoteTargetKinds: [String] = ["cmux", "app", "frontmost"]
+    static let remoteTargetKinds: [String] = vocabulary?.remoteTargetKinds ?? ["cmux", "app", "frontmost"]
 
     /// Human label for a `remoteTargetKind`, used by the Settings picker.
     static func remoteTargetKindDisplayName(_ kind: String) -> String {
@@ -341,7 +345,15 @@ struct AppConfig: Codable, Equatable {
     /// Port the hook read-back listener binds on 127.0.0.1 by default.
     static let defaultListenerPort: Int = 48738
 
+    /// Every setting at its default. The defaults are the core's
+    /// (`AppConfig::default`), the same on every OS.
     static func defaultConfig() -> AppConfig {
+        CoreBridge.defaultConfig() ?? coreUnavailableDefaults
+    }
+
+    /// Today's defaults as a literal, for a core that fails (it never does
+    /// on this call); AppConfigTests pins it equal to the core's.
+    static let coreUnavailableDefaults: AppConfig = {
         AppConfig(
             projectDir: nil,
             model: "default",
@@ -349,7 +361,7 @@ struct AppConfig: Codable, Equatable {
             claudePath: nil,
             lastSessionID: nil,
             ttsEnabled: true,
-            ttsRate: AVSpeechUtteranceDefaultSpeechRate,
+            ttsRate: 0.5,
             ttsVoiceID: nil,
             maxSpokenChars: 1500,
             speakSummaries: false,
@@ -362,7 +374,7 @@ struct AppConfig: Codable, Equatable {
             hapticsEnabled: true,
             lightEnabled: true,
             effort: "default",
-            modelCycle: defaultModelCycle,
+            modelCycle: ["sonnet", "opus", "haiku", "fable"],
             harnessKind: "claude",
             acpAgent: "opencode",
             acpCustomCommand: "",
@@ -381,7 +393,7 @@ struct AppConfig: Codable, Equatable {
             sessionIDsByProject: [:],
             deviceMappings: defaultDeviceMappings()
         )
-    }
+    }()
 
     /// The stored default: the DualSense profile carrying the v1.3 layout
     /// keyed by control id. The table lives in the Rust core
@@ -398,117 +410,30 @@ struct AppConfig: Codable, Equatable {
         }
         return out
     }
-
-    /// Explicit keys so the tolerant decoder below and the synthesized encoder
-    /// agree on the on-disk shape. `mapping`, the pre-ADR-0006 key, is not
-    /// here: it is read only by the core and never written.
-    private enum CodingKeys: String, CodingKey {
-        case projectDir, model, permissionMode, claudePath, lastSessionID
-        case ttsEnabled, ttsRate, ttsVoiceID, maxSpokenChars
-        case speakSummaries, summaryModel
-        case localeID, onDeviceRecognition, audioInputUID, audioOutputUID, controllerDeviceID
-        case hapticsEnabled, lightEnabled
-        case effort, modelCycle
-        case harnessKind, acpAgent, acpCustomCommand
-        case controlMode, remoteTargetKind, remoteCmuxWorkspace, remoteCmuxSurface
-        case remoteAppBundleID, remoteCmuxPassword, remoteAutoSubmit, listenerPort, listenerToken
-        case recentProjectDirs, sessionIDsByProject
-        case deviceMappings
-    }
 }
 
-// MARK: - Tolerant decoding
-//
-// Declared in an extension so the struct keeps its memberwise initializer.
-// Every key is optional on the way in: a config.json written by an older build
-// (no `effort` / `modelCycle`), or one a user hand-edited into a partial state,
-// still loads with sensible defaults instead of being thrown away. Encoding
-// stays synthesized, so saving always writes the complete, current shape.
+// MARK: - Reading and writing config.json
+
+/// Why a config.json could not be read or written.
+enum ConfigFileError: Error, Equatable {
+    /// Not a config the app can read (ConfigStore moves it aside).
+    case corrupt
+    /// The core failed; never seen in practice, and never taken for a
+    /// corrupt file.
+    case coreUnavailable
+}
+
 extension AppConfig {
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let fallback = AppConfig.defaultConfig()
-
-        func optionalString(_ key: CodingKeys) -> String? {
-            ((try? container.decodeIfPresent(String.self, forKey: key)) ?? nil)
-                .flatMap { $0.isEmpty ? nil : $0 }
+    /// config.json's bytes as the app reads them: the core's reading, every
+    /// key optional and tolerant (DESIGN v2.14, `config/round-trip.json`).
+    /// The file's own decisions (moving a corrupt file aside, the
+    /// pre-profiles copy) are ConfigStore's.
+    static func decoded(from data: Data) throws -> AppConfig {
+        switch CoreBridge.loadConfig(data) {
+        case .loaded(let config, _)?: return config
+        case .corrupt?: throw ConfigFileError.corrupt
+        case nil: throw ConfigFileError.coreUnavailable
         }
-        func value<T: Decodable>(_ key: CodingKeys, _ defaultValue: T) -> T {
-            ((try? container.decodeIfPresent(T.self, forKey: key)) ?? nil) ?? defaultValue
-        }
-        /// For the small fixed-vocabulary settings: an unrecognised value on disk
-        /// (typo, or a setting from a newer build) reads back as the default
-        /// rather than putting the app in a state no code path handles.
-        func option(_ key: CodingKeys, _ allowed: [String], _ defaultValue: String) -> String {
-            let raw = value(key, defaultValue)
-            return allowed.contains(raw) ? raw : defaultValue
-        }
-
-        let port = value(.listenerPort, fallback.listenerPort)
-
-        self.init(
-            projectDir: optionalString(.projectDir),
-            model: value(.model, fallback.model),
-            permissionMode: value(.permissionMode, fallback.permissionMode),
-            claudePath: optionalString(.claudePath),
-            lastSessionID: optionalString(.lastSessionID),
-            ttsEnabled: value(.ttsEnabled, fallback.ttsEnabled),
-            ttsRate: value(.ttsRate, fallback.ttsRate),
-            ttsVoiceID: optionalString(.ttsVoiceID),
-            maxSpokenChars: value(.maxSpokenChars, fallback.maxSpokenChars),
-            speakSummaries: value(.speakSummaries, fallback.speakSummaries),
-            summaryModel: {
-                let raw = value(.summaryModel, fallback.summaryModel)
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                return raw.isEmpty ? fallback.summaryModel : raw
-            }(),
-            localeID: value(.localeID, fallback.localeID),
-            onDeviceRecognition: value(.onDeviceRecognition, fallback.onDeviceRecognition),
-            audioInputUID: optionalString(.audioInputUID),
-            audioOutputUID: optionalString(.audioOutputUID),
-            controllerDeviceID: optionalString(.controllerDeviceID),
-            hapticsEnabled: value(.hapticsEnabled, fallback.hapticsEnabled),
-            lightEnabled: value(.lightEnabled, fallback.lightEnabled),
-            effort: value(.effort, fallback.effort),
-            modelCycle: value(.modelCycle, fallback.modelCycle),
-            harnessKind: option(.harnessKind, AppConfig.harnessKindOptions, fallback.harnessKind),
-            acpAgent: option(.acpAgent, AppConfig.acpAgentOptions, fallback.acpAgent),
-            acpCustomCommand: value(.acpCustomCommand, fallback.acpCustomCommand),
-            controlMode: option(.controlMode, AppConfig.controlModeOptions, fallback.controlMode),
-            remoteTargetKind: option(.remoteTargetKind, AppConfig.remoteTargetKinds, fallback.remoteTargetKind),
-            remoteCmuxWorkspace: optionalString(.remoteCmuxWorkspace),
-            remoteCmuxSurface: optionalString(.remoteCmuxSurface),
-            remoteAppBundleID: optionalString(.remoteAppBundleID),
-            remoteCmuxPassword: optionalString(.remoteCmuxPassword),
-            remoteAutoSubmit: value(.remoteAutoSubmit, fallback.remoteAutoSubmit),
-            listenerPort: (1...65535).contains(port) ? port : fallback.listenerPort,
-            listenerToken: value(.listenerToken, fallback.listenerToken),
-            recentProjectDirs: value(.recentProjectDirs, fallback.recentProjectDirs),
-            sessionIDsByProject: value(.sessionIDsByProject, fallback.sessionIDsByProject),
-            deviceMappings: AppConfig.decodeDeviceMappings(from: decoder) ?? fallback.deviceMappings
-        )
-    }
-
-    private enum MappingSubtreeKeys: String, CodingKey {
-        case deviceMappings, mapping
-    }
-
-    /// The mapping subtree is the Rust core's (slice 2.2,
-    /// `mapping::load_device_mappings`): the new shape wins outright when it
-    /// is an object, decoded per entry tolerantly; otherwise the legacy
-    /// button-keyed `mapping` migrates losslessly into the DualSense profile;
-    /// neither gives the defaults. The two keys go across as written, a null
-    /// kept distinct from an absent key. ConfigStore asks the core the same
-    /// question to decide on its backup copy. nil only when the core fails.
-    private static func decodeDeviceMappings(from decoder: Decoder) -> [String: DeviceMapping]? {
-        guard let container = try? decoder.container(keyedBy: MappingSubtreeKeys.self) else { return nil }
-        var subtree: [String: JSONValue] = [:]
-        for key in [MappingSubtreeKeys.deviceMappings, .mapping] where container.contains(key) {
-            subtree[key.stringValue] = (try? container.decode(JSONValue.self, forKey: key)) ?? .null
-        }
-        guard let text = JSONValue.object(subtree).jsonText else { return nil }
-        return CoreBridge.loadDeviceMappings(configJSON: text)?.deviceMappings
     }
 }
 

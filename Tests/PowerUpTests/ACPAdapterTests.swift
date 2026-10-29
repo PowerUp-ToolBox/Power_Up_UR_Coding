@@ -68,11 +68,10 @@ final class ACPAdapterUnitTests: XCTestCase {
     }
 
     func testHarnessConfigDefaults() throws {
-        let decoded = try JSONDecoder().decode(AppConfig.self, from: Data("{}".utf8))
+        let decoded = try AppConfig.decoded(from: Data("{}".utf8))
         XCTAssertEqual(decoded.harnessKind, "claude", "the built-in adapter stays the default")
         XCTAssertEqual(decoded.acpAgent, "opencode")
-        let bogus = try JSONDecoder().decode(AppConfig.self,
-                                             from: Data(#"{"harnessKind":"telepathy","acpAgent":"warp"}"#.utf8))
+        let bogus = try AppConfig.decoded(from: Data(#"{"harnessKind":"telepathy","acpAgent":"warp"}"#.utf8))
         XCTAssertEqual(bogus.harnessKind, "claude")
         XCTAssertEqual(bogus.acpAgent, "opencode")
     }

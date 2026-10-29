@@ -85,25 +85,6 @@ enum CoreBridge {
         }
     }
 
-    /// What the core decided about a config's mapping subtree.
-    struct MappingLoad: Equatable {
-        /// The mappings the app runs with.
-        let deviceMappings: [String: DeviceMapping]
-        /// Whether the file must be copied before the next save rewrites it.
-        let backupBeforeSave: Bool
-    }
-
-    /// Resolves a config.json object's mapping subtree (tolerance, legacy
-    /// migration, the new key winning, the backup decision). nil when the
-    /// text is not a JSON object or the core fails.
-    static func loadDeviceMappings(configJSON: String) -> MappingLoad? {
-        call("loadDeviceMappings", fallback: nil) {
-            let load = try PowerUpCore.loadDeviceMappings(configJson: configJSON)
-            return MappingLoad(deviceMappings: [String: DeviceMapping](core: load.deviceMappings),
-                               backupBeforeSave: load.backupBeforeSave)
-        }
-    }
-
     /// The kind a profile file's string reads as (the pre-v2.7 `hold` reads
     /// as a button); nil for anything else or when the core fails.
     static func controlKind(wireName: String) -> ControlDescriptor.Kind? {
@@ -165,85 +146,6 @@ enum CoreBridge {
             log.error("Rust core call \(name, privacy: .public) failed: \(String(describing: error), privacy: .public)")
             return fallback
         }
-    }
-}
-
-// MARK: - JSON text across the bridge
-
-/// Any JSON value. The core takes config text, so the app reads the parts it
-/// hands over into this and writes them back out with `jsonText`. Integers
-/// and doubles stay apart so a value re-encodes as it was read.
-enum JSONValue: Codable, Equatable {
-    case null
-    case bool(Bool)
-    case integer(Int64)
-    case number(Double)
-    case string(String)
-    case array([JSONValue])
-    case object([String: JSONValue])
-
-    /// Never throws on valid JSON: a value none of the cases can hold (a
-    /// number past Double's range) reads as null, which no mapping position
-    /// accepts either.
-    init(from decoder: Decoder) throws {
-        guard let container = try? decoder.singleValueContainer() else {
-            self = .null
-            return
-        }
-        if container.decodeNil() { self = .null; return }
-        if let value = try? container.decode(Bool.self) { self = .bool(value); return }
-        if let value = try? container.decode(Int64.self) { self = .integer(value); return }
-        if let value = try? container.decode(Double.self) { self = .number(value); return }
-        if let value = try? container.decode(String.self) { self = .string(value); return }
-        if let value = try? container.decode([JSONValue].self) { self = .array(value); return }
-        if let value = try? container.decode([String: JSONValue].self) { self = .object(value); return }
-        self = .null
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        switch self {
-        case .null: try container.encodeNil()
-        case .bool(let value): try container.encode(value)
-        case .integer(let value): try container.encode(value)
-        case .number(let value): try container.encode(value)
-        case .string(let value): try container.encode(value)
-        case .array(let value): try container.encode(value)
-        case .object(let value): try container.encode(value)
-        }
-    }
-
-    /// Compact JSON text, keys sorted; nil if it cannot be written. The
-    /// outermost array or object is written here and only its members by
-    /// JSONEncoder, which refuses 512 levels of nesting where JSONDecoder
-    /// reads them: a config the app could load must reach the core whole.
-    var jsonText: String? {
-        switch self {
-        case .object(let members):
-            var parts: [String] = []
-            for key in members.keys.sorted() {
-                guard let name = JSONValue.string(key).encodedText,
-                      let value = members[key]?.encodedText else { return nil }
-                parts.append(name + ":" + value)
-            }
-            return "{" + parts.joined(separator: ",") + "}"
-        case .array(let items):
-            var parts: [String] = []
-            for item in items {
-                guard let value = item.encodedText else { return nil }
-                parts.append(value)
-            }
-            return "[" + parts.joined(separator: ",") + "]"
-        case .null, .bool, .integer, .number, .string:
-            return encodedText
-        }
-    }
-
-    private var encodedText: String? {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        guard let data = try? encoder.encode(self) else { return nil }
-        return String(data: data, encoding: .utf8)
     }
 }
 

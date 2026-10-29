@@ -1166,13 +1166,11 @@ final class AppState: ObservableObject {
     /// Migrates pre-multi-project configs: the single lastSessionID becomes
     /// the current folder's entry, and the current folder joins the recents.
     private func seedProjectBookkeeping() {
-        guard let dir = configStore.config.projectDir, !dir.isEmpty else { return }
-        if !configStore.config.recentProjectDirs.contains(dir) {
-            configStore.config.recentProjectDirs.insert(dir, at: 0)
-        }
-        if configStore.config.sessionIDsByProject[dir] == nil,
-           let last = configStore.config.lastSessionID {
-            configStore.config.sessionIDsByProject[dir] = last
+        // The rule is the core's (`config::seed_project_bookkeeping`); the
+        // store is only written when it changes anything.
+        if let seeded = CoreBridge.seedProjectBookkeeping(configStore.config),
+           seeded != configStore.config {
+            configStore.config = seeded
         }
     }
 
