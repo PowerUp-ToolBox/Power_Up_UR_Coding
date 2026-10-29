@@ -1,0 +1,726 @@
+{
+  "description": "How a config.json object's mapping subtree loads, and whether the file must be copied to config.pre-profiles.json before the next save rewrites it (DESIGN v2.4 B and C, ADR 0006). deviceMappings wins when it is an object, even an empty one; it decodes tolerantly per entry: a profile whose value is not an object is dropped, and a binding that is not an action is dropped, the rest kept. When deviceMappings is absent or not an object, a legacy button-keyed mapping migrates losslessly into the dualsense profile, provided it is an object whose every key is a DualSense control id and every value an action; otherwise the defaults apply. backupBeforeSave is true when deviceMappings is present and anything in it would not decode exactly (a non-object counts, null included), or when deviceMappings is absent and the legacy mapping key is present (any value, null included). Input is a config.json object; expected is {deviceMappings, backupBeforeSave}. Mappings are written {profileID: {controlID: <action descriptor>}}, or the string \"defaults\" for the shipped default mappings.",
+  "function": "AppConfig.init(from:) mapping subtree and ConfigStore.backupConfigBeforeLossyLoadIfNeeded(at:data:) — input a config.json object, expected {deviceMappings, backupBeforeSave}",
+  "verifiedBy": "DESIGN.md v2.4 B and C; Tests/PowerUpTests/MappingFixtureTests.swift testConfigLoadTable decodes AppConfig from the input and compares deviceMappings, then writes the input to a temporary config.json, calls ConfigStore.backupConfigBeforeLossyLoadIfNeeded and checks that config.pre-profiles.json exists exactly when backupBeforeSave is true; both ask the core through the bridge since slice 2.2. Rust: rust/powerup-core/tests/mapping.rs config_load_cases runs mapping::load_device_mappings on the input text.",
+  "capturedAgainst": "Swift 5.9.2 synthesized Codable (Xcode 15.2), PowerUp at 106773b",
+  "cases": [
+    {
+      "name": "an existing config.json loads as written",
+      "input": {
+        "acpAgent": "opencode",
+        "acpCustomCommand": "",
+        "audioInputUID": "BuiltInMicrophoneDevice",
+        "audioOutputUID": "BuiltInSpeakerDevice",
+        "claudePath": "/usr/local/bin/claude",
+        "controlMode": "remote",
+        "deviceMappings": {
+          "dualsense": {
+            "circle": {
+              "interrupt": {}
+            },
+            "create": {
+              "showWindow": {}
+            },
+            "cross": {
+              "approve": {}
+            },
+            "dpadDown": {
+              "sendPrompt": {
+                "_0": "Explain what you just did, briefly"
+              }
+            },
+            "dpadLeft": {
+              "sendPrompt": {
+                "_0": "Undo the last change you made"
+              }
+            },
+            "dpadRight": {
+              "sendPrompt": {
+                "_0": "Commit the current changes with a good message"
+              }
+            },
+            "dpadUp": {
+              "sendPrompt": {
+                "_0": "Run the tests and report the results"
+              }
+            },
+            "l1": {
+              "sendDraft": {}
+            },
+            "l2": {
+              "pushToTalkDraft": {}
+            },
+            "l3": {
+              "cycleModel": {}
+            },
+            "options": {
+              "newSession": {}
+            },
+            "ps": {
+              "none": {}
+            },
+            "r1": {
+              "toggleTTS": {}
+            },
+            "r2": {
+              "pushToTalk": {}
+            },
+            "r3": {
+              "cycleEffort": {}
+            },
+            "square": {
+              "sendPrompt": {
+                "_0": "Run the tests"
+              }
+            },
+            "touchpad": {
+              "cyclePermissionMode": {}
+            },
+            "triangle": {
+              "stopSpeaking": {}
+            }
+          },
+          "streamdeck-test": {
+            "key-1": {
+              "approve": {}
+            }
+          }
+        },
+        "effort": "high",
+        "hapticsEnabled": true,
+        "harnessKind": "claude",
+        "lastSessionID": "3f2b1a4c-1111-2222-3333-444455556666",
+        "lightEnabled": true,
+        "listenerPort": 48738,
+        "listenerToken": "0B7C1D5E-8A9F-4C3D-B2E1-66778899AABB",
+        "localeID": "en-US",
+        "maxSpokenChars": 900,
+        "model": "opus",
+        "modelCycle": [
+          "sonnet",
+          "opus",
+          "haiku",
+          "fable"
+        ],
+        "onDeviceRecognition": false,
+        "permissionMode": "plan",
+        "projectDir": "/Users/someone/Projects/demo",
+        "recentProjectDirs": [
+          "/Users/someone/Projects/demo",
+          "/tmp/other"
+        ],
+        "remoteAutoSubmit": true,
+        "remoteCmuxWorkspace": "workspace:11",
+        "remoteTargetKind": "cmux",
+        "sessionIDsByProject": {
+          "/Users/someone/Projects/demo": "3f2b1a4c-1111-2222-3333-444455556666"
+        },
+        "speakSummaries": false,
+        "summaryModel": "haiku",
+        "ttsEnabled": false,
+        "ttsRate": 0.5
+      },
+      "expected": {
+        "deviceMappings": {
+          "dualsense": {
+            "circle": {
+              "case": "interrupt"
+            },
+            "create": {
+              "case": "showWindow"
+            },
+            "cross": {
+              "case": "approve"
+            },
+            "dpadDown": {
+              "case": "sendPrompt",
+              "prompt": "Explain what you just did, briefly"
+            },
+            "dpadLeft": {
+              "case": "sendPrompt",
+              "prompt": "Undo the last change you made"
+            },
+            "dpadRight": {
+              "case": "sendPrompt",
+              "prompt": "Commit the current changes with a good message"
+            },
+            "dpadUp": {
+              "case": "sendPrompt",
+              "prompt": "Run the tests and report the results"
+            },
+            "l1": {
+              "case": "sendDraft"
+            },
+            "l2": {
+              "case": "pushToTalkDraft"
+            },
+            "l3": {
+              "case": "cycleModel"
+            },
+            "options": {
+              "case": "newSession"
+            },
+            "ps": {
+              "case": "none"
+            },
+            "r1": {
+              "case": "toggleTTS"
+            },
+            "r2": {
+              "case": "pushToTalk"
+            },
+            "r3": {
+              "case": "cycleEffort"
+            },
+            "square": {
+              "case": "sendPrompt",
+              "prompt": "Run the tests"
+            },
+            "touchpad": {
+              "case": "cyclePermissionMode"
+            },
+            "triangle": {
+              "case": "stopSpeaking"
+            }
+          },
+          "streamdeck-test": {
+            "key-1": {
+              "case": "approve"
+            }
+          }
+        },
+        "backupBeforeSave": false
+      },
+      "reason": "A config the app wrote itself, a foreign profile included, loads exactly and is not copied (AppConfigTests.onDiskConfigFixture)."
+    },
+    {
+      "name": "a healthy default config is not backed up",
+      "input": {
+        "acpAgent": "opencode",
+        "acpCustomCommand": "",
+        "controlMode": "builtin",
+        "deviceMappings": {
+          "dualsense": {
+            "cross": {
+              "approve": {}
+            },
+            "circle": {
+              "interrupt": {}
+            },
+            "square": {
+              "sendPrompt": {
+                "_0": "Continue"
+              }
+            },
+            "triangle": {
+              "stopSpeaking": {}
+            },
+            "dpadUp": {
+              "sendPrompt": {
+                "_0": "Run the tests and report the results"
+              }
+            },
+            "dpadDown": {
+              "sendPrompt": {
+                "_0": "Explain what you just did, briefly"
+              }
+            },
+            "dpadLeft": {
+              "sendPrompt": {
+                "_0": "Undo the last change you made"
+              }
+            },
+            "dpadRight": {
+              "sendPrompt": {
+                "_0": "Commit the current changes with a good message"
+              }
+            },
+            "l1": {
+              "sendDraft": {}
+            },
+            "r1": {
+              "toggleTTS": {}
+            },
+            "l2": {
+              "pushToTalkDraft": {}
+            },
+            "r2": {
+              "pushToTalk": {}
+            },
+            "l3": {
+              "cycleModel": {}
+            },
+            "r3": {
+              "cycleEffort": {}
+            },
+            "create": {
+              "showWindow": {}
+            },
+            "options": {
+              "newSession": {}
+            },
+            "touchpad": {
+              "cyclePermissionMode": {}
+            },
+            "ps": {
+              "none": {}
+            }
+          }
+        },
+        "effort": "default",
+        "hapticsEnabled": true,
+        "harnessKind": "claude",
+        "lightEnabled": true,
+        "listenerPort": 48738,
+        "listenerToken": "0B7C1D5E-8A9F-4C3D-B2E1-66778899AABB",
+        "localeID": "en-US",
+        "maxSpokenChars": 1500,
+        "model": "default",
+        "modelCycle": [
+          "sonnet",
+          "opus",
+          "haiku",
+          "fable"
+        ],
+        "onDeviceRecognition": false,
+        "permissionMode": "acceptEdits",
+        "recentProjectDirs": [],
+        "remoteAutoSubmit": true,
+        "remoteTargetKind": "cmux",
+        "sessionIDsByProject": {},
+        "speakSummaries": false,
+        "summaryModel": "haiku",
+        "ttsEnabled": true,
+        "ttsRate": 0.5
+      },
+      "expected": {
+        "deviceMappings": "defaults",
+        "backupBeforeSave": false
+      },
+      "reason": "The default config as the app writes it holds nothing the next save would lose."
+    },
+    {
+      "name": "neither key gives the defaults",
+      "input": {
+        "model": "opus"
+      },
+      "expected": {
+        "deviceMappings": "defaults",
+        "backupBeforeSave": false
+      },
+      "reason": "A config from before mappings existed, or a hand-trimmed one, gets the shipped layout (HK-013); there is nothing to lose, so no copy."
+    },
+    {
+      "name": "an empty config gives the defaults",
+      "input": {},
+      "expected": {
+        "deviceMappings": "defaults",
+        "backupBeforeSave": false
+      },
+      "reason": "An empty object is a valid config with every key defaulted."
+    },
+    {
+      "name": "a legacy mapping migrates losslessly into dualsense",
+      "input": {
+        "model": "opus",
+        "mapping": {
+          "r2": {
+            "pushToTalk": {}
+          },
+          "cross": {
+            "approve": {}
+          },
+          "square": {
+            "sendPrompt": {
+              "_0": "Run the tests"
+            }
+          },
+          "ps": {
+            "none": {}
+          }
+        }
+      },
+      "expected": {
+        "deviceMappings": {
+          "dualsense": {
+            "r2": {
+              "case": "pushToTalk"
+            },
+            "cross": {
+              "case": "approve"
+            },
+            "square": {
+              "case": "sendPrompt",
+              "prompt": "Run the tests"
+            },
+            "ps": {
+              "case": "none"
+            }
+          }
+        },
+        "backupBeforeSave": true
+      },
+      "reason": "Pre-ADR-0006 button-keyed mappings move into the DualSense profile unchanged, sendPrompt and an explicit none included; the next save rewrites the file in the new shape, so the original is copied first (HK-014)."
+    },
+    {
+      "name": "the new key wins when both are present",
+      "input": {
+        "deviceMappings": {
+          "dualsense": {
+            "cross": {
+              "interrupt": {}
+            }
+          }
+        },
+        "mapping": {
+          "cross": {
+            "approve": {}
+          }
+        }
+      },
+      "expected": {
+        "deviceMappings": {
+          "dualsense": {
+            "cross": {
+              "case": "interrupt"
+            }
+          }
+        },
+        "backupBeforeSave": false
+      },
+      "reason": "deviceMappings is the truth once written; the stale legacy key is ignored, and a deviceMappings that decodes fully is not copied (HK-013)."
+    },
+    {
+      "name": "an empty deviceMappings wins over a legacy mapping",
+      "input": {
+        "deviceMappings": {},
+        "mapping": {
+          "cross": {
+            "approve": {}
+          }
+        }
+      },
+      "expected": {
+        "deviceMappings": {},
+        "backupBeforeSave": false
+      },
+      "reason": "An object, even an empty one, is the new shape; the user unbound everything on purpose."
+    },
+    {
+      "name": "an empty deviceMappings means no bindings",
+      "input": {
+        "deviceMappings": {}
+      },
+      "expected": {
+        "deviceMappings": {},
+        "backupBeforeSave": false
+      },
+      "reason": "No bindings is a choice the user made, not a missing value: it is not replaced by the defaults and not copied."
+    },
+    {
+      "name": "an unknown action drops only that binding",
+      "input": {
+        "deviceMappings": {
+          "dualsense": {
+            "r2": {
+              "pushToTalk": {}
+            },
+            "cross": {
+              "launchMissiles": {}
+            }
+          },
+          "pedal": {
+            "pedal-1": {
+              "approve": {}
+            }
+          }
+        }
+      },
+      "expected": {
+        "deviceMappings": {
+          "dualsense": {
+            "r2": {
+              "case": "pushToTalk"
+            }
+          },
+          "pedal": {
+            "pedal-1": {
+              "case": "approve"
+            }
+          }
+        },
+        "backupBeforeSave": true
+      },
+      "reason": "Tolerant per entry (HK-011): an action from a newer build costs that one binding, never the profile or the tree; the next save drops it, so the file is copied first."
+    },
+    {
+      "name": "a profile that is not an object is dropped alone",
+      "input": {
+        "deviceMappings": {
+          "dualsense": {
+            "r2": {
+              "pushToTalk": {}
+            }
+          },
+          "broken": "not an object"
+        }
+      },
+      "expected": {
+        "deviceMappings": {
+          "dualsense": {
+            "r2": {
+              "case": "pushToTalk"
+            }
+          }
+        },
+        "backupBeforeSave": true
+      },
+      "reason": "A malformed profile drops only itself (HK-011)."
+    },
+    {
+      "name": "a profile that is an array is dropped alone",
+      "input": {
+        "deviceMappings": {
+          "dualsense": {
+            "r2": {
+              "pushToTalk": {}
+            }
+          },
+          "list": [
+            {
+              "approve": {}
+            }
+          ]
+        }
+      },
+      "expected": {
+        "deviceMappings": {
+          "dualsense": {
+            "r2": {
+              "case": "pushToTalk"
+            }
+          }
+        },
+        "backupBeforeSave": true
+      },
+      "reason": "A profile's mapping is keyed by control id; an array is not a mapping."
+    },
+    {
+      "name": "a null profile is dropped alone",
+      "input": {
+        "deviceMappings": {
+          "dualsense": {
+            "r2": {
+              "pushToTalk": {}
+            }
+          },
+          "gone": null
+        }
+      },
+      "expected": {
+        "deviceMappings": {
+          "dualsense": {
+            "r2": {
+              "case": "pushToTalk"
+            }
+          }
+        },
+        "backupBeforeSave": true
+      },
+      "reason": "null is not a mapping either; the other profiles stay."
+    },
+    {
+      "name": "a null binding is dropped alone",
+      "input": {
+        "deviceMappings": {
+          "dualsense": {
+            "r2": {
+              "pushToTalk": {}
+            },
+            "cross": null
+          }
+        }
+      },
+      "expected": {
+        "deviceMappings": {
+          "dualsense": {
+            "r2": {
+              "case": "pushToTalk"
+            }
+          }
+        },
+        "backupBeforeSave": true
+      },
+      "reason": "A null action is not none; it is dropped, and the file is copied before the save forgets it."
+    },
+    {
+      "name": "an action with an unknown sibling key is kept and not backed up",
+      "input": {
+        "deviceMappings": {
+          "dualsense": {
+            "cross": {
+              "approve": {},
+              "future": {}
+            }
+          }
+        }
+      },
+      "expected": {
+        "deviceMappings": {
+          "dualsense": {
+            "cross": {
+              "case": "approve"
+            }
+          }
+        },
+        "backupBeforeSave": false
+      },
+      "reason": "Quirk kept knowingly: Swift's decoder cannot see a key that is not a case, so the binding loads and the strict check passes; the next save writes {\"approve\":{}} and the sibling is lost without a copy."
+    },
+    {
+      "name": "a null deviceMappings falls back to the legacy mapping",
+      "input": {
+        "deviceMappings": null,
+        "mapping": {
+          "cross": {
+            "approve": {}
+          }
+        }
+      },
+      "expected": {
+        "deviceMappings": {
+          "dualsense": {
+            "cross": {
+              "case": "approve"
+            }
+          }
+        },
+        "backupBeforeSave": true
+      },
+      "reason": "Only an object wins; a null new key does not hide a legacy mapping, and the file is copied because the save rewrites both keys."
+    },
+    {
+      "name": "a string deviceMappings falls back to the legacy mapping",
+      "input": {
+        "deviceMappings": "x",
+        "mapping": {
+          "cross": {
+            "approve": {}
+          }
+        }
+      },
+      "expected": {
+        "deviceMappings": {
+          "dualsense": {
+            "cross": {
+              "case": "approve"
+            }
+          }
+        },
+        "backupBeforeSave": true
+      },
+      "reason": "A deviceMappings of the wrong type is ignored, like any mistyped key."
+    },
+    {
+      "name": "a null deviceMappings alone gives the defaults",
+      "input": {
+        "deviceMappings": null
+      },
+      "expected": {
+        "deviceMappings": "defaults",
+        "backupBeforeSave": true
+      },
+      "reason": "Nothing usable is left, so the defaults apply; the key was present, so the file is copied before the save replaces it."
+    },
+    {
+      "name": "an array deviceMappings alone gives the defaults",
+      "input": {
+        "deviceMappings": [
+          1
+        ]
+      },
+      "expected": {
+        "deviceMappings": "defaults",
+        "backupBeforeSave": true
+      },
+      "reason": "An array is not the new shape; the defaults apply and the file is copied."
+    },
+    {
+      "name": "a legacy mapping with an unknown action resets to the defaults",
+      "input": {
+        "model": "haiku",
+        "mapping": {
+          "r2": {
+            "warpSpeed": {}
+          },
+          "cross": {
+            "approve": {}
+          }
+        }
+      },
+      "expected": {
+        "deviceMappings": "defaults",
+        "backupBeforeSave": true
+      },
+      "reason": "Quirk kept knowingly (HK-012): the legacy mapping is all or nothing, unlike deviceMappings; the original is still copied."
+    },
+    {
+      "name": "a legacy mapping with an unknown button resets to the defaults",
+      "input": {
+        "mapping": {
+          "zz": {
+            "approve": {}
+          },
+          "cross": {
+            "approve": {}
+          }
+        }
+      },
+      "expected": {
+        "deviceMappings": "defaults",
+        "backupBeforeSave": true
+      },
+      "reason": "Legacy keys must be DualSense control ids; anything else fails the whole legacy mapping."
+    },
+    {
+      "name": "an empty legacy mapping migrates to an empty dualsense profile",
+      "input": {
+        "mapping": {}
+      },
+      "expected": {
+        "deviceMappings": {
+          "dualsense": {}
+        },
+        "backupBeforeSave": true
+      },
+      "reason": "An empty legacy mapping is still a mapping: the DualSense ends up with no bindings, not the defaults."
+    },
+    {
+      "name": "a legacy array resets to the defaults",
+      "input": {
+        "model": 42,
+        "mapping": [
+          1,
+          2,
+          3
+        ]
+      },
+      "expected": {
+        "deviceMappings": "defaults",
+        "backupBeforeSave": true
+      },
+      "reason": "A legacy mapping of the wrong type gives the defaults (AppConfigTests.testWrongTypesFallBackToDefaults); the key is present, so the file is copied."
+    },
+    {
+      "name": "a null legacy mapping gives the defaults",
+      "input": {
+        "mapping": null
+      },
+      "expected": {
+        "deviceMappings": "defaults",
+        "backupBeforeSave": true
+      },
+      "reason": "A null legacy key gives the defaults, yet still counts as present for the copy."
+    }
+  ]
+}

@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build app bundle
-        run: POWERUP_REQUIRE_CORE=1 ./scripts/build.sh
+        run: ./scripts/build.sh
 
       # --- Developer ID signing + notarization (enable when secrets exist) ---
       # - name: Import signing certificate

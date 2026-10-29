@@ -34,6 +34,7 @@ Swift 5.9 / SwiftPM, no Xcode project, no third-party dependencies.
 ## Build, test, run
 
 ```sh
+./scripts/build-core.sh debug  # Rust core bridge; once, and after any rust/ change
 swift build            # debug build
 swift test             # unit tests — fast, no hardware, no network
 ./scripts/build.sh     # release build → build/PowerUp.app (assembled + signed)
@@ -54,18 +55,24 @@ Apple-framework adapter.
 ```sh
 (cd rust && cargo test && cargo clippy --all-targets -- -D warnings)
 ./scripts/build-core.sh debug     # bridge → rust/build/ (xcframework + Swift)
-POWERUP_CORE=1 swift test         # app tests plus Tests/PowerUpCoreTests
+swift test                        # app tests plus Tests/PowerUpCoreTests
 ```
 
-Plain `swift build` builds the app without the core until slice 2.2;
-`scripts/build.sh` links it when Rust and a full Xcode are installed (CI and
-releases require it with `POWERUP_REQUIRE_CORE=1`). CI runs the cargo job on macOS, Windows
-and Linux.
+The app always links the core (slice 2.2): `swift build` and `swift test`
+need `./scripts/build-core.sh` to have run, and again after any change under
+`rust/`; without `rust/build/` the manifest stops with that instruction.
+Rust and a full Xcode are build requirements, and `scripts/build.sh` fails
+clearly without them. CI runs the cargo job on macOS, Windows and Linux.
 
 - **Workspace.** `rust/` holds `powerup-core` (the logic), `powerup-core-ffi`
   (the uniffi bridge the macOS app links) and `uniffi-bindgen` (generates the
   Swift side). The compiler is pinned in `rust/rust-toolchain.toml`.
-- **Panic rule.** Every public core function returns a `Result`; library code
+- **What lives there.** The device layer (intents, actions, mappings,
+  profiles, the Controller slot rule and the hold rule) lives in
+  `powerup-core` since slice 2.2; the app reaches it only through
+  `CoreBridge.swift` (DESIGN v2.11).
+- **Panic rule.** Every public core function is total: it returns its
+  value, or a `Result` when it can fail, and never panics. Library code
   never calls `unwrap`, `expect` or `panic!` (clippy denies the first two).
   The one exception is the bridge probe `probe::panic_with`, which exists to
   test the boundary. The bridge runs every call inside `catch_unwind`, so a
@@ -121,7 +128,7 @@ contract change.
 | `TTSService.swift` | Text-to-speech with language-aware voice selection |
 | `SummaryService.swift` | Lightweight claude process that summarizes replies for TTS |
 | `DestructiveActionClassifier.swift` | Pure classifier for actions needing confirmation |
-| `ControllerSlot.swift` | Pure Controller slot rule (`ControllerSlotSelector`) and hold rule (`HoldTracker`) |
+| `ControllerSlot.swift` | Controller slot (`ControllerSlotSelector`) and hold (`HoldTracker`) value types; the rules run in the Rust core |
 | `ControllerPicker.swift` | Pure rows and caption for the Settings → Devices Controller picker |
 | `ViewLogic.swift` | Pure view rules extracted from MainView/ComponentViews (#126; DESIGN v2.7 §F) |
 | `RemoteControlService.swift` | Routes text/keys to cmux or keyboard injection |
@@ -132,7 +139,7 @@ contract change.
 | `ConfigStore.swift` | Persistent config (JSON, debounced, repairs corruption) |
 | `TranscriptStore.swift` | Per-project transcript persistence (JSON Lines) |
 | `MainView.swift` / `ComponentViews.swift` / `SettingsView.swift` / `MappingView.swift` | SwiftUI views |
-| `CoreBridge.swift` | Launch check of the Rust core bridge (DESIGN v2.10) |
+| `CoreBridge.swift` | The only file that imports the Rust core: launch check and the device-layer wrappers (DESIGN v2.10, v2.11) |
 
 The Rust core lives in `rust/` (see "The Rust core" above); its bridge tests
 are in `Tests/PowerUpCoreTests/`.

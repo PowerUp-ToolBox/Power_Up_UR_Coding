@@ -36,10 +36,10 @@ open build/PowerUp.app    # 务必以 App 包方式启动（macOS 的权限
                           # 与 App 包身份绑定）
 ```
 
-你需要 macOS 14+、已登录的 `claude` CLI，以及 Xcode 命令行工具；推荐搭配
-通过蓝牙配对的 DualSense，但它并非必需——屏幕上的麦克风按钮加键盘就能跑通
-整个流程。首次使用时，请在麦克风和语音识别的权限弹窗中点击允许，并
-选择一个项目文件夹——详见**[入门指南](docs/getting-started.md)**。
+你需要 macOS 14+、已登录的 `claude` CLI，构建时还需要完整的 Xcode 和
+[Rust](https://rustup.rs)；推荐搭配通过蓝牙配对的 DualSense，但它并非
+必需——屏幕上的麦克风按钮加键盘就能跑通整个流程。首次使用时，请在麦克风
+和语音识别的权限弹窗中点击允许，并选择一个项目文件夹——详见**[入门指南](docs/getting-started.md)**。
 
 ## 三个核心按键
 

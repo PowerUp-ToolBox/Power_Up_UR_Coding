@@ -10,6 +10,9 @@ use powerup_core::{probe, CoreError};
 
 uniffi::setup_scaffolding!();
 
+mod device;
+mod mapping;
+
 /// An error a core call reports to Swift.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Error)]
 pub enum CoreBridgeError {

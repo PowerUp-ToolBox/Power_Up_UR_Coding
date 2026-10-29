@@ -61,14 +61,12 @@ enum ControllerButton: String, Codable, CaseIterable, Identifiable, Hashable {
     }
 }
 
-/// Makes `[ControllerButton: Action]` encode as a keyed JSON object
-/// (button name → action) instead of a flat array of alternating keys/values.
-/// The default implementation for String-raw-value types does the work.
-extension ControllerButton: CodingKeyRepresentable {}
-
 // MARK: - Action
 
-enum Action: Codable, Hashable {
+/// Encodable only: the Rust core decodes actions (slice 2.2). This
+/// synthesized encoder is still the config writer until slice 2.5, and the
+/// shared `mapping/action-shape.json` table pins it to the core's bytes.
+enum Action: Encodable, Hashable {
     case none
     case pushToTalk               // hold to record, release to send transcript to Claude
     case sendPrompt(String)       // send a fixed text prompt to Claude
@@ -114,8 +112,9 @@ enum Action: Codable, Hashable {
     }
 
     /// Actions that record while the button is held and finish on release.
-    /// Everything else fires once, on the way down.
-    var isHoldAction: Bool { self == .pushToTalk || self == .pushToTalkDraft }
+    /// Everything else fires once, on the way down. The rule lives in the
+    /// Rust core (`powerup-core` `Action::is_hold`).
+    var isHoldAction: Bool { CoreBridge.isHold(self) }
 }
 
 /// The pre-v2.7 spelling of `Action`. Kept for one release so an out-of-tree
@@ -141,14 +140,11 @@ struct ControlDescriptor: Codable, Equatable, Hashable, Identifiable {
         /// A profile written before v2.7 may carry the obsolete `"hold"`
         /// value; it reads as a button rather than failing the profile, and
         /// encoding goes through the raw value, which no longer has `hold`.
+        /// The rule lives in the Rust core (`ControlKind::from_wire`).
         init(from decoder: Decoder) throws {
             let container = try decoder.singleValueContainer()
             let raw = try container.decode(String.self)
-            if raw == "hold" {
-                self = .button
-                return
-            }
-            guard let kind = Kind(rawValue: raw) else {
+            guard let kind = CoreBridge.controlKind(wireName: raw) else {
                 throw DecodingError.dataCorruptedError(
                     in: container,
                     debugDescription: "Unknown control kind \"\(raw)\"")
@@ -178,17 +174,14 @@ struct DeviceProfile: Codable, Equatable, Identifiable {
 
     static let dualSenseID = "dualsense"
 
-    /// The built-in profile carrying today's DualSense controls. Descriptor
-    /// values mirror `ControllerButton`'s display metadata, so the serialized
-    /// profile and the Swift enum can never disagree.
-    static let dualSense = DeviceProfile(
-        id: dualSenseID,
-        displayName: "DualSense",
-        controls: ControllerButton.allCases.map {
-            ControlDescriptor(id: $0.rawValue, kind: .button,
-                              displayName: $0.displayName, symbolName: $0.symbolName)
-        }
-    )
+    /// The built-in profile carrying today's DualSense controls, from the
+    /// Rust core (`profile::dualsense_profile`). Its descriptors mirror
+    /// `ControllerButton`'s display metadata, which DeviceProfileTests pins,
+    /// so the serialized profile and the Swift enum can never disagree. A
+    /// failed core call leaves a profile with no controls, which
+    /// `testDualSenseIDMatchesTheCore` catches.
+    static let dualSense = CoreBridge.dualSenseProfile()
+        ?? DeviceProfile(id: dualSenseID, displayName: "DualSense", controls: [])
 }
 
 /// controlId → action; stored per profile id in `AppConfig.deviceMappings`.
@@ -272,9 +265,10 @@ struct AppConfig: Codable, Equatable {
     }
 
     /// The action mapped to (profile, control); `.none` when unmapped. The
-    /// single resolution point every input surface routes through.
+    /// single resolution point every input surface routes through; the rule
+    /// lives in the Rust core (`mapping::resolve_action`).
     func action(onProfile profileID: String, control controlID: String) -> Action {
-        deviceMappings[profileID]?[controlID] ?? .none
+        CoreBridge.action(in: deviceMappings, profileID: profileID, controlID: controlID)
     }
 
     // MARK: Fixed option sets
@@ -401,38 +395,25 @@ struct AppConfig: Codable, Equatable {
         )
     }
 
-    /// The stored default: the DualSense profile carrying `defaultMapping()`
-    /// keyed by control id.
+    /// The stored default: the DualSense profile carrying the v1.3 layout
+    /// keyed by control id. The table lives in the Rust core
+    /// (`mapping::default_mapping`).
     static func defaultDeviceMappings() -> [String: DeviceMapping] {
-        [DeviceProfile.dualSenseID:
-            Dictionary(uniqueKeysWithValues: defaultMapping().map { ($0.key.rawValue, $0.value) })]
+        CoreBridge.defaultDeviceMappings()
     }
 
+    /// The default DualSense layout, keyed by the enum for the Settings editor.
     static func defaultMapping() -> [ControllerButton: Action] {
-        [
-            .r2: .pushToTalk,
-            .cross: .approve,
-            .circle: .interrupt,
-            .square: .sendPrompt("Continue"),
-            .triangle: .stopSpeaking,
-            .l1: .sendDraft,
-            .r1: .toggleTTS,
-            .dpadUp: .sendPrompt("Run the tests and report the results"),
-            .dpadDown: .sendPrompt("Explain what you just did, briefly"),
-            .dpadLeft: .sendPrompt("Undo the last change you made"),
-            .dpadRight: .sendPrompt("Commit the current changes with a good message"),
-            .options: .newSession,
-            .create: .showWindow,
-            .touchpad: .cyclePermissionMode,
-            .l2: .pushToTalkDraft,
-            .l3: .cycleModel,
-            .r3: .cycleEffort,
-            .ps: .none
-        ]
+        var out: [ControllerButton: Action] = [:]
+        for (controlID, action) in defaultDeviceMappings()[DeviceProfile.dualSenseID] ?? [:] {
+            if let button = ControllerButton(rawValue: controlID) { out[button] = action }
+        }
+        return out
     }
 
     /// Explicit keys so the tolerant decoder below and the synthesized encoder
-    /// agree on the on-disk shape.
+    /// agree on the on-disk shape. `mapping`, the pre-ADR-0006 key, is not
+    /// here: it is read only by the core and never written.
     private enum CodingKeys: String, CodingKey {
         case projectDir, model, permissionMode, claudePath, lastSessionID
         case ttsEnabled, ttsRate, ttsVoiceID, maxSpokenChars
@@ -445,11 +426,6 @@ struct AppConfig: Codable, Equatable {
         case remoteAppBundleID, remoteCmuxPassword, remoteAutoSubmit, listenerPort, listenerToken
         case recentProjectDirs, sessionIDsByProject
         case deviceMappings
-    }
-
-    /// Keys older builds wrote that the tolerant decoder still reads.
-    fileprivate enum LegacyCodingKeys: String, CodingKey {
-        case mapping    // [ControllerButton: Action], pre-ADR-0006
     }
 }
 
@@ -522,49 +498,29 @@ extension AppConfig {
             listenerToken: value(.listenerToken, fallback.listenerToken),
             recentProjectDirs: value(.recentProjectDirs, fallback.recentProjectDirs),
             sessionIDsByProject: value(.sessionIDsByProject, fallback.sessionIDsByProject),
-            deviceMappings: {
-                // New shape wins outright when present, decoded per-entry
-                // tolerantly (house rule: unknown types are ignored) — one
-                // unrecognized action, e.g. written by a newer build, drops
-                // that one binding, never the profile or the tree.
-                // Otherwise migrate the legacy button-keyed mapping
-                // losslessly into the DualSense profile. Either way
-                // ConfigStore keeps a one-time backup before the first save
-                // rewrites a file lossily. Neither key → defaults.
-                if let raw = ((try? container.decodeIfPresent(
-                        [String: TolerantDeviceMapping].self, forKey: .deviceMappings)) ?? nil) {
-                    return raw.compactMapValues(\.value)
-                }
-                let legacy = try? decoder.container(keyedBy: AppConfig.LegacyCodingKeys.self)
-                if let old = ((try? legacy?.decodeIfPresent(
-                        [ControllerButton: Action].self, forKey: .mapping)) ?? nil) {
-                    return [DeviceProfile.dualSenseID:
-                        Dictionary(uniqueKeysWithValues: old.map { ($0.key.rawValue, $0.value) })]
-                }
-                return fallback.deviceMappings
-            }()
+            deviceMappings: AppConfig.decodeDeviceMappings(from: decoder) ?? fallback.deviceMappings
         )
     }
-}
 
-/// Per-entry tolerant wrappers for `deviceMappings`: a malformed or unknown
-/// action (written by a newer build, or hand-edited) drops that one binding —
-/// never the profile, never the whole tree.
-private struct TolerantAction: Decodable {
-    let value: Action?
-    init(from decoder: Decoder) {
-        value = try? Action(from: decoder)
+    private enum MappingSubtreeKeys: String, CodingKey {
+        case deviceMappings, mapping
     }
-}
 
-private struct TolerantDeviceMapping: Decodable {
-    let value: DeviceMapping?
-    init(from decoder: Decoder) {
-        guard let entries = try? [String: TolerantAction](from: decoder) else {
-            value = nil // the profile's value isn't even an object — drop it
-            return
+    /// The mapping subtree is the Rust core's (slice 2.2,
+    /// `mapping::load_device_mappings`): the new shape wins outright when it
+    /// is an object, decoded per entry tolerantly; otherwise the legacy
+    /// button-keyed `mapping` migrates losslessly into the DualSense profile;
+    /// neither gives the defaults. The two keys go across as written, a null
+    /// kept distinct from an absent key. ConfigStore asks the core the same
+    /// question to decide on its backup copy. nil only when the core fails.
+    private static func decodeDeviceMappings(from decoder: Decoder) -> [String: DeviceMapping]? {
+        guard let container = try? decoder.container(keyedBy: MappingSubtreeKeys.self) else { return nil }
+        var subtree: [String: JSONValue] = [:]
+        for key in [MappingSubtreeKeys.deviceMappings, .mapping] where container.contains(key) {
+            subtree[key.stringValue] = (try? container.decode(JSONValue.self, forKey: key)) ?? .null
         }
-        value = entries.compactMapValues(\.value)
+        guard let text = JSONValue.object(subtree).jsonText else { return nil }
+        return CoreBridge.loadDeviceMappings(configJSON: text)?.deviceMappings
     }
 }
 

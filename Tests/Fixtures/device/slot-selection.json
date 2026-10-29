@@ -1,0 +1,283 @@
+{
+  "description": "Which connected controller fills the Controller slot (ADR 0013, DESIGN v2.7 B). The input lists the connected controllers, most recently connected first, in the caller's own order, and the pinned Controller device id, or null for Automatic. Automatic takes the head of the list. A pin takes the first controller whose id equals it exactly; when none does, the slot is empty, and it never falls back to Automatic. Input is {mostRecentlyConnectedFirst: [<controller descriptor>], pinnedID}; a controller descriptor is {id, profileID, displayName}. Expected is the controller descriptor in the slot, or null when the slot is empty.",
+  "function": "ControllerSlotSelector.active — input {mostRecentlyConnectedFirst, pinnedID}, expected a controller descriptor or null",
+  "verifiedBy": "DESIGN.md v2.7 B, ADR 0013; Tests/PowerUpTests/DeviceFixtureTests.swift testSlotSelectionTable builds a ControllerSlotSelector from the input and compares its active controller (which the core picks through the bridge since slice 2.2). Rust: rust/powerup-core/tests/device.rs slot_selection_cases runs slots::select_active_controller.",
+  "capturedAgainst": "Swift 5.9.2 (Xcode 15.2), PowerUp at 6255e60",
+  "cases": [
+    {
+      "name": "automatic takes the most recent connection",
+      "input": {
+        "mostRecentlyConnectedFirst": [
+          {
+            "id": "couch",
+            "profileID": "dualsense",
+            "displayName": "Pad couch"
+          },
+          {
+            "id": "desk",
+            "profileID": "dualsense",
+            "displayName": "Pad desk"
+          }
+        ],
+        "pinnedID": null
+      },
+      "expected": {
+        "id": "couch",
+        "profileID": "dualsense",
+        "displayName": "Pad couch"
+      },
+      "reason": "Automatic fills the slot with the head of the list, the most recently connected controller (ControllerSlotTests.testAutomaticSelectsMostRecentlyConnectedController)."
+    },
+    {
+      "name": "a connected pin wins over a more recent pad",
+      "input": {
+        "mostRecentlyConnectedFirst": [
+          {
+            "id": "couch",
+            "profileID": "dualsense",
+            "displayName": "Pad couch"
+          },
+          {
+            "id": "desk",
+            "profileID": "dualsense",
+            "displayName": "Pad desk"
+          }
+        ],
+        "pinnedID": "desk"
+      },
+      "expected": {
+        "id": "desk",
+        "profileID": "dualsense",
+        "displayName": "Pad desk"
+      },
+      "reason": "An explicit id pins the slot to that device even when another pad connected later (testPinnedControllerThatIsConnectedFillsTheSlot)."
+    },
+    {
+      "name": "an absent pin leaves the slot empty",
+      "input": {
+        "mostRecentlyConnectedFirst": [
+          {
+            "id": "couch",
+            "profileID": "dualsense",
+            "displayName": "Pad couch"
+          }
+        ],
+        "pinnedID": "desk"
+      },
+      "expected": null,
+      "reason": "A pinned controller that is not connected empties the slot instead of falling back to Automatic, so a pad nobody pinned never responds (testPinnedControllerThatIsAbsentLeavesTheSlotEmpty)."
+    },
+    {
+      "name": "automatic falls to the next most recent after a disconnect",
+      "input": {
+        "mostRecentlyConnectedFirst": [
+          {
+            "id": "desk",
+            "profileID": "dualsense",
+            "displayName": "Pad desk"
+          }
+        ],
+        "pinnedID": null
+      },
+      "expected": {
+        "id": "desk",
+        "profileID": "dualsense",
+        "displayName": "Pad desk"
+      },
+      "reason": "When the active pad disconnects, the list the caller passes no longer holds it, and the next most recent connection takes the slot (testDisconnectFallsToTheNextMostRecentlyConnectedController)."
+    },
+    {
+      "name": "a returning pin takes the slot back",
+      "input": {
+        "mostRecentlyConnectedFirst": [
+          {
+            "id": "couch",
+            "profileID": "dualsense",
+            "displayName": "Pad couch"
+          },
+          {
+            "id": "desk",
+            "profileID": "dualsense",
+            "displayName": "Pad desk"
+          }
+        ],
+        "pinnedID": "couch"
+      },
+      "expected": {
+        "id": "couch",
+        "profileID": "dualsense",
+        "displayName": "Pad couch"
+      },
+      "reason": "The pin is kept while its pad is away, so its return takes the slot back with no new pinning (testReturningPinnedControllerTakesTheSlotBack)."
+    },
+    {
+      "name": "nothing connected under automatic leaves the slot empty",
+      "input": {
+        "mostRecentlyConnectedFirst": [],
+        "pinnedID": null
+      },
+      "expected": null,
+      "reason": "No controller, no slot (testEmptyConnectedListLeavesTheSlotEmpty)."
+    },
+    {
+      "name": "nothing connected under a pin leaves the slot empty",
+      "input": {
+        "mostRecentlyConnectedFirst": [],
+        "pinnedID": "couch"
+      },
+      "expected": null,
+      "reason": "A pin cannot conjure a controller (testEmptyConnectedListLeavesTheSlotEmpty)."
+    },
+    {
+      "name": "a pin can match a pad deep in the list",
+      "input": {
+        "mostRecentlyConnectedFirst": [
+          {
+            "id": "a",
+            "profileID": "dualsense",
+            "displayName": "Pad a"
+          },
+          {
+            "id": "b",
+            "profileID": "dualsense",
+            "displayName": "Pad b"
+          },
+          {
+            "id": "c",
+            "profileID": "dualsense",
+            "displayName": "Pad c"
+          }
+        ],
+        "pinnedID": "c"
+      },
+      "expected": {
+        "id": "c",
+        "profileID": "dualsense",
+        "displayName": "Pad c"
+      },
+      "reason": "Order decides only Automatic; a pin finds its pad wherever it is in the list."
+    },
+    {
+      "name": "the caller's order is the order",
+      "input": {
+        "mostRecentlyConnectedFirst": [
+          {
+            "id": "desk",
+            "profileID": "dualsense",
+            "displayName": "Pad desk"
+          },
+          {
+            "id": "couch",
+            "profileID": "dualsense",
+            "displayName": "Pad couch"
+          }
+        ],
+        "pinnedID": null
+      },
+      "expected": {
+        "id": "desk",
+        "profileID": "dualsense",
+        "displayName": "Pad desk"
+      },
+      "reason": "The rule never reorders: whichever controller the caller lists first is the most recent connection, whatever its id."
+    },
+    {
+      "name": "an empty-string pin is a pin",
+      "input": {
+        "mostRecentlyConnectedFirst": [
+          {
+            "id": "couch",
+            "profileID": "dualsense",
+            "displayName": "Pad couch"
+          },
+          {
+            "id": "desk",
+            "profileID": "dualsense",
+            "displayName": "Pad desk"
+          }
+        ],
+        "pinnedID": ""
+      },
+      "expected": null,
+      "reason": "Only a missing pin means Automatic; an empty id matches nothing, so the slot stays empty. The config decoder turns a blank controllerDeviceID into Automatic before it reaches this rule."
+    },
+    {
+      "name": "the first of two entries with the same id wins",
+      "input": {
+        "mostRecentlyConnectedFirst": [
+          {
+            "id": "pad",
+            "profileID": "dualsense",
+            "displayName": "First"
+          },
+          {
+            "id": "pad",
+            "profileID": "dualsense",
+            "displayName": "Second"
+          }
+        ],
+        "pinnedID": "pad"
+      },
+      "expected": {
+        "id": "pad",
+        "profileID": "dualsense",
+        "displayName": "First"
+      },
+      "reason": "Ids are unique per connection in practice; if a list ever repeats one, the earlier, more recent entry is the one in the slot."
+    },
+    {
+      "name": "a pin matches the id only",
+      "input": {
+        "mostRecentlyConnectedFirst": [
+          {
+            "id": "pad-1",
+            "profileID": "dualsense",
+            "displayName": "Desk"
+          }
+        ],
+        "pinnedID": "Desk"
+      },
+      "expected": null,
+      "reason": "The pin stores the controller id; a display name or a profile id that happens to equal it does not match."
+    },
+    {
+      "name": "a pin is compared exactly",
+      "input": {
+        "mostRecentlyConnectedFirst": [
+          {
+            "id": "Couch",
+            "profileID": "dualsense",
+            "displayName": "Pad Couch"
+          }
+        ],
+        "pinnedID": "couch"
+      },
+      "expected": null,
+      "reason": "Ids are compared exactly; Couch is not couch."
+    },
+    {
+      "name": "the profile does not affect the rule",
+      "input": {
+        "mostRecentlyConnectedFirst": [
+          {
+            "id": "deck",
+            "profileID": "streamdeck-test",
+            "displayName": "Pad deck"
+          },
+          {
+            "id": "couch",
+            "profileID": "dualsense",
+            "displayName": "Pad couch"
+          }
+        ],
+        "pinnedID": null
+      },
+      "expected": {
+        "id": "deck",
+        "profileID": "streamdeck-test",
+        "displayName": "Pad deck"
+      },
+      "reason": "The slot holds any controller, whatever its profile; the profile only decides how its controls resolve."
+    }
+  ]
+}

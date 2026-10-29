@@ -1,0 +1,360 @@
+{
+  "description": "Reading one Action from the JSON stored for a control, exactly as Swift's synthesized enum Codable does (DESIGN v2.4 B, v2.7 A). The value must be an object. Keys that are not case names are invisible; exactly one case key must remain, and its payload must be an object. sendPrompt needs a string \"_0\" in its payload; other payload keys are ignored. Anything else is not an action. expected is an action descriptor ({\"case\": <case name>} plus \"prompt\" for sendPrompt), or null when the value is not an action and the binding is dropped.",
+  "function": "Action decoding — input any JSON value stored for one control, expected an action descriptor or null",
+  "verifiedBy": "DESIGN.md v2.4 B and v2.7 A; Tests/PowerUpTests/MappingFixtureTests.swift testActionDecodeTable decodes an AppConfig from {\"deviceMappings\": {\"p\": {\"c\": input}}} (the production path, which hands the subtree to the core through the bridge since slice 2.2) and reads the binding for p/c. Rust: rust/powerup-core/tests/mapping.rs action_decode_cases runs Action::from_wire on the input.",
+  "capturedAgainst": "Swift 5.9.2 synthesized Codable (Xcode 15.2), PowerUp at 6109234",
+  "cases": [
+    {
+      "name": "decodes none",
+      "input": {
+        "none": {}
+      },
+      "expected": {
+        "case": "none"
+      },
+      "reason": "Every case the config writer stores must read back as itself."
+    },
+    {
+      "name": "decodes pushToTalk",
+      "input": {
+        "pushToTalk": {}
+      },
+      "expected": {
+        "case": "pushToTalk"
+      },
+      "reason": "Every case the config writer stores must read back as itself."
+    },
+    {
+      "name": "decodes sendPrompt",
+      "input": {
+        "sendPrompt": {
+          "_0": "Continue"
+        }
+      },
+      "expected": {
+        "case": "sendPrompt",
+        "prompt": "Continue"
+      },
+      "reason": "Every case the config writer stores must read back as itself."
+    },
+    {
+      "name": "decodes approve",
+      "input": {
+        "approve": {}
+      },
+      "expected": {
+        "case": "approve"
+      },
+      "reason": "Every case the config writer stores must read back as itself."
+    },
+    {
+      "name": "decodes reject",
+      "input": {
+        "reject": {}
+      },
+      "expected": {
+        "case": "reject"
+      },
+      "reason": "Every case the config writer stores must read back as itself."
+    },
+    {
+      "name": "decodes interrupt",
+      "input": {
+        "interrupt": {}
+      },
+      "expected": {
+        "case": "interrupt"
+      },
+      "reason": "Every case the config writer stores must read back as itself."
+    },
+    {
+      "name": "decodes stopSpeaking",
+      "input": {
+        "stopSpeaking": {}
+      },
+      "expected": {
+        "case": "stopSpeaking"
+      },
+      "reason": "Every case the config writer stores must read back as itself."
+    },
+    {
+      "name": "decodes replayLastReply",
+      "input": {
+        "replayLastReply": {}
+      },
+      "expected": {
+        "case": "replayLastReply"
+      },
+      "reason": "Every case the config writer stores must read back as itself."
+    },
+    {
+      "name": "decodes toggleTTS",
+      "input": {
+        "toggleTTS": {}
+      },
+      "expected": {
+        "case": "toggleTTS"
+      },
+      "reason": "Every case the config writer stores must read back as itself."
+    },
+    {
+      "name": "decodes newSession",
+      "input": {
+        "newSession": {}
+      },
+      "expected": {
+        "case": "newSession"
+      },
+      "reason": "Every case the config writer stores must read back as itself."
+    },
+    {
+      "name": "decodes showWindow",
+      "input": {
+        "showWindow": {}
+      },
+      "expected": {
+        "case": "showWindow"
+      },
+      "reason": "Every case the config writer stores must read back as itself."
+    },
+    {
+      "name": "decodes cycleModel",
+      "input": {
+        "cycleModel": {}
+      },
+      "expected": {
+        "case": "cycleModel"
+      },
+      "reason": "Every case the config writer stores must read back as itself."
+    },
+    {
+      "name": "decodes cycleEffort",
+      "input": {
+        "cycleEffort": {}
+      },
+      "expected": {
+        "case": "cycleEffort"
+      },
+      "reason": "Every case the config writer stores must read back as itself."
+    },
+    {
+      "name": "decodes cyclePermissionMode",
+      "input": {
+        "cyclePermissionMode": {}
+      },
+      "expected": {
+        "case": "cyclePermissionMode"
+      },
+      "reason": "Every case the config writer stores must read back as itself."
+    },
+    {
+      "name": "decodes cycleProject",
+      "input": {
+        "cycleProject": {}
+      },
+      "expected": {
+        "case": "cycleProject"
+      },
+      "reason": "Every case the config writer stores must read back as itself."
+    },
+    {
+      "name": "decodes cycleFocus",
+      "input": {
+        "cycleFocus": {}
+      },
+      "expected": {
+        "case": "cycleFocus"
+      },
+      "reason": "Every case the config writer stores must read back as itself."
+    },
+    {
+      "name": "decodes pushToTalkDraft",
+      "input": {
+        "pushToTalkDraft": {}
+      },
+      "expected": {
+        "case": "pushToTalkDraft"
+      },
+      "reason": "Every case the config writer stores must read back as itself."
+    },
+    {
+      "name": "decodes sendDraft",
+      "input": {
+        "sendDraft": {}
+      },
+      "expected": {
+        "case": "sendDraft"
+      },
+      "reason": "Every case the config writer stores must read back as itself."
+    },
+    {
+      "name": "decodes toggleControlMode",
+      "input": {
+        "toggleControlMode": {}
+      },
+      "expected": {
+        "case": "toggleControlMode"
+      },
+      "reason": "Every case the config writer stores must read back as itself."
+    },
+    {
+      "name": "an unknown sibling key is invisible",
+      "input": {
+        "approve": {},
+        "fromTheFuture": {}
+      },
+      "expected": {
+        "case": "approve"
+      },
+      "reason": "Swift's synthesized decoder only looks at keys that are case names, so an extra key written by a newer build is ignored and the binding survives."
+    },
+    {
+      "name": "two case keys are rejected",
+      "input": {
+        "approve": {},
+        "reject": {}
+      },
+      "expected": null,
+      "reason": "An object naming two cases is ambiguous; the binding is dropped, never guessed."
+    },
+    {
+      "name": "a number payload is rejected",
+      "input": {
+        "approve": 1
+      },
+      "expected": null,
+      "reason": "The payload of a case must be an object."
+    },
+    {
+      "name": "a null payload is rejected",
+      "input": {
+        "approve": null
+      },
+      "expected": null,
+      "reason": "The payload of a case must be an object."
+    },
+    {
+      "name": "an array payload is rejected",
+      "input": {
+        "approve": []
+      },
+      "expected": null,
+      "reason": "The payload of a case must be an object."
+    },
+    {
+      "name": "extra payload keys are ignored",
+      "input": {
+        "approve": {
+          "x": 1
+        }
+      },
+      "expected": {
+        "case": "approve"
+      },
+      "reason": "Keys inside the payload that the case does not use are read past."
+    },
+    {
+      "name": "sendPrompt without _0 is rejected",
+      "input": {
+        "sendPrompt": {}
+      },
+      "expected": null,
+      "reason": "sendPrompt needs its prompt."
+    },
+    {
+      "name": "sendPrompt with a number _0 is rejected",
+      "input": {
+        "sendPrompt": {
+          "_0": 5
+        }
+      },
+      "expected": null,
+      "reason": "The prompt must be a string."
+    },
+    {
+      "name": "sendPrompt with a null _0 is rejected",
+      "input": {
+        "sendPrompt": {
+          "_0": null
+        }
+      },
+      "expected": null,
+      "reason": "The prompt must be a string, not null."
+    },
+    {
+      "name": "sendPrompt with a string payload is rejected",
+      "input": {
+        "sendPrompt": "x"
+      },
+      "expected": null,
+      "reason": "The payload is an object holding _0, never the bare prompt."
+    },
+    {
+      "name": "sendPrompt ignores a second payload key",
+      "input": {
+        "sendPrompt": {
+          "_0": "x",
+          "_1": "y"
+        }
+      },
+      "expected": {
+        "case": "sendPrompt",
+        "prompt": "x"
+      },
+      "reason": "Only _0 is read; another key in the payload is ignored."
+    },
+    {
+      "name": "sendPrompt keeps an escaped slash",
+      "input": {
+        "sendPrompt": {
+          "_0": "a/b"
+        }
+      },
+      "expected": {
+        "case": "sendPrompt",
+        "prompt": "a/b"
+      },
+      "reason": "\\/ in the file is an ordinary slash once read."
+    },
+    {
+      "name": "a bare string is rejected",
+      "input": "approve",
+      "expected": null,
+      "reason": "An action is an object, never the case name as a string."
+    },
+    {
+      "name": "an array is rejected",
+      "input": [],
+      "expected": null,
+      "reason": "An action is an object."
+    },
+    {
+      "name": "an empty object is rejected",
+      "input": {},
+      "expected": null,
+      "reason": "An object with no case key names no action."
+    },
+    {
+      "name": "null is rejected",
+      "input": null,
+      "expected": null,
+      "reason": "A null binding is dropped, not read as none."
+    },
+    {
+      "name": "case names are case-sensitive",
+      "input": {
+        "Approve": {}
+      },
+      "expected": null,
+      "reason": "Approve is not approve."
+    },
+    {
+      "name": "an unknown case is rejected",
+      "input": {
+        "launchMissiles": {}
+      },
+      "expected": null,
+      "reason": "An action this build does not know is dropped (the tolerant config load keeps the other bindings)."
+    }
+  ]
+}

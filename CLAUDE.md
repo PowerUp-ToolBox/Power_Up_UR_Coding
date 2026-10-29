@@ -37,6 +37,7 @@ together if the CLI genuinely changes.
 ## Commands
 
 ```sh
+./scripts/build-core.sh debug  # Rust core bridge; once, and after any rust/ change
 swift build            # debug build
 swift test             # unit tests, no hardware needed
 ./scripts/build.sh     # release build → build/PowerUp.app (assembled + signed)
@@ -44,9 +45,9 @@ open build/PowerUp.app # ALWAYS launch as a bundle — TCC permissions track
                        # bundle identity; running the raw binary breaks them
 ```
 
-The Rust core (stage 2, `rust/`): `(cd rust && cargo test)`;
-`./scripts/build-core.sh debug && POWERUP_CORE=1 swift test` runs the bridge
-tests. Rules (panic, fixtures, ledger, licenses) are in AGENTS.md, "The Rust
+The Rust core (stage 2, `rust/`): `(cd rust && cargo test)`. Every Swift
+build links it, so Rust (rustup) and a full Xcode are build requirements;
+`swift test` also runs the bridge tests. Rules (panic, fixtures, ledger, licenses) are in AGENTS.md, "The Rust
 core".
 
 ## Hard constraints

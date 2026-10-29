@@ -1,0 +1,1355 @@
+{
+  "description": "The hold rule on the active controller (DESIGN v2.7 C): what each press or release does to the voice capture, and which control owns the running hold. A tracker starts idle, with no owner, and the steps play in order. A release ends the capture only when its control is the owner, whatever that control is mapped to now; every other release is ignored. A press of a non-hold action delivers its intent (or is ignored for none) and leaves the owner alone. A hold press while the controller owns a capture cancels it and clears the owner; while a toggle-started capture runs (toggleCaptureActive) it is ignored; otherwise it begins a capture in the action's mode and records the control as the owner. releaseAll ends a controller-owned capture (never cancels it) and is otherwise ignored. Input is {steps}, each step either {action: <action descriptor>, control, phase: \"began\" or \"ended\", toggleCaptureActive} or {releaseAll: true}. Expected is {effects, owner}: one effect descriptor per step, and the owner left at the end (null for none). An effect descriptor is {effect: beginCapture, endCapture, cancelCapture, deliver or ignore}, plus mode (send or draft) for beginCapture and intent (an intent descriptor) for deliver.",
+  "function": "HoldTracker.effect(for:control:phase:toggleCaptureActive:) and releaseAll() — input {steps}, expected {effects, owner}",
+  "verifiedBy": "DESIGN.md v2.7 C; Tests/PowerUpTests/DeviceFixtureTests.swift testHoldRuleTable plays the steps through one HoldTracker (which asks the core through the bridge since slice 2.2) and compares the effects and the owner. Rust: rust/powerup-core/tests/device.rs hold_rule_cases plays them through hold::HoldState::step and release_all, passing the state from step to step.",
+  "capturedAgainst": "Swift 5.9.2 (Xcode 15.2), PowerUp at 6255e60",
+  "cases": [
+    {
+      "name": "a send hold press begins a send capture and takes ownership",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "pushToTalk"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "beginCapture",
+            "mode": "send"
+          }
+        ],
+        "owner": "r2"
+      },
+      "reason": "Ownership is the control that started the hold (v2.7 C; HoldTrackerTests.testHoldPressBeginsACaptureWithTheActionsModeAndRecordsTheOwner)."
+    },
+    {
+      "name": "a draft hold press begins a draft capture and takes ownership",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "pushToTalkDraft"
+            },
+            "control": "l2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "beginCapture",
+            "mode": "draft"
+          }
+        ],
+        "owner": "l2"
+      },
+      "reason": "The action's own mode decides send-on-end or draft (testHoldPressBeginsACaptureWithTheActionsModeAndRecordsTheOwner)."
+    },
+    {
+      "name": "the owner's release ends the capture",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "pushToTalk"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          },
+          {
+            "action": {
+              "case": "pushToTalk"
+            },
+            "control": "r2",
+            "phase": "ended",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "beginCapture",
+            "mode": "send"
+          },
+          {
+            "effect": "endCapture"
+          }
+        ],
+        "owner": null
+      },
+      "reason": "The owner's release finishes the capture normally and clears the owner (testOwnerReleaseEndsTheCaptureAndClearsTheOwner)."
+    },
+    {
+      "name": "the owner's release ends the capture after a mid-hold remap",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "pushToTalk"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          },
+          {
+            "action": {
+              "case": "approve"
+            },
+            "control": "r2",
+            "phase": "ended",
+            "toggleCaptureActive": false
+          },
+          {
+            "action": {
+              "case": "pushToTalkDraft"
+            },
+            "control": "l2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "beginCapture",
+            "mode": "send"
+          },
+          {
+            "effect": "endCapture"
+          },
+          {
+            "effect": "beginCapture",
+            "mode": "draft"
+          }
+        ],
+        "owner": "l2"
+      },
+      "reason": "Ownership alone decides a release, not the action mapped now: a mapping edit mid-hold must not strand the recorder or turn the next hold into a cancel (testOwnerReleaseEndsTheCaptureEvenAfterAMidHoldRemap)."
+    },
+    {
+      "name": "a release from another control is ignored",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "pushToTalk"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          },
+          {
+            "action": {
+              "case": "pushToTalkDraft"
+            },
+            "control": "l2",
+            "phase": "ended",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "beginCapture",
+            "mode": "send"
+          },
+          {
+            "effect": "ignore"
+          }
+        ],
+        "owner": "r2"
+      },
+      "reason": "A non-owner release never ends or steals the running hold (testNonOwnerReleaseIsIgnored)."
+    },
+    {
+      "name": "a second hold press cancels both",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "pushToTalk"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          },
+          {
+            "action": {
+              "case": "pushToTalkDraft"
+            },
+            "control": "l2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "beginCapture",
+            "mode": "send"
+          },
+          {
+            "effect": "cancelCapture"
+          }
+        ],
+        "owner": null
+      },
+      "reason": "Two holds on the active controller cancel the capture without sending or drafting; an end would send the half sentence (v2.7 C; testSecondHoldPressDuringAControllerOwnedCaptureCancelsBoth)."
+    },
+    {
+      "name": "a hold begins again after a cancel",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "pushToTalk"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          },
+          {
+            "action": {
+              "case": "pushToTalkDraft"
+            },
+            "control": "l2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          },
+          {
+            "action": {
+              "case": "pushToTalk"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "beginCapture",
+            "mode": "send"
+          },
+          {
+            "effect": "cancelCapture"
+          },
+          {
+            "effect": "beginCapture",
+            "mode": "send"
+          }
+        ],
+        "owner": "r2"
+      },
+      "reason": "A cancel leaves the tracker idle, so a fresh hold press starts a new capture (testSecondHoldPressDuringAControllerOwnedCaptureCancelsBoth)."
+    },
+    {
+      "name": "both releases after a cancel are ignored",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "pushToTalk"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          },
+          {
+            "action": {
+              "case": "pushToTalkDraft"
+            },
+            "control": "l2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          },
+          {
+            "action": {
+              "case": "pushToTalk"
+            },
+            "control": "r2",
+            "phase": "ended",
+            "toggleCaptureActive": false
+          },
+          {
+            "action": {
+              "case": "pushToTalkDraft"
+            },
+            "control": "l2",
+            "phase": "ended",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "beginCapture",
+            "mode": "send"
+          },
+          {
+            "effect": "cancelCapture"
+          },
+          {
+            "effect": "ignore"
+          },
+          {
+            "effect": "ignore"
+          }
+        ],
+        "owner": null
+      },
+      "reason": "Neither control's later release does anything, so nothing half-finished is ever sent or drafted (v2.7 C; testReleasesAfterACancelAreIgnored)."
+    },
+    {
+      "name": "pressing the owner again cancels",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "pushToTalk"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          },
+          {
+            "action": {
+              "case": "pushToTalk"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          },
+          {
+            "action": {
+              "case": "pushToTalk"
+            },
+            "control": "r2",
+            "phase": "ended",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "beginCapture",
+            "mode": "send"
+          },
+          {
+            "effect": "cancelCapture"
+          },
+          {
+            "effect": "ignore"
+          }
+        ],
+        "owner": null
+      },
+      "reason": "Any hold press while a controller-owned capture runs is a second hold, the owner's own control included; its release then ends nothing."
+    },
+    {
+      "name": "a hold press during a toggle-started capture is ignored",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "pushToTalk"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": true
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "ignore"
+          }
+        ],
+        "owner": null
+      },
+      "reason": "The pad never owned a keyboard or mic-button capture, so a hold press neither cancels it nor takes ownership (v2.7 C; testHoldPressDuringAToggleStartedCaptureIsIgnored)."
+    },
+    {
+      "name": "its release during the toggle-started capture is ignored too",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "pushToTalk"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": true
+          },
+          {
+            "action": {
+              "case": "pushToTalk"
+            },
+            "control": "r2",
+            "phase": "ended",
+            "toggleCaptureActive": true
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "ignore"
+          },
+          {
+            "effect": "ignore"
+          }
+        ],
+        "owner": null
+      },
+      "reason": "The ignored press took no ownership, so its release has nothing to end (testHoldPressDuringAToggleStartedCaptureIsIgnored)."
+    },
+    {
+      "name": "the owner's release ends its capture whatever the toggle flag says",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "pushToTalk"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          },
+          {
+            "action": {
+              "case": "pushToTalk"
+            },
+            "control": "r2",
+            "phase": "ended",
+            "toggleCaptureActive": true
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "beginCapture",
+            "mode": "send"
+          },
+          {
+            "effect": "endCapture"
+          }
+        ],
+        "owner": null
+      },
+      "reason": "A release is decided by ownership alone; the flag only guards a press."
+    },
+    {
+      "name": "a non-hold action delivers on press and nothing on release",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "approve"
+            },
+            "control": "cross",
+            "phase": "began",
+            "toggleCaptureActive": false
+          },
+          {
+            "action": {
+              "case": "approve"
+            },
+            "control": "cross",
+            "phase": "ended",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "deliver",
+            "intent": {
+              "intent": "approve"
+            }
+          },
+          {
+            "effect": "ignore"
+          }
+        ],
+        "owner": null
+      },
+      "reason": "A non-hold action fires once, on the press, and never takes hold ownership (testNonHoldActionDeliversItsIntentOnPressAndNothingOnRelease)."
+    },
+    {
+      "name": "sendPrompt delivers its prompt",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "sendPrompt",
+              "prompt": "status"
+            },
+            "control": "square",
+            "phase": "began",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "deliver",
+            "intent": {
+              "intent": "sendPrompt",
+              "prompt": "status"
+            }
+          }
+        ],
+        "owner": null
+      },
+      "reason": "The payload travels with the intent (testNonHoldActionDeliversItsIntentOnPressAndNothingOnRelease)."
+    },
+    {
+      "name": "a control mapped to none is ignored",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "none"
+            },
+            "control": "touchpad",
+            "phase": "began",
+            "toggleCaptureActive": false
+          },
+          {
+            "action": {
+              "case": "none"
+            },
+            "control": "touchpad",
+            "phase": "ended",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "ignore"
+          },
+          {
+            "effect": "ignore"
+          }
+        ],
+        "owner": null
+      },
+      "reason": "A control mapped to nothing has nothing to deliver or begin (testUnmappedNonHoldActionIsIgnored)."
+    },
+    {
+      "name": "a non-hold press during a hold delivers and keeps the owner",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "pushToTalk"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          },
+          {
+            "action": {
+              "case": "approve"
+            },
+            "control": "cross",
+            "phase": "began",
+            "toggleCaptureActive": false
+          },
+          {
+            "action": {
+              "case": "approve"
+            },
+            "control": "cross",
+            "phase": "ended",
+            "toggleCaptureActive": false
+          },
+          {
+            "action": {
+              "case": "pushToTalk"
+            },
+            "control": "r2",
+            "phase": "ended",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "beginCapture",
+            "mode": "send"
+          },
+          {
+            "effect": "deliver",
+            "intent": {
+              "intent": "approve"
+            }
+          },
+          {
+            "effect": "ignore"
+          },
+          {
+            "effect": "endCapture"
+          }
+        ],
+        "owner": null
+      },
+      "reason": "Only a second hold cancels; any other button still works mid-capture, and the hold ends normally on its owner's release."
+    },
+    {
+      "name": "a non-hold press during a toggle-started capture delivers",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "approve"
+            },
+            "control": "cross",
+            "phase": "began",
+            "toggleCaptureActive": true
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "deliver",
+            "intent": {
+              "intent": "approve"
+            }
+          }
+        ],
+        "owner": null
+      },
+      "reason": "The toggle flag only stops a pad hold from touching a capture it does not own; other buttons are unaffected."
+    },
+    {
+      "name": "a release with no hold running is ignored",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "pushToTalk"
+            },
+            "control": "r2",
+            "phase": "ended",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "ignore"
+          }
+        ],
+        "owner": null
+      },
+      "reason": "A release whose press was never seen (it began before the pad entered the slot) does nothing."
+    },
+    {
+      "name": "releaseAll ends a controller-owned capture, then has nothing to end",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "pushToTalk"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          },
+          {
+            "releaseAll": true
+          },
+          {
+            "releaseAll": true
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "beginCapture",
+            "mode": "send"
+          },
+          {
+            "effect": "endCapture"
+          },
+          {
+            "effect": "ignore"
+          }
+        ],
+        "owner": null
+      },
+      "reason": "The disconnect safety net and a Controller slot change end a controller-owned hold so the mic never stays wedged; a second call is a no-op (v2.7 C; testReleaseAllOnDisconnectOrSlotChangeEndsAControllerOwnedCapture)."
+    },
+    {
+      "name": "releaseAll leaves a toggle-started capture alone",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "pushToTalk"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": true
+          },
+          {
+            "releaseAll": true
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "ignore"
+          },
+          {
+            "effect": "ignore"
+          }
+        ],
+        "owner": null
+      },
+      "reason": "release-all keeps its v2.6 narrowing to holds the pad owns (testReleaseAllLeavesAToggleStartedCaptureAlone)."
+    },
+    {
+      "name": "releaseAll ends a draft hold and never cancels",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "pushToTalkDraft"
+            },
+            "control": "l2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          },
+          {
+            "releaseAll": true
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "beginCapture",
+            "mode": "draft"
+          },
+          {
+            "effect": "endCapture"
+          }
+        ],
+        "owner": null
+      },
+      "reason": "A forced release finishes the capture normally, like the owner letting go; it is never the discard a second hold causes (HK-031)."
+    },
+    {
+      "name": "releaseAll when idle is ignored",
+      "input": {
+        "steps": [
+          {
+            "releaseAll": true
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "ignore"
+          }
+        ],
+        "owner": null
+      },
+      "reason": "Nothing controller-owned is running, so there is nothing to end."
+    },
+    {
+      "name": "a hold begins after releaseAll, and the stale release is ignored",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "pushToTalk"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          },
+          {
+            "releaseAll": true
+          },
+          {
+            "action": {
+              "case": "pushToTalk"
+            },
+            "control": "r2",
+            "phase": "ended",
+            "toggleCaptureActive": false
+          },
+          {
+            "action": {
+              "case": "pushToTalkDraft"
+            },
+            "control": "l2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "beginCapture",
+            "mode": "send"
+          },
+          {
+            "effect": "endCapture"
+          },
+          {
+            "effect": "ignore"
+          },
+          {
+            "effect": "beginCapture",
+            "mode": "draft"
+          }
+        ],
+        "owner": "l2"
+      },
+      "reason": "After a forced release the tracker is idle: the old owner's late release ends nothing and a new hold starts cleanly."
+    },
+    {
+      "name": "pressing none from idle",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "none"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "ignore"
+          }
+        ],
+        "owner": null
+      },
+      "reason": "none is not a hold action, so it never begins a capture: the hold split is exactly the actions that hold (HK-004; testEveryHoldActionBeginsACaptureAndNoOtherActionDoes)."
+    },
+    {
+      "name": "pressing pushToTalk from idle",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "pushToTalk"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "beginCapture",
+            "mode": "send"
+          }
+        ],
+        "owner": "r2"
+      },
+      "reason": "pushToTalk is a hold action, so it begins a capture: the hold split is exactly the actions that hold (HK-004; testEveryHoldActionBeginsACaptureAndNoOtherActionDoes)."
+    },
+    {
+      "name": "pressing sendPrompt from idle",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "sendPrompt",
+              "prompt": "fix the failing test"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "deliver",
+            "intent": {
+              "intent": "sendPrompt",
+              "prompt": "fix the failing test"
+            }
+          }
+        ],
+        "owner": null
+      },
+      "reason": "sendPrompt is not a hold action, so it never begins a capture: the hold split is exactly the actions that hold (HK-004; testEveryHoldActionBeginsACaptureAndNoOtherActionDoes)."
+    },
+    {
+      "name": "pressing approve from idle",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "approve"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "deliver",
+            "intent": {
+              "intent": "approve"
+            }
+          }
+        ],
+        "owner": null
+      },
+      "reason": "approve is not a hold action, so it never begins a capture: the hold split is exactly the actions that hold (HK-004; testEveryHoldActionBeginsACaptureAndNoOtherActionDoes)."
+    },
+    {
+      "name": "pressing reject from idle",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "reject"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "deliver",
+            "intent": {
+              "intent": "reject"
+            }
+          }
+        ],
+        "owner": null
+      },
+      "reason": "reject is not a hold action, so it never begins a capture: the hold split is exactly the actions that hold (HK-004; testEveryHoldActionBeginsACaptureAndNoOtherActionDoes)."
+    },
+    {
+      "name": "pressing interrupt from idle",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "interrupt"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "deliver",
+            "intent": {
+              "intent": "interrupt"
+            }
+          }
+        ],
+        "owner": null
+      },
+      "reason": "interrupt is not a hold action, so it never begins a capture: the hold split is exactly the actions that hold (HK-004; testEveryHoldActionBeginsACaptureAndNoOtherActionDoes)."
+    },
+    {
+      "name": "pressing stopSpeaking from idle",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "stopSpeaking"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "deliver",
+            "intent": {
+              "intent": "stopSpeaking"
+            }
+          }
+        ],
+        "owner": null
+      },
+      "reason": "stopSpeaking is not a hold action, so it never begins a capture: the hold split is exactly the actions that hold (HK-004; testEveryHoldActionBeginsACaptureAndNoOtherActionDoes)."
+    },
+    {
+      "name": "pressing replayLastReply from idle",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "replayLastReply"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "deliver",
+            "intent": {
+              "intent": "replayLastReply"
+            }
+          }
+        ],
+        "owner": null
+      },
+      "reason": "replayLastReply is not a hold action, so it never begins a capture: the hold split is exactly the actions that hold (HK-004; testEveryHoldActionBeginsACaptureAndNoOtherActionDoes)."
+    },
+    {
+      "name": "pressing toggleTTS from idle",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "toggleTTS"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "deliver",
+            "intent": {
+              "intent": "toggleTTS"
+            }
+          }
+        ],
+        "owner": null
+      },
+      "reason": "toggleTTS is not a hold action, so it never begins a capture: the hold split is exactly the actions that hold (HK-004; testEveryHoldActionBeginsACaptureAndNoOtherActionDoes)."
+    },
+    {
+      "name": "pressing newSession from idle",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "newSession"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "deliver",
+            "intent": {
+              "intent": "newSession"
+            }
+          }
+        ],
+        "owner": null
+      },
+      "reason": "newSession is not a hold action, so it never begins a capture: the hold split is exactly the actions that hold (HK-004; testEveryHoldActionBeginsACaptureAndNoOtherActionDoes)."
+    },
+    {
+      "name": "pressing showWindow from idle",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "showWindow"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "deliver",
+            "intent": {
+              "intent": "showWindow"
+            }
+          }
+        ],
+        "owner": null
+      },
+      "reason": "showWindow is not a hold action, so it never begins a capture: the hold split is exactly the actions that hold (HK-004; testEveryHoldActionBeginsACaptureAndNoOtherActionDoes)."
+    },
+    {
+      "name": "pressing cycleModel from idle",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "cycleModel"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "deliver",
+            "intent": {
+              "intent": "cycleModel"
+            }
+          }
+        ],
+        "owner": null
+      },
+      "reason": "cycleModel is not a hold action, so it never begins a capture: the hold split is exactly the actions that hold (HK-004; testEveryHoldActionBeginsACaptureAndNoOtherActionDoes)."
+    },
+    {
+      "name": "pressing cycleEffort from idle",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "cycleEffort"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "deliver",
+            "intent": {
+              "intent": "cycleEffort"
+            }
+          }
+        ],
+        "owner": null
+      },
+      "reason": "cycleEffort is not a hold action, so it never begins a capture: the hold split is exactly the actions that hold (HK-004; testEveryHoldActionBeginsACaptureAndNoOtherActionDoes)."
+    },
+    {
+      "name": "pressing cyclePermissionMode from idle",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "cyclePermissionMode"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "deliver",
+            "intent": {
+              "intent": "cyclePermissionMode"
+            }
+          }
+        ],
+        "owner": null
+      },
+      "reason": "cyclePermissionMode is not a hold action, so it never begins a capture: the hold split is exactly the actions that hold (HK-004; testEveryHoldActionBeginsACaptureAndNoOtherActionDoes)."
+    },
+    {
+      "name": "pressing cycleProject from idle",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "cycleProject"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "deliver",
+            "intent": {
+              "intent": "cycleProject"
+            }
+          }
+        ],
+        "owner": null
+      },
+      "reason": "cycleProject is not a hold action, so it never begins a capture: the hold split is exactly the actions that hold (HK-004; testEveryHoldActionBeginsACaptureAndNoOtherActionDoes)."
+    },
+    {
+      "name": "pressing cycleFocus from idle",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "cycleFocus"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "deliver",
+            "intent": {
+              "intent": "cycleFocus"
+            }
+          }
+        ],
+        "owner": null
+      },
+      "reason": "cycleFocus is not a hold action, so it never begins a capture: the hold split is exactly the actions that hold (HK-004; testEveryHoldActionBeginsACaptureAndNoOtherActionDoes)."
+    },
+    {
+      "name": "pressing pushToTalkDraft from idle",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "pushToTalkDraft"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "beginCapture",
+            "mode": "draft"
+          }
+        ],
+        "owner": "r2"
+      },
+      "reason": "pushToTalkDraft is a hold action, so it begins a capture: the hold split is exactly the actions that hold (HK-004; testEveryHoldActionBeginsACaptureAndNoOtherActionDoes)."
+    },
+    {
+      "name": "pressing sendDraft from idle",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "sendDraft"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "deliver",
+            "intent": {
+              "intent": "sendDraft"
+            }
+          }
+        ],
+        "owner": null
+      },
+      "reason": "sendDraft is not a hold action, so it never begins a capture: the hold split is exactly the actions that hold (HK-004; testEveryHoldActionBeginsACaptureAndNoOtherActionDoes)."
+    },
+    {
+      "name": "pressing toggleControlMode from idle",
+      "input": {
+        "steps": [
+          {
+            "action": {
+              "case": "toggleControlMode"
+            },
+            "control": "r2",
+            "phase": "began",
+            "toggleCaptureActive": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          {
+            "effect": "deliver",
+            "intent": {
+              "intent": "toggleControlMode"
+            }
+          }
+        ],
+        "owner": null
+      },
+      "reason": "toggleControlMode is not a hold action, so it never begins a capture: the hold split is exactly the actions that hold (HK-004; testEveryHoldActionBeginsACaptureAndNoOtherActionDoes)."
+    }
+  ]
+}

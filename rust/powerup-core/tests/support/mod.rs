@@ -13,6 +13,11 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use powerup_core::action::Action;
+use powerup_core::hold::HoldEffect;
+use powerup_core::intent::{ControlPhase, Intent};
+use powerup_core::mapping::{default_device_mappings, DeviceMappings};
+use powerup_core::slots::ConnectedController;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -61,7 +66,7 @@ pub struct SessionScenario {
     pub expect: Value,
 }
 
-/// A case table (`text-safety/`, `status/`).
+/// A case table (`text-safety/`, `status/`, `mapping/`).
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CaseTable {
@@ -145,4 +150,131 @@ pub fn load_case_table(path: &Path) -> CaseTable {
         );
     }
     table
+}
+
+// Value descriptors (`Tests/Fixtures/README.md`, `mapping/`). An unknown name
+// panics with the descriptor, so a fixture typo never reads as a real value.
+
+/// `{"case": <name>}`, plus `"prompt"` for sendPrompt.
+pub fn action_from_descriptor(descriptor: &Value) -> Action {
+    let name = descriptor["case"]
+        .as_str()
+        .unwrap_or_else(|| panic!("not an action descriptor: {descriptor}"));
+    if name == "sendPrompt" {
+        let prompt = descriptor["prompt"]
+            .as_str()
+            .unwrap_or_else(|| panic!("sendPrompt descriptor without a prompt: {descriptor}"));
+        return Action::SendPrompt(prompt.to_owned());
+    }
+    Action::from_wire(&serde_json::json!({ name: {} }))
+        .unwrap_or_else(|| panic!("unknown action case in {descriptor}"))
+}
+
+pub fn action_descriptor(action: &Action) -> Value {
+    match action {
+        Action::SendPrompt(prompt) => serde_json::json!({"case": "sendPrompt", "prompt": prompt}),
+        other => serde_json::json!({"case": other.wire_name()}),
+    }
+}
+
+/// `{"intent": <name>}`, plus `"mode"` for beginVoiceCapture and `"prompt"`
+/// for sendPrompt.
+pub fn intent_descriptor(intent: &Intent) -> Value {
+    match intent {
+        Intent::BeginVoiceCapture(mode) => {
+            serde_json::json!({"intent": intent.name(), "mode": mode.name()})
+        }
+        Intent::SendPrompt(prompt) => {
+            serde_json::json!({"intent": intent.name(), "prompt": prompt})
+        }
+        other => serde_json::json!({"intent": other.name()}),
+    }
+}
+
+pub fn phase_from(name: &Value) -> ControlPhase {
+    match name.as_str() {
+        Some("began") => ControlPhase::Began,
+        Some("ended") => ControlPhase::Ended,
+        _ => panic!("unknown phase {name}"),
+    }
+}
+
+/// `{profileID: {controlID: <action descriptor>}}`, or `"defaults"` for the
+/// shipped default mappings.
+pub fn mappings_from_descriptors(descriptor: &Value) -> DeviceMappings {
+    if descriptor == "defaults" {
+        return default_device_mappings();
+    }
+    let profiles = descriptor
+        .as_object()
+        .unwrap_or_else(|| panic!("not a mappings descriptor: {descriptor}"));
+    profiles
+        .iter()
+        .map(|(profile_id, mapping)| {
+            let controls = mapping
+                .as_object()
+                .unwrap_or_else(|| panic!("not a profile mapping: {mapping}"));
+            let mapping = controls
+                .iter()
+                .map(|(control_id, action)| (control_id.clone(), action_from_descriptor(action)))
+                .collect();
+            (profile_id.clone(), mapping)
+        })
+        .collect()
+}
+
+pub fn mappings_descriptor(mappings: &DeviceMappings) -> Value {
+    mappings
+        .iter()
+        .map(|(profile_id, mapping)| {
+            let controls = mapping
+                .iter()
+                .map(|(control_id, action)| (control_id.clone(), action_descriptor(action)))
+                .collect::<serde_json::Map<_, _>>();
+            (profile_id.clone(), Value::Object(controls))
+        })
+        .collect::<serde_json::Map<_, _>>()
+        .into()
+}
+
+/// `{"effect": <name>}`, plus `"mode"` for beginCapture and `"intent"` (an
+/// intent descriptor) for deliver.
+pub fn effect_descriptor(effect: &HoldEffect) -> Value {
+    match effect {
+        HoldEffect::BeginCapture(mode) => {
+            serde_json::json!({"effect": effect.name(), "mode": mode.name()})
+        }
+        HoldEffect::Deliver(intent) => {
+            serde_json::json!({"effect": effect.name(), "intent": intent_descriptor(intent)})
+        }
+        other => serde_json::json!({"effect": other.name()}),
+    }
+}
+
+/// `{"id", "profileID", "displayName"}`, every field a string.
+pub fn controller_from(descriptor: &Value) -> ConnectedController {
+    let field = |key: &str| {
+        descriptor[key]
+            .as_str()
+            .unwrap_or_else(|| panic!("controller descriptor without a string {key}: {descriptor}"))
+            .to_owned()
+    };
+    ConnectedController {
+        id: field("id"),
+        profile_id: field("profileID"),
+        display_name: field("displayName"),
+    }
+}
+
+pub fn controller_descriptor(controller: &ConnectedController) -> Value {
+    serde_json::json!({
+        "id": controller.id,
+        "profileID": controller.profile_id,
+        "displayName": controller.display_name,
+    })
+}
+
+/// The table at `Tests/Fixtures/<area>/<file>`.
+pub fn case_table(area: &str, file: &str) -> CaseTable {
+    load_case_table(&fixtures_dir().join(area).join(file))
 }

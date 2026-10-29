@@ -60,28 +60,22 @@ final class ConfigStore: ObservableObject {
     /// (1) a pre-ADR-0006 file whose button-keyed `mapping` is about to be
     /// migrated into `deviceMappings`; (2) a `deviceMappings` containing
     /// entries this build cannot represent (a newer build's action, a
-    /// hand-edit) that the tolerant decoder will drop. Internal, URL-injected,
-    /// so tests can exercise it against a temp directory.
+    /// hand-edit) that the tolerant decoder will drop. The decision is the
+    /// Rust core's (`mapping::load_device_mappings`, slice 2.2); the copy, its
+    /// `config.pre-profiles.json` name and its once-only rule stay here. A
+    /// core that cannot read a file Foundation can counts as lossy too: the
+    /// mappings then fall back to the defaults, and the save would bury the
+    /// user's bindings.
+    /// Internal, URL-injected, so tests can exercise it against a temp
+    /// directory.
     nonisolated static func backupConfigBeforeLossyLoadIfNeeded(at url: URL, data: Data) {
-        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
-        let lossy: Bool
-        if let subtree = object["deviceMappings"] {
-            lossy = !deviceMappingsDecodeStrictly(subtree)
-        } else {
-            lossy = object["mapping"] != nil    // legacy shape → migration
-        }
-        guard lossy else { return }
+        guard let value = try? JSONDecoder().decode(JSONValue.self, from: data),
+              case .object = value,
+              let text = value.jsonText,
+              CoreBridge.loadDeviceMappings(configJSON: text)?.backupBeforeSave ?? true else { return }
         let backupURL = url.deletingPathExtension().appendingPathExtension("pre-profiles.json")
         guard !FileManager.default.fileExists(atPath: backupURL.path) else { return }
         try? FileManager.default.copyItem(at: url, to: backupURL)
-    }
-
-    /// True when every profile and action in the subtree decodes exactly —
-    /// i.e. the tolerant decoder would drop nothing.
-    private nonisolated static func deviceMappingsDecodeStrictly(_ subtree: Any) -> Bool {
-        guard JSONSerialization.isValidJSONObject(subtree),
-              let data = try? JSONSerialization.data(withJSONObject: subtree) else { return false }
-        return (try? JSONDecoder().decode([String: DeviceMapping].self, from: data)) != nil
     }
 
     private static func backupCorruptFile(at url: URL) {

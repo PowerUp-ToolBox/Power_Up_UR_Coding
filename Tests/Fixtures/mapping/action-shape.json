@@ -1,0 +1,233 @@
+{
+  "description": "The JSON shape of one Action, the mapping vocabulary stored per control in config.json (DESIGN v2.4 B, v2.7 A). Swift's synthesized enum Codable writes a case as an object with one key, the case name, whose value is an object: empty for a case without a payload, {\"_0\": prompt} for sendPrompt. expected is the exact compact text JSONEncoder writes with .sortedKeys (no spaces): the escapes are \\\" \\\\ \\/ \\b \\f \\n \\r \\t and lowercase \\u00xx for the other C0 controls; everything else, including DEL, U+2028 and non-ASCII, is written raw as UTF-8. Input is an action descriptor: {\"case\": <case name>} plus \"prompt\" for sendPrompt.",
+  "function": "Action encoding — input an action descriptor, expected the compact JSON text of that one action",
+  "verifiedBy": "DESIGN.md v2.4 B and v2.7 A; Tests/PowerUpTests/MappingFixtureTests.swift testActionShapeTable encodes the action with JSONEncoder (.sortedKeys) and compares the bytes, and compares CoreBridge.wireJSON(of:) (the core, through the bridge) with them too. Rust: rust/powerup-core/tests/mapping.rs action_shape_matches_swift_bytes writes the action with Action::to_wire_json and compares the bytes, then reads the text back with serde_json::from_str::<Action>.",
+  "capturedAgainst": "Swift 5.9.2 synthesized Codable (Xcode 15.2), PowerUp at 6109234",
+  "cases": [
+    {
+      "name": "none",
+      "input": {
+        "case": "none"
+      },
+      "expected": "{\"none\":{}}",
+      "reason": "The none case as the config writer stores it under a control id; a reader that expects another shape drops the binding."
+    },
+    {
+      "name": "pushToTalk",
+      "input": {
+        "case": "pushToTalk"
+      },
+      "expected": "{\"pushToTalk\":{}}",
+      "reason": "The pushToTalk case as the config writer stores it under a control id; a reader that expects another shape drops the binding."
+    },
+    {
+      "name": "sendPrompt",
+      "input": {
+        "case": "sendPrompt",
+        "prompt": "Continue"
+      },
+      "expected": "{\"sendPrompt\":{\"_0\":\"Continue\"}}",
+      "reason": "The sendPrompt case as the config writer stores it under a control id; a reader that expects another shape drops the binding."
+    },
+    {
+      "name": "approve",
+      "input": {
+        "case": "approve"
+      },
+      "expected": "{\"approve\":{}}",
+      "reason": "The approve case as the config writer stores it under a control id; a reader that expects another shape drops the binding."
+    },
+    {
+      "name": "reject",
+      "input": {
+        "case": "reject"
+      },
+      "expected": "{\"reject\":{}}",
+      "reason": "The reject case as the config writer stores it under a control id; a reader that expects another shape drops the binding."
+    },
+    {
+      "name": "interrupt",
+      "input": {
+        "case": "interrupt"
+      },
+      "expected": "{\"interrupt\":{}}",
+      "reason": "The interrupt case as the config writer stores it under a control id; a reader that expects another shape drops the binding."
+    },
+    {
+      "name": "stopSpeaking",
+      "input": {
+        "case": "stopSpeaking"
+      },
+      "expected": "{\"stopSpeaking\":{}}",
+      "reason": "The stopSpeaking case as the config writer stores it under a control id; a reader that expects another shape drops the binding."
+    },
+    {
+      "name": "replayLastReply",
+      "input": {
+        "case": "replayLastReply"
+      },
+      "expected": "{\"replayLastReply\":{}}",
+      "reason": "The replayLastReply case as the config writer stores it under a control id; a reader that expects another shape drops the binding."
+    },
+    {
+      "name": "toggleTTS",
+      "input": {
+        "case": "toggleTTS"
+      },
+      "expected": "{\"toggleTTS\":{}}",
+      "reason": "The toggleTTS case as the config writer stores it under a control id; a reader that expects another shape drops the binding."
+    },
+    {
+      "name": "newSession",
+      "input": {
+        "case": "newSession"
+      },
+      "expected": "{\"newSession\":{}}",
+      "reason": "The newSession case as the config writer stores it under a control id; a reader that expects another shape drops the binding."
+    },
+    {
+      "name": "showWindow",
+      "input": {
+        "case": "showWindow"
+      },
+      "expected": "{\"showWindow\":{}}",
+      "reason": "The showWindow case as the config writer stores it under a control id; a reader that expects another shape drops the binding."
+    },
+    {
+      "name": "cycleModel",
+      "input": {
+        "case": "cycleModel"
+      },
+      "expected": "{\"cycleModel\":{}}",
+      "reason": "The cycleModel case as the config writer stores it under a control id; a reader that expects another shape drops the binding."
+    },
+    {
+      "name": "cycleEffort",
+      "input": {
+        "case": "cycleEffort"
+      },
+      "expected": "{\"cycleEffort\":{}}",
+      "reason": "The cycleEffort case as the config writer stores it under a control id; a reader that expects another shape drops the binding."
+    },
+    {
+      "name": "cyclePermissionMode",
+      "input": {
+        "case": "cyclePermissionMode"
+      },
+      "expected": "{\"cyclePermissionMode\":{}}",
+      "reason": "The cyclePermissionMode case as the config writer stores it under a control id; a reader that expects another shape drops the binding."
+    },
+    {
+      "name": "cycleProject",
+      "input": {
+        "case": "cycleProject"
+      },
+      "expected": "{\"cycleProject\":{}}",
+      "reason": "The cycleProject case as the config writer stores it under a control id; a reader that expects another shape drops the binding."
+    },
+    {
+      "name": "cycleFocus",
+      "input": {
+        "case": "cycleFocus"
+      },
+      "expected": "{\"cycleFocus\":{}}",
+      "reason": "The cycleFocus case as the config writer stores it under a control id; a reader that expects another shape drops the binding."
+    },
+    {
+      "name": "pushToTalkDraft",
+      "input": {
+        "case": "pushToTalkDraft"
+      },
+      "expected": "{\"pushToTalkDraft\":{}}",
+      "reason": "The pushToTalkDraft case as the config writer stores it under a control id; a reader that expects another shape drops the binding."
+    },
+    {
+      "name": "sendDraft",
+      "input": {
+        "case": "sendDraft"
+      },
+      "expected": "{\"sendDraft\":{}}",
+      "reason": "The sendDraft case as the config writer stores it under a control id; a reader that expects another shape drops the binding."
+    },
+    {
+      "name": "toggleControlMode",
+      "input": {
+        "case": "toggleControlMode"
+      },
+      "expected": "{\"toggleControlMode\":{}}",
+      "reason": "The toggleControlMode case as the config writer stores it under a control id; a reader that expects another shape drops the binding."
+    },
+    {
+      "name": "sendPrompt with an empty prompt",
+      "input": {
+        "case": "sendPrompt",
+        "prompt": ""
+      },
+      "expected": "{\"sendPrompt\":{\"_0\":\"\"}}",
+      "reason": "An empty prompt is still a string payload, never an omitted _0."
+    },
+    {
+      "name": "sendPrompt with CJK and emoji",
+      "input": {
+        "case": "sendPrompt",
+        "prompt": "修复 🚀"
+      },
+      "expected": "{\"sendPrompt\":{\"_0\":\"修复 🚀\"}}",
+      "reason": "Non-ASCII is written raw (UTF-8), not as \\u escapes."
+    },
+    {
+      "name": "sendPrompt with quotes and a backslash",
+      "input": {
+        "case": "sendPrompt",
+        "prompt": "say \"hi\" \\ bye"
+      },
+      "expected": "{\"sendPrompt\":{\"_0\":\"say \\\"hi\\\" \\\\ bye\"}}",
+      "reason": "Quote and backslash are the two characters every JSON writer must escape."
+    },
+    {
+      "name": "sendPrompt with a newline and a tab",
+      "input": {
+        "case": "sendPrompt",
+        "prompt": "a\nb\tc"
+      },
+      "expected": "{\"sendPrompt\":{\"_0\":\"a\\nb\\tc\"}}",
+      "reason": "Short escapes \\n and \\t, never \\u000a."
+    },
+    {
+      "name": "sendPrompt with C0 controls",
+      "input": {
+        "case": "sendPrompt",
+        "prompt": "\u0001\u001f"
+      },
+      "expected": "{\"sendPrompt\":{\"_0\":\"\\u0001\\u001f\"}}",
+      "reason": "Other controls are \\u00xx with lowercase hex."
+    },
+    {
+      "name": "sendPrompt with backspace, form feed and CR",
+      "input": {
+        "case": "sendPrompt",
+        "prompt": "\b\f\r"
+      },
+      "expected": "{\"sendPrompt\":{\"_0\":\"\\b\\f\\r\"}}",
+      "reason": "The remaining short escapes, as the Swift encoder writes them."
+    },
+    {
+      "name": "sendPrompt with a slash",
+      "input": {
+        "case": "sendPrompt",
+        "prompt": "Run tests/unit"
+      },
+      "expected": "{\"sendPrompt\":{\"_0\":\"Run tests\\/unit\"}}",
+      "reason": "Swift's JSONEncoder writes / as \\/; serde_json does not, so the Rust writer escapes it itself."
+    },
+    {
+      "name": "sendPrompt with a line separator and DEL",
+      "input": {
+        "case": "sendPrompt",
+        "prompt": "a b"
+      },
+      "expected": "{\"sendPrompt\":{\"_0\":\"a b\"}}",
+      "reason": "U+2028 and DEL are written raw by Swift; escaping them would change the bytes."
+    }
+  ]
+}

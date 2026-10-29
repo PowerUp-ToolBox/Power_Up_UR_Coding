@@ -15,13 +15,14 @@ struct ConnectedController: Identifiable, Equatable {
 
 /// Decides which connected controller fills the Controller slot.
 ///
-/// A pure value type (CONTEXT.md: Slot, Controller; ADR 0013; DESIGN.md v2.7
+/// A value type (CONTEXT.md: Slot, Controller; ADR 0013; DESIGN.md v2.7
 /// addendum §B): the connected controllers in connection order and the pinned
-/// id go in, the controller in the slot comes out. The order is the input
-/// list's own order — spelled out in the parameter label so a caller cannot
-/// pass a differently ordered list and get a plausible wrong answer — never a
-/// framework callback's arrival order, and nothing here is observable or
-/// mutable.
+/// id go in, the controller in the slot comes out. The rule itself lives in
+/// the Rust core (`powerup-core` `slots::select_active_controller`, DESIGN.md
+/// v2.11); this is its Swift face. The order is the input list's own order —
+/// spelled out in the parameter label so a caller cannot pass a differently
+/// ordered list and get a plausible wrong answer — never a framework
+/// callback's arrival order, and nothing here is observable or mutable.
 struct ControllerSlotSelector: Equatable {
     /// The connected controllers, most recently connected first.
     let mostRecentlyConnectedFirst: [ConnectedController]
@@ -36,16 +37,16 @@ struct ControllerSlotSelector: Equatable {
     /// while it is away the slot stays empty rather than falling back to
     /// Automatic, and its return takes the slot back with no new pinning.
     var active: ConnectedController? {
-        guard let pinnedID else { return mostRecentlyConnectedFirst.first }
-        return mostRecentlyConnectedFirst.first { $0.id == pinnedID }
+        CoreBridge.activeController(mostRecentlyConnectedFirst: mostRecentlyConnectedFirst,
+                                    pinnedID: pinnedID)
     }
 }
 
 // MARK: - Hold
 
 /// What one input on the active controller does to the voice capture
-/// (DESIGN.md v2.7 addendum §C). Plain data: the AppState adapter switches on
-/// it, and it is one of the five effects the Rust core will return.
+/// (DESIGN.md v2.7 addendum §C). Plain data: the Swift face of the core's
+/// `hold::HoldEffect`, which the AppState adapter switches on.
 enum HoldEffect: Equatable {
     /// Start recording; the action's mode decides send-on-end or draft.
     case beginCapture(VoiceCaptureMode)
@@ -64,11 +65,14 @@ enum HoldEffect: Equatable {
 
 /// Tracks which control on the active controller owns the running hold.
 ///
-/// A pure value type (CONTEXT.md: Hold, Action, Control; DESIGN.md v2.7
-/// addendum §C). The action, the control id, the phase and whether a
-/// toggle-started capture is running go in; one `HoldEffect` per input comes
-/// out, alongside the owner this tracker keeps. Nothing here knows about
-/// framework callbacks, the recognizer or haptics — the AppState adapter does.
+/// A value type (CONTEXT.md: Hold, Action, Control; DESIGN.md v2.7 addendum
+/// §C). The action, the control id, the phase and whether a toggle-started
+/// capture is running go in; one `HoldEffect` per input comes out, alongside
+/// the owner this tracker keeps. The rule lives in the Rust core
+/// (`powerup-core` `hold::HoldState`, DESIGN.md v2.11): the owner is the
+/// core's whole state, passed in on every input and replaced by the one that
+/// comes back. Nothing here knows about framework callbacks, the recognizer
+/// or haptics — the AppState adapter does.
 struct HoldTracker: Equatable {
     /// The control id that started the running hold, or `nil` when the active
     /// controller owns no capture. Cleared by the owner's release and by a
@@ -90,53 +94,18 @@ struct HoldTracker: Equatable {
         phase: ControlPhase,
         toggleCaptureActive: Bool
     ) -> HoldEffect {
-        switch phase {
-        case .ended:
-            // Only the control that started the hold can end it; every other
-            // release — including both releases after a cancel — does nothing.
-            // Ownership alone decides, not the action mapped now: a mapping
-            // edit mid-hold must not strand the recorder.
-            guard owner == control else { return .ignore }
-            owner = nil
-            return .endCapture
-
-        case .began:
-            guard let mode = Self.captureMode(for: action) else {
-                guard let intent = IntentMapper.intent(for: action, phase: .began) else { return .ignore }
-                return .deliver(intent)
-            }
-            // A second hold-mapped press on the active controller while a hold
-            // capture is running cancels both: the partial capture is dropped,
-            // so neither control's later release can send it.
-            if owner != nil {
-                owner = nil
-                return .cancelCapture
-            }
-            // A capture the controller does not own (keyboard, mic button) is
-            // not cancelled by a press on the pad.
-            guard !toggleCaptureActive else { return .ignore }
-            owner = control
-            return .beginCapture(mode)
-        }
+        let step = CoreBridge.holdStep(owner: owner, action: action, control: control,
+                                       phase: phase, toggleCaptureActive: toggleCaptureActive)
+        owner = step.owner
+        return step.effect
     }
 
     /// Ends a hold the active controller owns when it can no longer be
     /// released normally: that controller disconnected, or the Controller slot
     /// changed (§C). A toggle-started capture is left alone.
     mutating func releaseAll() -> HoldEffect {
-        guard owner != nil else { return .ignore }
-        owner = nil
-        return .endCapture
-    }
-
-    /// The capture mode a hold action starts, or `nil` for an action that fires
-    /// once on the press. Mirrors `Action.isHoldAction`; the split is pinned by
-    /// `HoldTrackerTests.testEveryHoldActionBeginsACaptureAndNoOtherActionDoes`.
-    private static func captureMode(for action: Action) -> VoiceCaptureMode? {
-        switch action {
-        case .pushToTalk: return .send
-        case .pushToTalkDraft: return .draft
-        default: return nil
-        }
+        let step = CoreBridge.holdReleaseAll(owner: owner)
+        owner = step.owner
+        return step.effect
     }
 }

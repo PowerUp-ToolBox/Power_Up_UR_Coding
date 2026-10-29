@@ -45,41 +45,18 @@ enum ControlPhase: Equatable {
     case began, ended
 }
 
-/// Pure translation from mapping vocabulary (and from protocol wire names)
-/// into intents. Stateless by design — the "one hold at a time" bookkeeping
-/// stays with the caller, which knows which physical control it belongs to.
+/// Pure translation from mapping vocabulary (through the Rust core) and from
+/// protocol wire names (still here until slice 2.6) into intents. Stateless
+/// by design — the "one hold at a time" bookkeeping stays with the caller,
+/// which knows which physical control it belongs to.
 enum IntentMapper {
 
     /// The intent a mapped action produces for a press (`.began`) or release
     /// (`.ended`). Non-hold actions fire on the press and return nil for the
-    /// release; hold actions return the begin/end pair.
+    /// release; hold actions return the begin/end pair. The rule lives in the
+    /// Rust core (`powerup-core` `intent::intent_for`, slice 2.2).
     static func intent(for action: Action, phase: ControlPhase) -> Intent? {
-        switch phase {
-        case .ended:
-            return action.isHoldAction ? .endVoiceCapture : nil
-        case .began:
-            switch action {
-            case .none: return nil
-            case .pushToTalk: return .beginVoiceCapture(.send)
-            case .pushToTalkDraft: return .beginVoiceCapture(.draft)
-            case .sendPrompt(let prompt): return .sendPrompt(prompt)
-            case .sendDraft: return .sendDraft
-            case .approve: return .approve
-            case .reject: return .reject
-            case .interrupt: return .interrupt
-            case .stopSpeaking: return .stopSpeaking
-            case .replayLastReply: return .replayLastReply
-            case .toggleTTS: return .toggleTTS
-            case .newSession: return .newSession
-            case .showWindow: return .showWindow
-            case .cycleModel: return .cycleModel
-            case .cycleEffort: return .cycleEffort
-            case .cyclePermissionMode: return .cyclePermissionMode
-            case .cycleProject: return .cycleProject
-            case .cycleFocus: return .cycleFocus
-            case .toggleControlMode: return .toggleControlMode
-            }
-        }
+        CoreBridge.intent(for: action, phase: phase)
     }
 
     /// The intents a *protocol client* may send, by wire name (see

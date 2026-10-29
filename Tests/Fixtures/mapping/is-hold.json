@@ -1,0 +1,161 @@
+{
+  "description": "Whether an action holds: it records while its control is down and finishes on release. Only pushToTalk and pushToTalkDraft hold. Holding is a property of the action, never of the control (DESIGN v2.7 C, HK-004). Input is an action descriptor; expected is a bool.",
+  "function": "Action.isHoldAction — input an action descriptor, expected a bool",
+  "verifiedBy": "DESIGN.md v2.7 C; Tests/PowerUpTests/MappingFixtureTests.swift testIsHoldTable reads Action.isHoldAction, which calls the core through the bridge since slice 2.2. Rust: rust/powerup-core/tests/mapping.rs is_hold_cases runs Action::is_hold.",
+  "capturedAgainst": "Swift 5.9.2 synthesized Codable (Xcode 15.2), PowerUp at 6109234",
+  "cases": [
+    {
+      "name": "none",
+      "input": {
+        "case": "none"
+      },
+      "expected": false,
+      "reason": "Fires once on the press; no control kind can make it hold (DESIGN v2.7 C)."
+    },
+    {
+      "name": "pushToTalk",
+      "input": {
+        "case": "pushToTalk"
+      },
+      "expected": true,
+      "reason": "Holds: records while the control is down and finishes on release."
+    },
+    {
+      "name": "sendPrompt",
+      "input": {
+        "case": "sendPrompt",
+        "prompt": "Continue"
+      },
+      "expected": false,
+      "reason": "Fires once on the press; no control kind can make it hold (DESIGN v2.7 C)."
+    },
+    {
+      "name": "approve",
+      "input": {
+        "case": "approve"
+      },
+      "expected": false,
+      "reason": "Fires once on the press; no control kind can make it hold (DESIGN v2.7 C)."
+    },
+    {
+      "name": "reject",
+      "input": {
+        "case": "reject"
+      },
+      "expected": false,
+      "reason": "Fires once on the press; no control kind can make it hold (DESIGN v2.7 C)."
+    },
+    {
+      "name": "interrupt",
+      "input": {
+        "case": "interrupt"
+      },
+      "expected": false,
+      "reason": "Fires once on the press; no control kind can make it hold (DESIGN v2.7 C)."
+    },
+    {
+      "name": "stopSpeaking",
+      "input": {
+        "case": "stopSpeaking"
+      },
+      "expected": false,
+      "reason": "Fires once on the press; no control kind can make it hold (DESIGN v2.7 C)."
+    },
+    {
+      "name": "replayLastReply",
+      "input": {
+        "case": "replayLastReply"
+      },
+      "expected": false,
+      "reason": "Fires once on the press; no control kind can make it hold (DESIGN v2.7 C)."
+    },
+    {
+      "name": "toggleTTS",
+      "input": {
+        "case": "toggleTTS"
+      },
+      "expected": false,
+      "reason": "Fires once on the press; no control kind can make it hold (DESIGN v2.7 C)."
+    },
+    {
+      "name": "newSession",
+      "input": {
+        "case": "newSession"
+      },
+      "expected": false,
+      "reason": "Fires once on the press; no control kind can make it hold (DESIGN v2.7 C)."
+    },
+    {
+      "name": "showWindow",
+      "input": {
+        "case": "showWindow"
+      },
+      "expected": false,
+      "reason": "Fires once on the press; no control kind can make it hold (DESIGN v2.7 C)."
+    },
+    {
+      "name": "cycleModel",
+      "input": {
+        "case": "cycleModel"
+      },
+      "expected": false,
+      "reason": "Fires once on the press; no control kind can make it hold (DESIGN v2.7 C)."
+    },
+    {
+      "name": "cycleEffort",
+      "input": {
+        "case": "cycleEffort"
+      },
+      "expected": false,
+      "reason": "Fires once on the press; no control kind can make it hold (DESIGN v2.7 C)."
+    },
+    {
+      "name": "cyclePermissionMode",
+      "input": {
+        "case": "cyclePermissionMode"
+      },
+      "expected": false,
+      "reason": "Fires once on the press; no control kind can make it hold (DESIGN v2.7 C)."
+    },
+    {
+      "name": "cycleProject",
+      "input": {
+        "case": "cycleProject"
+      },
+      "expected": false,
+      "reason": "Fires once on the press; no control kind can make it hold (DESIGN v2.7 C)."
+    },
+    {
+      "name": "cycleFocus",
+      "input": {
+        "case": "cycleFocus"
+      },
+      "expected": false,
+      "reason": "Fires once on the press; no control kind can make it hold (DESIGN v2.7 C)."
+    },
+    {
+      "name": "pushToTalkDraft",
+      "input": {
+        "case": "pushToTalkDraft"
+      },
+      "expected": true,
+      "reason": "Holds: records while the control is down and finishes on release."
+    },
+    {
+      "name": "sendDraft",
+      "input": {
+        "case": "sendDraft"
+      },
+      "expected": false,
+      "reason": "Fires once on the press; no control kind can make it hold (DESIGN v2.7 C)."
+    },
+    {
+      "name": "toggleControlMode",
+      "input": {
+        "case": "toggleControlMode"
+      },
+      "expected": false,
+      "reason": "Fires once on the press; no control kind can make it hold (DESIGN v2.7 C)."
+    }
+  ]
+}

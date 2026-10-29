@@ -1,11 +1,13 @@
 # Shared fixtures
 
 Language-neutral test data that every implementation of PowerUp's rules is
-checked against: the Swift app's XCTest suites today and the Rust core's
-`cargo test` later (PLAN-any-device-any-os.md, ADR 0012). Each implementation
-loads these files from its own source location. Swift resolves them relative
-to `#filePath`, because SwiftPM accepts no resources outside a target. Do not
-copy them into a target.
+checked against (PLAN-any-device-any-os.md, ADR 0012): the Swift app's XCTest
+suites play every file, and the Rust core's `cargo test` plays the areas whose
+rules it owns so far (`mapping/` and `device/`, since slice 2.2) and checks
+the format of the rest, picking up more as later slices port them. Each
+implementation loads these files from its own source location. Swift resolves
+them relative to `#filePath`, because SwiftPM accepts no resources outside a
+target. Do not copy them into a target.
 
 CI fails if this directory holds no JSON fixtures, from both sides: a CI
 step for the Swift suites, and `the_shared_fixtures_directory_is_not_empty`
@@ -20,8 +22,8 @@ case table's `verifiedBy` sentence.
 
 ## Conventions
 
-- One subdirectory per area: `session/` (scenarios), `text-safety/` and
-  `status/` (case tables).
+- One subdirectory per area: `session/` (scenarios), `text-safety/`,
+  `status/`, `mapping/` and `device/` (case tables).
 - Plain JSON only, with no comments and no implementation-specific shapes.
 - Every file starts with a header and gives a `reason` for each thing it
   pins. There are two formats:
@@ -29,9 +31,9 @@ case table's `verifiedBy` sentence.
     `description`, `reason` (why the rule exists), `source` (where the rule
     is written down) and `verifiedBy` (the implementations that run it, for
     example `["swift"]`). See [`session/`](#session-session-scenarios-format-1).
-  - Case tables (`text-safety/`, `status/`) use `description`, `function`,
-    `verifiedBy`, `capturedAgainst` and a `cases` list in which every case
-    has a `reason`. See [case tables](#text-safety-and-status-case-tables).
+  - Case tables (`text-safety/`, `status/`, `mapping/`, `device/`) use `description`,
+    `function`, `verifiedBy`, `capturedAgainst` and a `cases` list in which
+    every case has a `reason`. See [case tables](#text-safety-and-status-case-tables).
 - Add `capturedAgainst` when the data was recorded from a real tool (for
   example a `claude` CLI version) or characterizes a specific build.
 - Use the terms in `CONTEXT.md`.
@@ -64,11 +66,59 @@ remote mode does to text before it is typed or shown (`text-safety/`, epic
 | `function` | the function under test, with the shape of `input` and `expected` |
 | `verifiedBy` | a string: the contract text the rule comes from, and the test files that run the table |
 | `capturedAgainst` | a string: the build or tool the expected values were recorded from |
-| `cases` | a non-empty list. Each case has a unique `name`, an `input` (a string, or an object when the function takes more than one value), an `expected` value (a string, a list or an object, per file) and a non-empty `reason` |
+| `cases` | a non-empty list. Each case has a unique `name`, an `input` (a string, or an object when the function takes more than one value; in `mapping/action-decode.json` any JSON value, in `mapping/config-load.json` a whole config.json object), an `expected` value (a string, a bool, a list, an object or `null`, per file) and a non-empty `reason` |
 
 The loader rejects a file with an empty `description`, `function` or
 `verifiedBy`, no cases, a blank or duplicate case name, or an empty
 `reason`. A failure names the file and the case.
+
+## `mapping/` and `device/`: case tables with value descriptors
+
+The device layer's rules (spec #97, slice 2.2). `mapping/` holds what an
+action looks like in `config.json`, how a stored action is read back, the
+intent a press or release produces, which actions hold, the default
+mappings, how a (profile, control) pair resolves to an action, and how a
+config.json's mapping subtree loads (including whether the file is copied
+before the next save). `device/` holds the control-kind rule, how a device
+profile is read and written back, the built-in DualSense profile, which
+connected controller fills the Controller slot, and the hold rule. The
+files are ordinary case tables. Values that are Swift enums in the app and
+Rust enums in the core are written as plain JSON descriptors, so neither
+language's spelling leaks into the file:
+
+| Descriptor | Shape |
+| --- | --- |
+| action | `{"case": <case name>}`, plus `"prompt"` for `sendPrompt`. The case names are the 19 Swift case names, which are also the keys the config writer stores, for example `toggleTTS` and `pushToTalkDraft` |
+| intent | `{"intent": <Swift case name>}`, plus `"mode": "send"` or `"draft"` for `beginVoiceCapture` and `"prompt"` for `sendPrompt` |
+| mappings | `{<profile id>: {<control id>: <action descriptor>}}`, or the string `"defaults"` for the shipped default mappings (`mapping/default-mapping.json` spells those out) |
+| effect | `{"effect": <Swift case name>}`, one of `beginCapture`, `endCapture`, `cancelCapture`, `deliver` and `ignore`, plus `"mode": "send"` or `"draft"` for `beginCapture` and `"intent": <intent descriptor>` for `deliver` |
+| controller | `{"id", "profileID", "displayName"}`, every field a string, as `ConnectedController` holds them |
+| hold step | `{"action": <action descriptor>, "control": <control id>, "phase": "began"` or `"ended", "toggleCaptureActive": <bool>}`, every field required, or `{"releaseAll": true}` for the forced release |
+
+Device profiles are not descriptors: `device/profile-decode.json` and
+`device/dualsense-profile.json` hold profile objects exactly as a profile
+file stores them (`{id, displayName, controls: [{id, kind, displayName,
+symbolName}]}`), and the expected value is compared as JSON, not as text.
+
+`null` as an expected value means "no value": a binding that is dropped,
+a phase that produces no intent, or a kind or profile that fails to read.
+`action-shape.json` expects the exact compact text Swift's `JSONEncoder`
+(`.sortedKeys`) writes, so it is a byte comparison, not a JSON comparison.
+`action-decode.json` takes any JSON value as input, because it pins what
+happens to whatever a file holds for one control. `config-load.json`
+expects `{deviceMappings, backupBeforeSave}`. `device/slot-selection.json`
+takes `{mostRecentlyConnectedFirst: [<controller>], pinnedID}` (`null` for
+Automatic) and expects the controller in the slot, or `null` when it is
+empty. `device/hold-rule.json` takes `{steps: [<hold step>]}`, played in
+order through one tracker that starts idle, and expects `{effects, owner}`:
+one effect per step and the owning control id left at the end (`null` for
+none). Its cases use all five effects between them.
+
+The Swift runners are `Tests/PowerUpTests/MappingFixtureTests.swift` and
+`DeviceFixtureTests.swift` (their descriptor helpers are in
+`FixtureValues.swift`), and the Rust runners are
+`rust/powerup-core/tests/mapping.rs` and `tests/device.rs` (their helpers
+are in `tests/support`).
 
 ## `session/`: session scenarios (format 1)
 

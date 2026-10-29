@@ -37,9 +37,10 @@ open build/PowerUp.app    # always launch as a bundle (macOS permissions
                           # track the bundle identity)
 ```
 
-You'll need macOS 14+, the `claude` CLI logged in, and the Xcode Command
-Line Tools; a DualSense paired over Bluetooth is recommended but optional —
-the on-screen mic button and the keyboard cover the whole loop without one.
+You'll need macOS 14+, the `claude` CLI logged in, and, to build, a full
+Xcode install and [Rust](https://rustup.rs); a DualSense paired over
+Bluetooth is recommended but optional — the on-screen mic button and the
+keyboard cover the whole loop without one.
 On first use, approve the microphone and speech-recognition prompts and pick
 a project folder — full details in
 **[Getting started](docs/getting-started.md)**.

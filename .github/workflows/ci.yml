@@ -17,16 +17,12 @@ jobs:
       - name: Swift version
         run: swift --version
 
-      # Until slice 2.2 makes the Rust core mandatory, the app must still
-      # build without it.
-      - name: Build (without the Rust core)
-        run: swift build
-
-      # rust/rust-toolchain.toml pins the compiler; rustup installs it.
+      # rust/rust-toolchain.toml pins the compiler; rustup installs it. The
+      # app links the core (slice 2.2), so this runs before any swift command.
       - name: Build the Rust core bridge
         run: ./scripts/build-core.sh debug
 
-      # The shared fixtures (Swift now, the Rust core later) are discovered
+      # The shared fixtures (read by the Swift and Rust tests) are discovered
       # at run time, so an empty or missing directory would let the scenario
       # suites pass vacuously. Fail loudly instead.
       - name: Shared fixtures are present
@@ -35,20 +31,22 @@ jobs:
           count=$(find Tests/Fixtures -type f -name '*.json' | wc -l | tr -d ' ')
           echo "Tests/Fixtures holds $count JSON fixture(s)"
           test "$count" -gt 0 || { echo "::error::Tests/Fixtures holds no JSON fixtures"; exit 1; }
-          sessions=$(find Tests/Fixtures/session -type f -name '*.json' 2>/dev/null | wc -l | tr -d ' ')
-          test "$sessions" -gt 0 || { echo "::error::Tests/Fixtures/session holds no scenarios"; exit 1; }
+          for area in session mapping device; do
+            found=$(find "Tests/Fixtures/$area" -type f -name '*.json' 2>/dev/null | wc -l | tr -d ' ')
+            test "$found" -gt 0 || { echo "::error::Tests/Fixtures/$area holds no fixtures"; exit 1; }
+          done
 
-      - name: Test (without the Rust core)
+      - name: Build
+        run: swift build
+
+      - name: Test
         run: swift test
-
-      - name: Test (with the Rust core)
-        run: POWERUP_CORE=1 swift test
 
       # Full release pipeline: SPM release build, icon generation, .app
       # assembly, ad-hoc signing. Catches build.sh regressions and release-only
       # compile errors.
       - name: Bundle app
-        run: POWERUP_REQUIRE_CORE=1 ./scripts/build.sh
+        run: ./scripts/build.sh
 
       - name: Verify bundle
         run: |
@@ -56,8 +54,14 @@ jobs:
           test -f build/PowerUp.app/Contents/Resources/AppIcon.icns
           plutil -lint build/PowerUp.app/Contents/Info.plist
           codesign --verify build/PowerUp.app
-          nm build/PowerUp.app/Contents/MacOS/PowerUp | grep -q uniffi_powerup_core_ffi_fn_func_probe_echo \
-            || { echo "::error::the app bundle does not link the Rust core"; exit 1; }
+          # The launch probe, and the device layer the app now runs on (2.2).
+          # nm writes to a file: piped into grep -q it dies of SIGPIPE, which
+          # the runner's pipefail would report as a missing symbol.
+          nm build/PowerUp.app/Contents/MacOS/PowerUp > "$RUNNER_TEMP/powerup-symbols.txt"
+          for symbol in probe_echo resolve_action hold_tracker_step; do
+            grep -q "uniffi_powerup_core_ffi_fn_func_$symbol" "$RUNNER_TEMP/powerup-symbols.txt" \
+              || { echo "::error::the app bundle does not link the Rust core ($symbol)"; exit 1; }
+          done
 
   # The Rust core (stage 2, ADR 0012) is tested on every OS it will ship on.
   # Runner images are pinned for the same reason as the macOS job above.
