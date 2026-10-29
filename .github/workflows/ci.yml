@@ -31,7 +31,7 @@ jobs:
           count=$(find Tests/Fixtures -type f -name '*.json' | wc -l | tr -d ' ')
           echo "Tests/Fixtures holds $count JSON fixture(s)"
           test "$count" -gt 0 || { echo "::error::Tests/Fixtures holds no JSON fixtures"; exit 1; }
-          for area in session mapping device harness status text-safety config; do
+          for area in session mapping device harness status text-safety config transcript; do
             found=$(find "Tests/Fixtures/$area" -type f -name '*.json' 2>/dev/null | wc -l | tr -d ' ')
             test "$found" -gt 0 || { echo "::error::Tests/Fixtures/$area holds no fixtures"; exit 1; }
           done

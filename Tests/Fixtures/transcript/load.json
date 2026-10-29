@@ -1,0 +1,239 @@
+{
+  "description": "How a transcript file loads: its bytes split on LF (0x0A) with empty pieces dropped, each piece read as transcript/lines.json pins and skipped when it does not decode; past 2000 decoded entries the file is rewritten with the newest 2000 (not reachable in this table: rust/powerup-core/src/transcript.rs load_tail_compacts_past_2000 and TranscriptStoreTests.testOvergrownFileIsCompactedOnLoad pin it); the newest maxEntries entries are returned, oldest first. maxEntries is at least 1 here: the app returns nothing for 0 without reading the file.",
+  "function": "TranscriptStore.loadTail(maxEntries:) — input {file, maxEntries}: file the file's bytes (a string, or {\"hex\": <bytes>}), expected {texts, rewrite}: the texts of the entries returned, oldest first, and whether the file was rewritten",
+  "verifiedBy": "DESIGN.md v1.6, v2.14; Tests/PowerUpTests/TranscriptFixtureTests.swift testTranscriptLoadTable writes the file to a temporary transcripts directory, loads it through TranscriptStore.loadTail and checks whether the bytes changed.",
+  "capturedAgainst": "Swift 5.9.2 JSONDecoder, JSONEncoder and CryptoKit (Xcode 15.2) on macOS 27.2, PowerUp at 0bc961f",
+  "cases": [
+    {
+      "name": "every entry of a short file, oldest first",
+      "input": {
+        "file": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"one\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"two\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"three\",\"date\":1761700000}\n",
+        "maxEntries": 200
+      },
+      "expected": {
+        "rewrite": false,
+        "texts": [
+          "one",
+          "two",
+          "three"
+        ]
+      },
+      "reason": "A restore brings back the file's entries in the order they were written."
+    },
+    {
+      "name": "the newest entries when the file is longer",
+      "input": {
+        "file": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"m1\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"m2\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"m3\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"m4\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"m5\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"m6\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"m7\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"m8\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"m9\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"m10\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"m11\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"m12\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"m13\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"m14\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"m15\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"m16\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"m17\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"m18\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"m19\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"m20\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"m21\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"m22\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"m23\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"m24\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"m25\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"m26\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"m27\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"m28\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"m29\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"m30\",\"date\":1761700000}\n",
+        "maxEntries": 10
+      },
+      "expected": {
+        "rewrite": false,
+        "texts": [
+          "m21",
+          "m22",
+          "m23",
+          "m24",
+          "m25",
+          "m26",
+          "m27",
+          "m28",
+          "m29",
+          "m30"
+        ]
+      },
+      "reason": "Only the newest maxEntries come back, still oldest first (HK-176)."
+    },
+    {
+      "name": "maxEntries larger than the file",
+      "input": {
+        "file": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"one\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"two\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"three\",\"date\":1761700000}\n",
+        "maxEntries": 1000
+      },
+      "expected": {
+        "rewrite": false,
+        "texts": [
+          "one",
+          "two",
+          "three"
+        ]
+      },
+      "reason": "A short file comes back whole."
+    },
+    {
+      "name": "one entry",
+      "input": {
+        "file": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"one\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"two\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"three\",\"date\":1761700000}\n",
+        "maxEntries": 1
+      },
+      "expected": {
+        "rewrite": false,
+        "texts": [
+          "three"
+        ]
+      },
+      "reason": "maxEntries 1 is the newest entry alone."
+    },
+    {
+      "name": "blank lines are dropped",
+      "input": {
+        "file": "\n\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"one\",\"date\":1761700000}\n\n\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"two\",\"date\":1761700000}\n\n",
+        "maxEntries": 200
+      },
+      "expected": {
+        "rewrite": false,
+        "texts": [
+          "one",
+          "two"
+        ]
+      },
+      "reason": "Empty pieces between newlines are not lines."
+    },
+    {
+      "name": "no final newline",
+      "input": {
+        "file": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"one\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"two\",\"date\":1761700000}",
+        "maxEntries": 200
+      },
+      "expected": {
+        "rewrite": false,
+        "texts": [
+          "one",
+          "two"
+        ]
+      },
+      "reason": "The last line counts without its newline (a crash mid-append leaves one)."
+    },
+    {
+      "name": "a CRLF file",
+      "input": {
+        "file": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"one\",\"date\":1761700000}\r\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"two\",\"date\":1761700000}\r\n",
+        "maxEntries": 200
+      },
+      "expected": {
+        "rewrite": false,
+        "texts": [
+          "one",
+          "two"
+        ]
+      },
+      "reason": "The file splits on LF only; each CR is whitespace after its object."
+    },
+    {
+      "name": "corrupt and future lines are skipped",
+      "input": {
+        "file": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"first\",\"date\":1761700000}\nnot json at all\n{\"future\":\"shape\"}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"assistant\",\"text\":\"second\",\"date\":1761700000}\n",
+        "maxEntries": 200
+      },
+      "expected": {
+        "rewrite": false,
+        "texts": [
+          "first",
+          "second"
+        ]
+      },
+      "reason": "Lines that do not decode are skipped, never failing the load (HK-175, TranscriptStoreTests)."
+    },
+    {
+      "name": "skipped lines do not count toward maxEntries",
+      "input": {
+        "file": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"one\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"two\",\"date\":1761700000}\ngarbage\n",
+        "maxEntries": 2
+      },
+      "expected": {
+        "rewrite": false,
+        "texts": [
+          "one",
+          "two"
+        ]
+      },
+      "reason": "The newest entries are counted after skipping, so a corrupt last line never costs an entry."
+    },
+    {
+      "name": "a line of spaces is skipped",
+      "input": {
+        "file": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"one\",\"date\":1761700000}\n   \n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"two\",\"date\":1761700000}\n",
+        "maxEntries": 200
+      },
+      "expected": {
+        "rewrite": false,
+        "texts": [
+          "one",
+          "two"
+        ]
+      },
+      "reason": "A line of whitespace is not an empty piece but does not decode either."
+    },
+    {
+      "name": "a byte order mark at the start of the file",
+      "input": {
+        "file": {
+          "hex": "efbbbf7b226964223a2233463235303445302d344638392d343144332d394130432d303330354538324333333031222c226b696e64223a2275736572222c2274657874223a226f6e65222c2264617465223a313736313730303030307d0a7b226964223a2233463235303445302d344638392d343144332d394130432d303330354538324333333031222c226b696e64223a2275736572222c2274657874223a2274776f222c2264617465223a313736313730303030307d0a7b226964223a2233463235303445302d344638392d343144332d394130432d303330354538324333333031222c226b696e64223a2275736572222c2274657874223a227468726565222c2264617465223a313736313730303030307d0a"
+        },
+        "maxEntries": 200
+      },
+      "expected": {
+        "rewrite": false,
+        "texts": [
+          "one",
+          "two",
+          "three"
+        ]
+      },
+      "reason": "The first line reads past the mark; the rest are plain."
+    },
+    {
+      "name": "an empty file",
+      "input": {
+        "file": "",
+        "maxEntries": 200
+      },
+      "expected": {
+        "rewrite": false,
+        "texts": []
+      },
+      "reason": "An empty file holds no entries."
+    },
+    {
+      "name": "only newlines",
+      "input": {
+        "file": "\n\n\n",
+        "maxEntries": 200
+      },
+      "expected": {
+        "rewrite": false,
+        "texts": []
+      },
+      "reason": "No lines, no entries."
+    },
+    {
+      "name": "the same id twice is kept twice",
+      "input": {
+        "file": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"a\",\"date\":1761700000}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"b\",\"date\":1761700000}\n",
+        "maxEntries": 200
+      },
+      "expected": {
+        "rewrite": false,
+        "texts": [
+          "a",
+          "b"
+        ]
+      },
+      "reason": "Loading does not dedupe; each line is one entry."
+    },
+    {
+      "name": "a line with a newline in its text",
+      "input": {
+        "file": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"line one\\nwith a newline inside\",\"date\":1761700000.123456}\n{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"assistant\",\"text\":\"reply\",\"date\":1761700000}\n",
+        "maxEntries": 200
+      },
+      "expected": {
+        "rewrite": false,
+        "texts": [
+          "line one\nwith a newline inside",
+          "reply"
+        ]
+      },
+      "reason": "An escaped newline keeps the entry on one line."
+    }
+  ]
+}

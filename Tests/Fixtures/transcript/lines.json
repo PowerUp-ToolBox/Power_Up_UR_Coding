@@ -1,0 +1,566 @@
+{
+  "description": "How one stored transcript line reads: as Swift's JSONDecoder decoded a TranscriptEntry with .secondsSince1970 dates. The line must scan as a JSON document (UTF-8 after one optional byte order mark, or UTF-16/UTF-32; space, tab, LF and CR around tokens; one trailing comma) whose root is an object with every key convertible. Then id must be a string that UUID(uuidString:) accepts (36 ASCII characters, hex digits of either case in 8-4-4-4-12 groups; returned uppercase), kind exactly one of user, assistant, tool, system, error, text a string and date a Double (a number that converts as config/round-trip.json pins: overflow, underflow and Foundation's true-zero quirk fail). Of equal keys the first wins; other members are ignored and never converted. Any failure skips the line.",
+  "function": "TranscriptStore line decoding — input one line without its newline (a string, or {\"hex\": <bytes>}), expected the transcript entry {id, kind, text, date} it reads as (date the seconds since 1970 that JSONDecoder read), or null when the line is skipped",
+  "verifiedBy": "DESIGN.md v1.6, v2.14; Tests/PowerUpTests/TranscriptFixtureTests.swift testTranscriptLineTable writes the line to a temporary transcript file and loads it through TranscriptStore.loadTail (the date compared as the Date built from the expected seconds).",
+  "capturedAgainst": "Swift 5.9.2 JSONDecoder, JSONEncoder and CryptoKit (Xcode 15.2) on macOS 27.2, PowerUp at 0bc961f",
+  "cases": [
+    {
+      "name": "a canonical line",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000.123456}",
+      "expected": {
+        "date": 1761700000.123456,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "hi"
+      },
+      "reason": "The line the core writes reads back as the same entry."
+    },
+    {
+      "name": "members in another order",
+      "input": "{\"text\":\"hi\",\"kind\":\"assistant\",\"date\":1761700000,\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\"}",
+      "expected": {
+        "date": 1761700000,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "assistant",
+        "text": "hi"
+      },
+      "reason": "Swift wrote the members in hash order, which changed from launch to launch; a line is read by key, so every old line loads (HK-416)."
+    },
+    {
+      "name": "every kind reads: assistant",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"assistant\",\"text\":\"hi\",\"date\":1761700000.123456}",
+      "expected": {
+        "date": 1761700000.123456,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "assistant",
+        "text": "hi"
+      },
+      "reason": "assistant is one of the five kinds."
+    },
+    {
+      "name": "every kind reads: tool",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"tool\",\"text\":\"hi\",\"date\":1761700000.123456}",
+      "expected": {
+        "date": 1761700000.123456,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "tool",
+        "text": "hi"
+      },
+      "reason": "tool is one of the five kinds."
+    },
+    {
+      "name": "every kind reads: system",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"system\",\"text\":\"hi\",\"date\":1761700000.123456}",
+      "expected": {
+        "date": 1761700000.123456,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "system",
+        "text": "hi"
+      },
+      "reason": "system is one of the five kinds."
+    },
+    {
+      "name": "every kind reads: error",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"error\",\"text\":\"hi\",\"date\":1761700000.123456}",
+      "expected": {
+        "date": 1761700000.123456,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "error",
+        "text": "hi"
+      },
+      "reason": "error is one of the five kinds."
+    },
+    {
+      "name": "a lowercase id reads, uppercased",
+      "input": "{\"id\":\"3f2504e0-4f89-41d3-9a0c-0305e82c3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000.123456}",
+      "expected": {
+        "date": 1761700000.123456,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "hi"
+      },
+      "reason": "UUID(uuidString:) takes either case; the entry holds the UUID, which is written back in uppercase."
+    },
+    {
+      "name": "a mixed-case id reads",
+      "input": "{\"id\":\"3f2504e0-4F89-41d3-9A0C-0305e82c3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000.123456}",
+      "expected": {
+        "date": 1761700000.123456,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "hi"
+      },
+      "reason": "Hex digits of either case mix freely."
+    },
+    {
+      "name": "an id in braces is skipped",
+      "input": "{\"id\":\"{3F2504E0-4F89-41D3-9A0C-0305E82C3301}\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000.123456}",
+      "expected": null,
+      "reason": "UUID(uuidString:) takes no braces, so the line does not decode."
+    },
+    {
+      "name": "a compact id is skipped",
+      "input": "{\"id\":\"3F2504E04F8941D39A0C0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000.123456}",
+      "expected": null,
+      "reason": "The 32-digit form without hyphens is not a uuidString."
+    },
+    {
+      "name": "a 37-character id is skipped",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C33010\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000.123456}",
+      "expected": null,
+      "reason": "Exactly 36 characters, 8-4-4-4-12."
+    },
+    {
+      "name": "an id with a space is skipped",
+      "input": "{\"id\":\" 3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000.123456}",
+      "expected": null,
+      "reason": "No surrounding whitespace is trimmed from the id."
+    },
+    {
+      "name": "an id with a non-hex digit is skipped",
+      "input": "{\"id\":\"GF2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000.123456}",
+      "expected": null,
+      "reason": "Only 0-9, a-f and A-F are hex digits."
+    },
+    {
+      "name": "an id with full-width digits is skipped",
+      "input": "{\"id\":\"３F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000.123456}",
+      "expected": null,
+      "reason": "A full-width digit is not an ASCII hex digit."
+    },
+    {
+      "name": "an id with hyphens moved is skipped",
+      "input": "{\"id\":\"3F2504E-04F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000.123456}",
+      "expected": null,
+      "reason": "The hyphens must stand at 8, 13, 18 and 23."
+    },
+    {
+      "name": "an empty id is skipped",
+      "input": "{\"id\":\"\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000.123456}",
+      "expected": null,
+      "reason": "An empty string is not a UUID."
+    },
+    {
+      "name": "a numeric id is skipped",
+      "input": "{\"id\":1,\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000}",
+      "expected": null,
+      "reason": "The id must be a string."
+    },
+    {
+      "name": "a missing id is skipped",
+      "input": "{\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000}",
+      "expected": null,
+      "reason": "Every member is required."
+    },
+    {
+      "name": "a capitalized kind is skipped",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"User\",\"text\":\"hi\",\"date\":1761700000.123456}",
+      "expected": null,
+      "reason": "The kind must be spelled exactly; Kind(rawValue:) is case-sensitive."
+    },
+    {
+      "name": "an unknown kind is skipped",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"bot\",\"text\":\"hi\",\"date\":1761700000.123456}",
+      "expected": null,
+      "reason": "A kind from a future build is skipped, never guessed (HK-175)."
+    },
+    {
+      "name": "a numeric kind is skipped",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":1,\"text\":\"hi\",\"date\":1761700000}",
+      "expected": null,
+      "reason": "The kind must be a string."
+    },
+    {
+      "name": "a missing text is skipped",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"date\":1761700000}",
+      "expected": null,
+      "reason": "Every member is required."
+    },
+    {
+      "name": "a null text is skipped",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":null,\"date\":1761700000}",
+      "expected": null,
+      "reason": "text is not optional, so null fails the line."
+    },
+    {
+      "name": "a numeric text is skipped",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":5,\"date\":1761700000}",
+      "expected": null,
+      "reason": "The text must be a string."
+    },
+    {
+      "name": "an empty text reads",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"\",\"date\":1761700000.123456}",
+      "expected": {
+        "date": 1761700000.123456,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": ""
+      },
+      "reason": "An empty text is still a string."
+    },
+    {
+      "name": "an integer date reads",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000}",
+      "expected": {
+        "date": 1761700000,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "hi"
+      },
+      "reason": "An integer literal is a Double."
+    },
+    {
+      "name": "a zero date reads",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":0}",
+      "expected": {
+        "date": 0,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "hi"
+      },
+      "reason": "Zero is a valid date (1970)."
+    },
+    {
+      "name": "a negative date reads",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":-1.5}",
+      "expected": {
+        "date": -1.5,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "hi"
+      },
+      "reason": "A date before 1970 is still a Double."
+    },
+    {
+      "name": "an exponent date reads",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1.7617e9}",
+      "expected": {
+        "date": 1761700000,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "hi"
+      },
+      "reason": "An exponent is valid number grammar."
+    },
+    {
+      "name": "a string date is skipped",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":\"1761700000\"}",
+      "expected": null,
+      "reason": "The date must be a number; .secondsSince1970 reads a Double."
+    },
+    {
+      "name": "a bool date is skipped",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":true}",
+      "expected": null,
+      "reason": "A bool is not a Double for JSONDecoder."
+    },
+    {
+      "name": "a null date is skipped",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":null}",
+      "expected": null,
+      "reason": "The date is not optional."
+    },
+    {
+      "name": "a missing date is skipped",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\"}",
+      "expected": null,
+      "reason": "Every member is required."
+    },
+    {
+      "name": "an overflowing date is skipped",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1e400}",
+      "expected": null,
+      "reason": "A number past Double's range fails its field, so the line."
+    },
+    {
+      "name": "an underflowing date is skipped",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1e-400}",
+      "expected": null,
+      "reason": "A nonzero literal that rounds to zero fails the Double conversion."
+    },
+    {
+      "name": "a subnormal date reads",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":4.9e-324}",
+      "expected": {
+        "date": 5e-324,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "hi"
+      },
+      "reason": "A subnormal Double is kept."
+    },
+    {
+      "name": "0e5 as a date is skipped",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":0e5}",
+      "expected": null,
+      "reason": "Foundation's true-zero check misreads 0e5 as an underflow (HK-413)."
+    },
+    {
+      "name": "0.0e5 as a date reads",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":0.0e5}",
+      "expected": {
+        "date": 0,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "hi"
+      },
+      "reason": "The same check accepts 0.0e5 as zero."
+    },
+    {
+      "name": "a malformed date is skipped",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":01}",
+      "expected": null,
+      "reason": "A leading zero passes the scan but fails the Double conversion."
+    },
+    {
+      "name": "extra members are ignored",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000.123456,\"model\":\"opus\",\"x\":01}",
+      "expected": {
+        "date": 1761700000.123456,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "hi"
+      },
+      "reason": "Members the entry does not read are ignored, even one whose number is malformed, since JSONDecoder converts only what it reads."
+    },
+    {
+      "name": "an extra member with a bad escape is ignored",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000.123456,\"note\":\"\\q\"}",
+      "expected": {
+        "date": 1761700000.123456,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "hi"
+      },
+      "reason": "An unread string is never unescaped."
+    },
+    {
+      "name": "of two texts the first wins",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"first\",\"text\":\"second\",\"date\":1761700000}",
+      "expected": {
+        "date": 1761700000,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "first"
+      },
+      "reason": "JSONDecoder keeps the first of equal keys."
+    },
+    {
+      "name": "a trailing comma reads",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000.123456,}",
+      "expected": {
+        "date": 1761700000.123456,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "hi"
+      },
+      "reason": "JSONDecoder accepts one trailing comma in an object."
+    },
+    {
+      "name": "a byte order mark reads",
+      "input": {
+        "hex": "efbbbf7b226964223a2233463235303445302d344638392d343144332d394130432d303330354538324333333031222c226b696e64223a2275736572222c2274657874223a226869222c2264617465223a313736313730303030302e3132333435367d"
+      },
+      "expected": {
+        "date": 1761700000.123456,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "hi"
+      },
+      "reason": "JSONDecoder skips a UTF-8 byte order mark at the start of the line."
+    },
+    {
+      "name": "a CR before the line's end reads",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000.123456}\r",
+      "expected": {
+        "date": 1761700000.123456,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "hi"
+      },
+      "reason": "A file written with CRLF splits on LF; the CR is whitespace after the object."
+    },
+    {
+      "name": "spaces around and inside read",
+      "input": "  { \"id\" : \"3F2504E0-4F89-41D3-9A0C-0305E82C3301\" , \"kind\" : \"user\" , \"text\" : \"hi\" , \"date\" : 1761700000 }  ",
+      "expected": {
+        "date": 1761700000,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "hi"
+      },
+      "reason": "Space, tab, LF and CR may stand between tokens."
+    },
+    {
+      "name": "an escaped slash reads",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"a\\/b\",\"date\":1761700000.123456}",
+      "expected": {
+        "date": 1761700000.123456,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "a/b"
+      },
+      "reason": "\\/ is a slash; the encoder writes every slash that way."
+    },
+    {
+      "name": "an escaped newline reads",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"one\\ntwo\",\"date\":1761700000.123456}",
+      "expected": {
+        "date": 1761700000.123456,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "one\ntwo"
+      },
+      "reason": "A newline in the text is escaped, so one entry is one line."
+    },
+    {
+      "name": "escaped quotes and backslashes read",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"say \\\"hi\\\" \\\\ bye\",\"date\":1761700000.123456}",
+      "expected": {
+        "date": 1761700000.123456,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "say \"hi\" \\ bye"
+      },
+      "reason": "Escapes unescape."
+    },
+    {
+      "name": "a unicode escape reads",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"caf\\u00e9 \\ud83d\\ude80\",\"date\":1761700000.123456}",
+      "expected": {
+        "date": 1761700000.123456,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "café 🚀"
+      },
+      "reason": "A \\u escape and a surrogate pair unescape to their scalars."
+    },
+    {
+      "name": "raw non-ASCII reads",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"项目 🚀   é\",\"date\":1761700000.123456}",
+      "expected": {
+        "date": 1761700000.123456,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "项目 🚀   é"
+      },
+      "reason": "Non-ASCII, U+2028 included, is written raw and read raw."
+    },
+    {
+      "name": "a leading byte order mark inside the text is kept",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"﻿hi\",\"date\":1761700000.123456}",
+      "expected": {
+        "date": 1761700000.123456,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "﻿hi"
+      },
+      "reason": "JSONDecoder keeps a U+FEFF at the start of a string."
+    },
+    {
+      "name": "an escaped NUL reads",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"a\\u0000b\",\"date\":1761700000.123456}",
+      "expected": {
+        "date": 1761700000.123456,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "a\u0000b"
+      },
+      "reason": "\\u0000 is a valid escape."
+    },
+    {
+      "name": "an invalid escape in the text is skipped",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"a\\qb\",\"date\":1761700000.123456}",
+      "expected": null,
+      "reason": "A bad escape fails the text, so the line."
+    },
+    {
+      "name": "a raw tab in the text is skipped",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"a\tb\",\"date\":1761700000.123456}",
+      "expected": null,
+      "reason": "A raw control character inside a string fails it."
+    },
+    {
+      "name": "a lone surrogate escape is skipped",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"\\ud800\",\"date\":1761700000.123456}",
+      "expected": null,
+      "reason": "An unpaired surrogate fails the string."
+    },
+    {
+      "name": "invalid UTF-8 in the text is skipped",
+      "input": {
+        "hex": "7b226964223a2233463235303445302d344638392d343144332d394130432d303330354538324333333031222c226b696e64223a2275736572222c2274657874223a22ff222c2264617465223a313736313730303030302e3132333435367d"
+      },
+      "expected": null,
+      "reason": "Invalid UTF-8 fails the string."
+    },
+    {
+      "name": "a bad escape in a key is skipped",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000,\"\\q\":1}",
+      "expected": null,
+      "reason": "The root's keys are all converted when the entry reads its keyed container, so one bad key fails the line."
+    },
+    {
+      "name": "UTF-16LE text reads",
+      "input": {
+        "hex": "7b0022006900640022003a002200330046003200350030003400450030002d0034004600380039002d0034003100440033002d0039004100300043002d0030003300300035004500380032004300330033003000310022002c0022006b0069006e00640022003a002200750073006500720022002c002200740065007800740022003a0022006800690022002c002200640061007400650022003a0031003700360031003700300030003000300030002e003100320033003400350036007d00"
+      },
+      "expected": {
+        "date": 1761700000.123456,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "hi"
+      },
+      "reason": "JSONDecoder detects UTF-16 from the zero bytes, line by line."
+    },
+    {
+      "name": "not JSON is skipped",
+      "input": "not json at all",
+      "expected": null,
+      "reason": "A corrupt line is skipped (HK-175)."
+    },
+    {
+      "name": "an unrelated object is skipped",
+      "input": "{\"future\":\"shape\"}",
+      "expected": null,
+      "reason": "A line of another shape is skipped (HK-175)."
+    },
+    {
+      "name": "an array is skipped",
+      "input": "[{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000.123456}]",
+      "expected": null,
+      "reason": "The root must be an object."
+    },
+    {
+      "name": "null is skipped",
+      "input": "null",
+      "expected": null,
+      "reason": "The root must be an object."
+    },
+    {
+      "name": "an empty object is skipped",
+      "input": "{}",
+      "expected": null,
+      "reason": "Every member is required."
+    },
+    {
+      "name": "text after the object is skipped",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000.123456}x",
+      "expected": null,
+      "reason": "Anything but whitespace after the root fails the line."
+    },
+    {
+      "name": "two objects on one line are skipped",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000.123456}{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000.123456}",
+      "expected": null,
+      "reason": "One line holds one entry."
+    },
+    {
+      "name": "a truncated line is skipped",
+      "input": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000.12",
+      "expected": null,
+      "reason": "A line cut short by a crash mid-write is skipped."
+    }
+  ]
+}

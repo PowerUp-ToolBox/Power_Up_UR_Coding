@@ -1,0 +1,170 @@
+{
+  "description": "The per-project transcript file name: '<slug>-<hash>.jsonl', or '<hash>.jsonl' when the slug is empty. hash is the first 6 bytes of SHA-256 of the standardized path's UTF-8, as lowercase hex. slug is the path's last component, lowercased scalar by scalar (no final-sigma rule), with each Character (extended grapheme cluster) kept when its first scalar is alphabetic or numeric and replaced by '-' otherwise, then split on Characters equal to '-' with empty pieces dropped, joined with '-', and cut to its first 40 Characters. Every input is already a standardized path, byte for byte: the app standardizes with URL.standardizedFileURL first, which on macOS also decomposes accented letters, kana with voicing marks and Hangul syllables (that rule stays with the platform, and the core hashes the bytes it is given).",
+  "function": "TranscriptStore.fileURL(forProjectDir:) — input a standardized absolute path, expected the file name (the URL's lastPathComponent)",
+  "verifiedBy": "DESIGN.md v1.6, v2.14; Tests/PowerUpTests/TranscriptFixtureTests.swift testTranscriptFileNameTable checks each input is already standardized and compares TranscriptStore.fileURL(forProjectDir:).lastPathComponent.",
+  "capturedAgainst": "Swift 5.9.2 JSONDecoder, JSONEncoder and CryptoKit (Xcode 15.2) on macOS 27.2, PowerUp at 0bc961f",
+  "cases": [
+    {
+      "name": "a plain folder",
+      "input": "/tmp/work/api",
+      "expected": "api-ad9243f90664.jsonl",
+      "reason": "The slug is the folder name, then a hyphen and 12 hex digits of SHA-256 of the whole path (HK-174)."
+    },
+    {
+      "name": "the same name elsewhere",
+      "input": "/tmp/personal/api",
+      "expected": "api-fb8a44fd81aa.jsonl",
+      "reason": "Two folders called api get the same slug and different hashes, so they never share history."
+    },
+    {
+      "name": "the root folder",
+      "input": "/",
+      "expected": "8a5edab28263.jsonl",
+      "reason": "The root's name is /, which slugs to nothing: the name is the hash alone."
+    },
+    {
+      "name": "spaces and punctuation",
+      "input": "/Users/x/My Project!!",
+      "expected": "my-project-e9f52b4f6253.jsonl",
+      "reason": "Lowercased; each character that is neither a letter nor a number becomes a hyphen, runs collapse, ends are trimmed."
+    },
+    {
+      "name": "only punctuation",
+      "input": "/x/---",
+      "expected": "d9c0c75fd18a.jsonl",
+      "reason": "A name with no letters or numbers is the hash alone."
+    },
+    {
+      "name": "a dotted version",
+      "input": "/x/v2.0",
+      "expected": "v2-0-67256b4673d6.jsonl",
+      "reason": "A dot is a separator."
+    },
+    {
+      "name": "Chinese",
+      "input": "/x/项目",
+      "expected": "项目-55dbcc4a4201.jsonl",
+      "reason": "Han characters are letters and stay in the slug."
+    },
+    {
+      "name": "an emoji",
+      "input": "/x/🚀rocket",
+      "expected": "rocket-3f820ddf5349.jsonl",
+      "reason": "An emoji is neither a letter nor a number."
+    },
+    {
+      "name": "an accented name",
+      "input": "/x/Café",
+      "expected": "café-aad06a1d1e62.jsonl",
+      "reason": "The platform's standardized path spells é as e and a combining acute, one Character, kept whole because its first scalar is a letter."
+    },
+    {
+      "name": "Greek capitals",
+      "input": "/x/ΟΔΟΣ",
+      "expected": "οδοσ-7aaad2089f8b.jsonl",
+      "reason": "Lowercasing maps each scalar alone, so a final capital sigma becomes σ, not ς."
+    },
+    {
+      "name": "a dotted capital I",
+      "input": "/x/İstanbul",
+      "expected": "i̇stanbul-9d543f0149b7.jsonl",
+      "reason": "The standardized path spells İ as I and a combining dot above, which lowercases to i and the dot, one Character."
+    },
+    {
+      "name": "German sharp s",
+      "input": "/x/STRASSE-ß",
+      "expected": "strasse-ß-3bf38855e8fb.jsonl",
+      "reason": "ß stays ß when lowercased."
+    },
+    {
+      "name": "a vulgar fraction",
+      "input": "/x/½",
+      "expected": "½-97dd9a143e86.jsonl",
+      "reason": "½ is a number."
+    },
+    {
+      "name": "Arabic-Indic digits",
+      "input": "/x/٣٤",
+      "expected": "٣٤-4c7d75d78a3f.jsonl",
+      "reason": "Arabic-Indic digits are numbers."
+    },
+    {
+      "name": "superscripts",
+      "input": "/x/x²",
+      "expected": "x²-8189c83ecda4.jsonl",
+      "reason": "A superscript two is a number."
+    },
+    {
+      "name": "Roman numerals",
+      "input": "/x/Ⅻ",
+      "expected": "ⅻ-b7ec3a82efda.jsonl",
+      "reason": "A Roman numeral is both a letter and a number, and lowercases to ⅻ."
+    },
+    {
+      "name": "a long name is cut at 40",
+      "input": "/x/abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+      "expected": "abcdefghijabcdefghijabcdefghijabcdefghij-5d6b7feee3ab.jsonl",
+      "reason": "The slug keeps its first 40 Characters."
+    },
+    {
+      "name": "a long name cut on a hyphen",
+      "input": "/x/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bcd",
+      "expected": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa--74b96ccb2eab.jsonl",
+      "reason": "The cut counts the hyphens too, so the slug may end with one."
+    },
+    {
+      "name": "a long accented name",
+      "input": "/x/ééééééééééééééééééééééééééééééééééééééééééééé",
+      "expected": "éééééééééééééééééééééééééééééééééééééééé-43a4588e242f.jsonl",
+      "reason": "The cut counts Characters (e and its combining acute are one), not bytes or scalars."
+    },
+    {
+      "name": "a trailing hyphen",
+      "input": "/a/b-",
+      "expected": "b-bd3bf9993ab7.jsonl",
+      "reason": "Hyphens at the ends are dropped."
+    },
+    {
+      "name": "underscores",
+      "input": "/x/my_app__v2",
+      "expected": "my-app-v2-4d73f40927c0.jsonl",
+      "reason": "An underscore is a separator."
+    },
+    {
+      "name": "a dot folder",
+      "input": "/Users/x/.config",
+      "expected": "config-7af5bfc82b7c.jsonl",
+      "reason": "A leading dot is dropped with the other separators."
+    },
+    {
+      "name": "a space-only name",
+      "input": "/x/ ",
+      "expected": "e078af4b9386.jsonl",
+      "reason": "A name of a space is the hash alone."
+    },
+    {
+      "name": "digits only",
+      "input": "/x/2026",
+      "expected": "2026-8180b4b50ed6.jsonl",
+      "reason": "Digits are numbers."
+    },
+    {
+      "name": "a Japanese name",
+      "input": "/x/プロジェクト",
+      "expected": "プロジェクト-92a427bc4a1e.jsonl",
+      "reason": "The standardized path splits プ and ジ into a kana and a combining voicing mark, one Character each, kept because the kana is a letter."
+    },
+    {
+      "name": "a Korean name",
+      "input": "/x/프로젝트",
+      "expected": "프로젝트-eff4c7c3295f.jsonl",
+      "reason": "The standardized path holds Hangul as conjoining jamo, one Character per syllable, kept because its leading consonant is a letter."
+    },
+    {
+      "name": "a deep path",
+      "input": "/Users/someone/Library/Mobile Documents/com~apple~CloudDocs/Work",
+      "expected": "work-abaf5267f61c.jsonl",
+      "reason": "Only the last component is slugged; the whole path is hashed."
+    }
+  ]
+}

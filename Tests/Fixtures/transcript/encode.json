@@ -1,0 +1,250 @@
+{
+  "description": "How a transcript entry is written as one JSON line, without its newline: a compact object with the members id, kind, text, date in that order (Swift's JSONEncoder wrote them in hash order, which changed from launch to launch, HK-416), strings escaped as JSONEncoder escapes them (\\\", \\\\, \\/, \\b \\f \\n \\r \\t, other C0 controls as lowercase \\u00xx, everything else raw), and the date as Swift writes a Double: its shortest round-trip digits, exponential (d.ddde±XX) below 1e-4 or above 2^53, otherwise plain without a trailing .0. The id is written as the app passes it, uppercase (uuidString). Every date in the table is one a Date holds exactly, so the seconds the app passes are the seconds written.",
+  "function": "TranscriptStore line encoding — input a transcript entry {id, kind, text, date}, expected the line's exact text",
+  "verifiedBy": "DESIGN.md v1.6, v2.14; Tests/PowerUpTests/TranscriptFixtureTests.swift testTranscriptEncodeTable appends the entry through TranscriptStore.append in a temporary directory and compares the line it wrote.",
+  "capturedAgainst": "Swift 5.9.2 JSONDecoder, JSONEncoder and CryptoKit (Xcode 15.2) on macOS 27.2, PowerUp at 0bc961f",
+  "cases": [
+    {
+      "name": "a plain entry",
+      "input": {
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "hi",
+        "date": 1761700000.123456
+      },
+      "expected": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000.123456}",
+      "reason": "The canonical line: id, kind, text, date, compact."
+    },
+    {
+      "name": "every kind is written by name: assistant",
+      "input": {
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "assistant",
+        "text": "hi",
+        "date": 1761700000.123456
+      },
+      "expected": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"assistant\",\"text\":\"hi\",\"date\":1761700000.123456}",
+      "reason": "Kinds are their lowercase names."
+    },
+    {
+      "name": "every kind is written by name: tool",
+      "input": {
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "tool",
+        "text": "hi",
+        "date": 1761700000.123456
+      },
+      "expected": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"tool\",\"text\":\"hi\",\"date\":1761700000.123456}",
+      "reason": "Kinds are their lowercase names."
+    },
+    {
+      "name": "every kind is written by name: system",
+      "input": {
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "system",
+        "text": "hi",
+        "date": 1761700000.123456
+      },
+      "expected": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"system\",\"text\":\"hi\",\"date\":1761700000.123456}",
+      "reason": "Kinds are their lowercase names."
+    },
+    {
+      "name": "every kind is written by name: error",
+      "input": {
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "error",
+        "text": "hi",
+        "date": 1761700000.123456
+      },
+      "expected": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"error\",\"text\":\"hi\",\"date\":1761700000.123456}",
+      "reason": "Kinds are their lowercase names."
+    },
+    {
+      "name": "a slash is escaped",
+      "input": {
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "Bash — /usr/bin/swift test",
+        "date": 1761700000.123456
+      },
+      "expected": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"Bash — \\/usr\\/bin\\/swift test\",\"date\":1761700000.123456}",
+      "reason": "JSONEncoder without .withoutEscapingSlashes writes / as \\/."
+    },
+    {
+      "name": "quotes and backslashes are escaped",
+      "input": {
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "say \"hi\" \\ bye",
+        "date": 1761700000.123456
+      },
+      "expected": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"say \\\"hi\\\" \\\\ bye\",\"date\":1761700000.123456}",
+      "reason": "The two characters that must be escaped."
+    },
+    {
+      "name": "a newline is escaped",
+      "input": {
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "line one\nwith a newline inside",
+        "date": 1761700000.123456
+      },
+      "expected": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"line one\\nwith a newline inside\",\"date\":1761700000.123456}",
+      "reason": "One entry is one line, so a newline inside is \\n."
+    },
+    {
+      "name": "control characters are escaped",
+      "input": {
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "a\tb\rc\bd\fe\u0001f\u001fg",
+        "date": 1761700000.123456
+      },
+      "expected": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"a\\tb\\rc\\bd\\fe\\u0001f\\u001fg\",\"date\":1761700000.123456}",
+      "reason": "\\t \\r \\b \\f short, other C0 controls as lowercase \\u00xx."
+    },
+    {
+      "name": "DEL is raw",
+      "input": {
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "ab",
+        "date": 1761700000.123456
+      },
+      "expected": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"ab\",\"date\":1761700000.123456}",
+      "reason": "DEL is not escaped."
+    },
+    {
+      "name": "non-ASCII is raw",
+      "input": {
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "项目 🚀 café",
+        "date": 1761700000.123456
+      },
+      "expected": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"项目 🚀 café\",\"date\":1761700000.123456}",
+      "reason": "CJK and emoji are written as UTF-8, not escaped."
+    },
+    {
+      "name": "line and paragraph separators are raw",
+      "input": {
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "a b c",
+        "date": 1761700000.123456
+      },
+      "expected": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"a b c\",\"date\":1761700000.123456}",
+      "reason": "U+2028 and U+2029 are written raw, as JSONEncoder does."
+    },
+    {
+      "name": "a byte order mark is raw",
+      "input": {
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "﻿hi",
+        "date": 1761700000.123456
+      },
+      "expected": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"﻿hi\",\"date\":1761700000.123456}",
+      "reason": "U+FEFF is written raw."
+    },
+    {
+      "name": "an empty text",
+      "input": {
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "",
+        "date": 1761700000.123456
+      },
+      "expected": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"\",\"date\":1761700000.123456}",
+      "reason": "An empty text is an empty string."
+    },
+    {
+      "name": "a whole-second date",
+      "input": {
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "hi",
+        "date": 1761700000
+      },
+      "expected": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000}",
+      "reason": "An integral Double is written without a fraction."
+    },
+    {
+      "name": "the 1970 date",
+      "input": {
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "hi",
+        "date": 0
+      },
+      "expected": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":0}",
+      "reason": "Zero is written as 0."
+    },
+    {
+      "name": "a fraction",
+      "input": {
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "hi",
+        "date": 1.5
+      },
+      "expected": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1.5}",
+      "reason": "A short fraction."
+    },
+    {
+      "name": "a date before 1970",
+      "input": {
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "hi",
+        "date": -1.5
+      },
+      "expected": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":-1.5}",
+      "reason": "A negative date."
+    },
+    {
+      "name": "a microsecond date",
+      "input": {
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "hi",
+        "date": 1761700000.000001
+      },
+      "expected": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000.000001}",
+      "reason": "Swift's shortest round-trip digits for the Double the Date holds."
+    },
+    {
+      "name": "a date above 2^53",
+      "input": {
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "hi",
+        "date": 9007199254740994
+      },
+      "expected": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":9.007199254740994e+15}",
+      "reason": "Above 2^53 a Double is written in exponential form."
+    },
+    {
+      "name": "a date of 1e16",
+      "input": {
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "hi",
+        "date": 1e+16
+      },
+      "expected": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1e+16}",
+      "reason": "The exponent has a sign and at least two digits."
+    },
+    {
+      "name": "a date below 1e-4",
+      "input": {
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "hi",
+        "date": 9.5367431640625e-07
+      },
+      "expected": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":9.5367431640625e-07}",
+      "reason": "Below 1e-4 a Double is written in exponential form (2^-20, which a Date holds exactly)."
+    }
+  ]
+}

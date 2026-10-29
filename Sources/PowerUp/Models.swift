@@ -468,10 +468,15 @@ struct TranscriptEntry: Identifiable, Equatable, Codable {
     let date: Date
 
     init(kind: Kind, text: String) {
-        self.id = UUID()
+        self.init(id: UUID(), kind: kind, text: text, date: Date())
+    }
+
+    /// An entry as it was stored: a transcript line read back from disk.
+    init(id: UUID, kind: Kind, text: String, date: Date) {
+        self.id = id
         self.kind = kind
         self.text = text
-        self.date = Date()
+        self.date = date
     }
 }
 

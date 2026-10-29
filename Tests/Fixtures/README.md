@@ -26,7 +26,8 @@ case table's `verifiedBy` sentence.
 ## Conventions
 
 - One subdirectory per area: `session/` (scenarios), `text-safety/`,
-  `status/`, `mapping/`, `device/`, `harness/` and `config/` (case tables).
+  `status/`, `mapping/`, `device/`, `harness/`, `config/` and `transcript/`
+  (case tables).
 - Plain JSON only, with no comments and no implementation-specific shapes.
   The one exception is `harness/acp-mock-agent.py`, the scripted ACP agent
   both suites run as a process (see [the ACP adapter](#harness-the-acp-adapter)):
@@ -37,7 +38,7 @@ case table's `verifiedBy` sentence.
     `description`, `reason` (why the rule exists), `source` (where the rule
     is written down) and `verifiedBy` (the implementations that run it, for
     example `["swift"]`). See [`session/`](#session-session-scenarios-format-1).
-  - Case tables (`text-safety/`, `status/`, `mapping/`, `device/`, `harness/`, `config/`) use `description`,
+  - Case tables (`text-safety/`, `status/`, `mapping/`, `device/`, `harness/`, `config/`, `transcript/`) use `description`,
     `function`, `verifiedBy`, `capturedAgainst` and a `cases` list in which
     every case has a `reason`. See [case tables](#text-safety-and-status-case-tables).
 - Add `capturedAgainst` when the data was recorded from a real tool (for
@@ -328,6 +329,37 @@ mapping subtree's own cases.
 The Swift runner is `Tests/PowerUpTests/ConfigFixtureTests.swift`, and the
 Rust runner is `rust/powerup-core/tests/config.rs`, which also plays
 `mapping/config-load.json` through the whole config decoder.
+
+## `transcript/`: the transcript's JSON Lines file
+
+The per-project transcript history (spec #100, slice 2.5): how one stored
+line reads (`lines.json`), how an entry is written as a line
+(`encode.json`), how a whole file loads (`load.json`) and what the
+project's file is called (`file-name.json`). The platform keeps the file
+itself: the transcripts folder, the append, the atomic rewrite and the
+standardized project path. These are ordinary case tables with two more
+descriptors (and the file input of [`config/`](#config-configjson-as-the-app-reads-and-writes-it)):
+
+| Descriptor | Shape |
+| --- | --- |
+| line input | one line without its LF: a string (the line as UTF-8), or `{"hex": "<bytes>"}` for a byte order mark, UTF-16 or invalid UTF-8 |
+| transcript entry | `{"id", "kind", "text", "date"}`: `id` a UUID in uppercase, `kind` one of `user`, `assistant`, `tool`, `system` and `error`, `date` the seconds since 1970 as a JSON number |
+
+`lines.json` takes a line input and expects the transcript entry it reads
+as, or `null` when the line is skipped; the Swift runner compares the date
+as the `Date` built from the expected seconds, since the app holds a `Date`.
+`encode.json` takes a transcript entry and expects the line's exact text
+(without its LF); its dates are all ones a `Date` holds exactly.
+`load.json` takes `{file, maxEntries}` (`file` a file input) and expects
+`{texts, rewrite}`: the texts of the entries returned, oldest first, and
+whether the load rewrote the file. `file-name.json` takes a project path
+that is already standardized, byte for byte (on macOS the standardized
+path spells accents, voiced kana and Hangul decomposed), and expects the
+file name.
+
+The Swift runner is `Tests/PowerUpTests/TranscriptFixtureTests.swift`,
+which plays every table through `TranscriptStore` in a temporary support
+directory.
 
 ## `session/`: session scenarios (format 1)
 

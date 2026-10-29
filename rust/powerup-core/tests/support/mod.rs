@@ -71,7 +71,7 @@ pub struct SessionScenario {
 }
 
 /// A case table (`text-safety/`, `status/`, `mapping/`, `device/`, `harness/`,
-/// `config/`).
+/// `config/`, `transcript/`).
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CaseTable {
