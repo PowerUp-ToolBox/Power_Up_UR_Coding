@@ -5,8 +5,9 @@ import XCTest
 
 /// Loads the remote-mode text-safety corpus from `Tests/Fixtures/text-safety/`.
 ///
-/// The files are plain JSON so the Rust core (stage 2.5) and the Windows and
-/// Linux injectors (stage 3) can be verified against the very same cases.
+/// The files are plain JSON so the Rust core (which owns these rules since
+/// slice 2.5 and plays them in `rust/powerup-core/tests/text_safety.rs`) and
+/// the Windows and Linux injectors (stage 3) are held to the very same cases.
 /// Every file has the same envelope: a header (`description`, `function`,
 /// `verifiedBy`, optional `capturedAgainst`) and a `cases` list where each
 /// case carries a unique `name`, an `input`, an `expected` output and a
@@ -165,8 +166,10 @@ enum TextSafetyFixtures {
 // MARK: - Tests
 
 /// Table-driven tests for the remote-mode text-safety rules (spec #93, 1.3.1):
-/// line-break flattening and escape-safe `cmux send` segmentation. Pure
-/// functions only — no service, no cmux process, no actor hops.
+/// line-break flattening and escape-safe `cmux send` segmentation, played
+/// through the bridge (`CoreBridgeTextSafety.swift`), since the Rust core
+/// owns the rules (slice 2.5, DESIGN v2.14). Pure functions only — no
+/// service, no cmux process, no actor hops.
 final class TextSafetyFixtureTests: XCTestCase {
 
     private static let lineBreaksFile = "line-breaks.json"
@@ -178,7 +181,7 @@ final class TextSafetyFixtureTests: XCTestCase {
         let file = try TextSafetyFixtures.load(Self.lineBreaksFile, as: String.self)
         TextSafetyFixtures.assertWellFormed(file, Self.lineBreaksFile)
         for fixtureCase in file.cases {
-            let actual = RemoteControlService.flattenLineBreaks(in: fixtureCase.input)
+            let actual = try XCTUnwrap(CoreBridge.flattenLineBreaks(fixtureCase.input))
             if let failure = TextSafetyFixtures.mismatch(in: Self.lineBreaksFile, fixtureCase, actual: actual) {
                 XCTFail(failure)
             }
@@ -215,7 +218,7 @@ final class TextSafetyFixtureTests: XCTestCase {
         let file = try TextSafetyFixtures.load(Self.segmentationFile, as: [String].self)
         TextSafetyFixtures.assertWellFormed(file, Self.segmentationFile)
         for fixtureCase in file.cases {
-            let actual = RemoteControlService.escapeSafeSegments(fixtureCase.input)
+            let actual = try XCTUnwrap(CoreBridge.escapeSafeSegments(fixtureCase.input))
             if let failure = TextSafetyFixtures.mismatch(in: Self.segmentationFile, fixtureCase, actual: actual) {
                 XCTFail(failure)
             }
@@ -228,9 +231,9 @@ final class TextSafetyFixtureTests: XCTestCase {
     func testSegmentsAlwaysReassembleToTheFlattenedInput() throws {
         let file = try TextSafetyFixtures.load(Self.segmentationFile, as: [String].self)
         for fixtureCase in file.cases {
-            let segments = RemoteControlService.escapeSafeSegments(fixtureCase.input)
+            let segments = try XCTUnwrap(CoreBridge.escapeSafeSegments(fixtureCase.input))
             XCTAssertEqual(segments.joined(),
-                           RemoteControlService.flattenLineBreaks(in: fixtureCase.input),
+                           try XCTUnwrap(CoreBridge.flattenLineBreaks(fixtureCase.input)),
                            "\(Self.segmentationFile) case \"\(fixtureCase.name)\" does not reassemble")
             XCTAssertFalse(segments.contains(""),
                            "\(Self.segmentationFile) case \"\(fixtureCase.name)\" produced an empty segment")
@@ -260,12 +263,12 @@ final class TextSafetyFixtureTests: XCTestCase {
 
     /// Acceptance criterion: a deliberately wrong expectation fails naming the
     /// case. Proven here without editing the shared fixture.
-    func testWrongExpectationIsReportedUnderTheCaseName() {
+    func testWrongExpectationIsReportedUnderTheCaseName() throws {
         let wrong = TextSafetyFixtures.Case(name: "LF becomes a space",
                                             input: "a\nb",
                                             expected: "a\nb",
                                             reason: "a dictated newline must not submit early")
-        let actual = RemoteControlService.flattenLineBreaks(in: wrong.input)
+        let actual = try XCTUnwrap(CoreBridge.flattenLineBreaks(wrong.input))
         let failure = TextSafetyFixtures.mismatch(in: "line-breaks.json", wrong, actual: actual)
         XCTAssertNotNil(failure)
         XCTAssertTrue(failure?.contains("\"LF becomes a space\"") ?? false, failure ?? "")
@@ -275,20 +278,21 @@ final class TextSafetyFixtureTests: XCTestCase {
         let right = TextSafetyFixtures.Case(name: "LF becomes a space", input: "a\nb",
                                             expected: "a b", reason: "x")
         XCTAssertNil(TextSafetyFixtures.mismatch(in: "line-breaks.json", right,
-                                                 actual: RemoteControlService.flattenLineBreaks(in: right.input)))
+                                                 actual: try XCTUnwrap(CoreBridge.flattenLineBreaks(right.input))))
     }
 
     // MARK: Visibility seam
 
-    /// The formerly private helpers are reachable from tests under their
-    /// existing names (spec #93, Visibility). Their fixtures are tested in
+    /// The helpers that were private to RemoteControlService (spec #93,
+    /// Visibility) are reachable from tests through the bridge, which now
+    /// answers for them. Their fixtures are tested in
     /// CmuxReportingFixtureTests (1.3.2); this only pins that the seam exists.
     func testFormerlyPrivateHelpersAreReachable() {
-        XCTAssertEqual(RemoteControlService.stripStatusGlyph("✳ Design"), "Design")
-        XCTAssertEqual(RemoteControlService.condense("a\n b", maxChars: 10), "a b")
+        XCTAssertEqual(CoreBridge.stripStatusGlyph("✳ Design"), "Design")
+        XCTAssertEqual(CoreBridge.condense("a\n b", maxChars: 10), "a b")
         let result = RemoteControlService.CommandResult(status: 0, standardOutput: "", standardError: "",
                                                          timedOut: true, spawnFailed: false)
-        XCTAssertEqual(RemoteControlService.failureMessage(action: "Listing cmux workspaces", result: result),
+        XCTAssertEqual(CoreBridge.failureMessage(action: "Listing cmux workspaces", result: result),
                        "Listing cmux workspaces timed out — is the cmux app running?")
     }
 }

@@ -46,14 +46,14 @@ final class RemoteSeamTests: XCTestCase {
         }
     }
 
-    func testTheInjectorReceivesTextWithLineBreaksAlreadyFlattened() {
+    func testTheInjectorReceivesTextWithLineBreaksAlreadyFlattened() throws {
         let injector = RecordingInjector()
         let service = RemoteControlService(injector: injector)
         let text = "one\r\ntwo\u{2028}three"
 
         service.sendText(text, submit: false, config: AppConfig.defaultConfig()) { _ in }
 
-        XCTAssertEqual(injector.calls, [.text(RemoteControlService.flattenLineBreaks(in: text), submit: false)])
+        XCTAssertEqual(injector.calls, [.text(try XCTUnwrap(CoreBridge.flattenLineBreaks(text)), submit: false)])
         XCTAssertEqual(injector.calls, [.text("one two three", submit: false)])
     }
 

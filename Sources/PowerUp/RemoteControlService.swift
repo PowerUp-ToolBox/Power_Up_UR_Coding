@@ -25,6 +25,8 @@ private final class CmuxPasswordBox: @unchecked Sendable {
 ///   workspace:7   ✳ Design the WeChat mini program
 /// ```
 /// The leading `*` and the trailing `[selected]` tag both mark the selected row.
+/// The Rust core parses the rows (`CoreBridge.parseWorkspaces`, cases:
+/// `Tests/Fixtures/text-safety/cmux-workspaces.json`).
 struct CmuxWorkspace: Identifiable, Hashable {
     let ref: String        // "workspace:11"
     let title: String      // "Build PS5 controller voice app"
@@ -66,6 +68,16 @@ protocol RemoteInjector: AnyObject {
 ///
 /// Every subprocess and every event post happens off the main thread; all
 /// completions are hopped back to the main actor and called exactly once.
+///
+/// The text safety rules live in the Rust core since slice 2.5 (DESIGN
+/// v2.14), reached through `CoreBridgeTextSafety.swift`: flattening line
+/// breaks, the escape-safe `cmux send` segments, parsing `cmux
+/// list-workspaces` and its titles' activity glyphs, and the friendly
+/// message for a failed cmux command. This type keeps the injector: the
+/// route choice, running cmux (the `--` separator, the pauses, the
+/// deadlines, the socket password), the target choice and the
+/// Accessibility typing. A core failure never lets raw text through: the
+/// text is not sent and the person is told why.
 @MainActor
 final class RemoteControlService: ObservableObject {
 
@@ -161,10 +173,12 @@ final class RemoteControlService: ObservableObject {
                                                            arguments: ["list-workspaces"],
                                                            timeout: 6)
                     if list.status == 0 {
-                        workspaces = RemoteControlService.parseWorkspaces(list.standardOutput)
+                        // A list the core could not read shows no workspaces;
+                        // sending re-reads it and says so (resolveTargetArguments).
+                        workspaces = CoreBridge.parseWorkspaces(list.standardOutput) ?? []
                     }
                 } else {
-                    detail = RemoteControlService.failureMessage(action: "Reaching cmux", result: ping)
+                    detail = CoreBridge.failureMessage(action: "Reaching cmux", result: ping)
                 }
             } else {
                 detail = RemoteControlService.cmuxMissingMessage
@@ -227,8 +241,13 @@ final class RemoteControlService: ObservableObject {
         // A literal newline delivered into a terminal surface *is* Enter — a
         // multi-line prompt (Option+Return, pasted text) would submit its first
         // line alone as a truncated instruction and then Enter the rest again.
-        // Flatten real line breaks so the prompt arrives as one prompt.
-        let text = RemoteControlService.flattenLineBreaks(in: text)
+        // Flatten real line breaks so the prompt arrives as one prompt (the
+        // core's rule, cases: Tests/Fixtures/text-safety/line-breaks.json).
+        // If the core cannot, nothing is typed: the raw text could submit early.
+        guard let text = CoreBridge.flattenLineBreaks(text) else {
+            RemoteControlService.finish(RemoteControlService.textNotPreparedMessage, completion)
+            return
+        }
 
         if let injector {
             injector.injectText(text, submit: submit, config: config, completion: completion)
@@ -340,6 +359,11 @@ final class RemoteControlService: ObservableObject {
         }
     }
 
+    /// What the person is told when the core could not make text safe to type
+    /// (a core bug): nothing was sent, rather than text that might submit.
+    private nonisolated static let textNotPreparedMessage =
+        "PowerUp couldn't make that text safe to type, so it didn't send anything. Try again."
+
     // MARK: - cmux route (background)
 
     private nonisolated static func cmuxSendText(_ text: String,
@@ -347,6 +371,14 @@ final class RemoteControlService: ObservableObject {
                                                  workspace: String?,
                                                  surface: String?) -> String? {
         guard let binary = resolveCmuxBinary() else { return cmuxMissingMessage }
+
+        // `cmux send` turns the two-character sequences backslash-n, -r and -t
+        // into Enter and Tab; a backslash that ends a send is delivered
+        // literally (verified live), so the core splits the text right after
+        // such a backslash, one send per segment, ordinary text in exactly one
+        // (cases: Tests/Fixtures/text-safety/segmentation.json). If the core
+        // cannot, nothing is sent rather than text cmux would reinterpret.
+        guard let segments = CoreBridge.escapeSafeSegments(text) else { return textNotPreparedMessage }
 
         let target: [String]
         switch resolveTargetArguments(binary: binary, workspace: workspace, surface: surface) {
@@ -356,11 +388,11 @@ final class RemoteControlService: ObservableObject {
 
         // The "--" separator is essential: without it, dictated text that starts
         // with a dash ("--force it") would be parsed as a cmux flag.
-        for (index, segment) in escapeSafeSegments(text).enumerated() {
+        for (index, segment) in segments.enumerated() {
             if index > 0 { Thread.sleep(forTimeInterval: 0.03) }
             let send = runCmux(binary: binary, arguments: ["send"] + target + ["--", segment], timeout: 10)
             if send.status != 0 || send.spawnFailed {
-                return failureMessage(action: "Sending text to cmux", result: send)
+                return CoreBridge.failureMessage(action: "Sending text to cmux", result: send)
             }
         }
 
@@ -373,7 +405,7 @@ final class RemoteControlService: ObservableObject {
                             arguments: ["send-key"] + target + ["--", RemoteKey.enter.cmuxName],
                             timeout: 10)
         if enter.status != 0 || enter.spawnFailed {
-            return failureMessage(action: "Pressing Enter in cmux", result: enter)
+            return CoreBridge.failureMessage(action: "Pressing Enter in cmux", result: enter)
         }
         return nil
     }
@@ -393,76 +425,10 @@ final class RemoteControlService: ObservableObject {
                              arguments: ["send-key"] + target + ["--", key.cmuxName],
                              timeout: 10)
         if result.status != 0 || result.spawnFailed {
-            return failureMessage(action: "Sending \(key.displayName) to cmux", result: result)
+            return CoreBridge.failureMessage(action: "Sending \(key.displayName) to cmux", result: result)
         }
         return nil
     }
-
-    /// Replaces every real line/paragraph break with a single space, so nothing
-    /// the target terminal would interpret as Enter survives inside the text.
-    /// A run of breaks (CRLF, blank lines) becomes one space.
-    /// Cases: `Tests/Fixtures/text-safety/line-breaks.json`.
-    nonisolated static func flattenLineBreaks(in text: String) -> String {
-        guard text.unicodeScalars.contains(where: { lineBreakScalars.contains($0.value) }) else {
-            return text
-        }
-        var result = ""
-        result.reserveCapacity(text.count)
-        var previousWasBreak = false
-        for scalar in text.unicodeScalars {
-            if lineBreakScalars.contains(scalar.value) {
-                if !previousWasBreak { result.append(" ") }
-                previousWasBreak = true
-            } else {
-                previousWasBreak = false
-                result.unicodeScalars.append(scalar)
-            }
-        }
-        return result
-    }
-
-    /// LF, CR, and the Unicode line/paragraph separators.
-    private nonisolated static let lineBreakScalars: Set<UInt32> = [0x0A, 0x0D, 0x2028, 0x2029]
-
-    /// Splits text so that `cmux send` can't reinterpret it.
-    ///
-    /// `cmux send` turns the two-character sequences `\n`, `\r` and `\t` into
-    /// Enter and Tab — so a prompt containing literal backslash-n (a regex, a
-    /// code snippet) would submit itself half-typed. Verified live: a backslash
-    /// that isn't followed by n/r/t *within the same send* is delivered
-    /// literally, so ending a segment right after such a backslash defuses it.
-    /// Ordinary text (the overwhelming majority) yields exactly one segment and
-    /// therefore exactly one `cmux send`.
-    /// Cases: `Tests/Fixtures/text-safety/segmentation.json`.
-    nonisolated static func escapeSafeSegments(_ text: String) -> [String] {
-        // Belt-and-braces: sendText flattens line breaks already, but this
-        // function must be safe on its own — a raw U+000A handed to `cmux send`
-        // acts as Enter just like the two-character "\n" sequence does.
-        let text = flattenLineBreaks(in: text)
-        guard !text.isEmpty else { return [] }
-
-        let characters = Array(text)
-        var segments: [String] = []
-        var current = ""
-
-        for (index, character) in characters.enumerated() {
-            current.append(character)
-            guard character == "\\", index + 1 < characters.count else { continue }
-            let next = characters[index + 1]
-            guard next == "n" || next == "r" || next == "t" else { continue }
-            // A pathological input (hundreds of escapes) must not turn into
-            // hundreds of subprocesses; past the cap we accept cmux's
-            // interpretation rather than hammering the CLI.
-            guard segments.count < maxSendSegments else { continue }
-            segments.append(current)
-            current = ""
-        }
-
-        if !current.isEmpty { segments.append(current) }
-        return segments
-    }
-
-    private nonisolated static let maxSendSegments = 12
 
     private nonisolated static let cmuxMissingMessage =
         "Couldn't find the cmux CLI — install cmux, or pick a different remote target in Settings → Remote."
@@ -483,9 +449,13 @@ final class RemoteControlService: ObservableObject {
         if reference == nil {
             let list = runCmux(binary: binary, arguments: ["list-workspaces"], timeout: 6)
             guard list.status == 0, !list.spawnFailed else {
-                return .failed(failureMessage(action: "Listing cmux workspaces", result: list))
+                return .failed(CoreBridge.failureMessage(action: "Listing cmux workspaces", result: list))
             }
-            let workspaces = parseWorkspaces(list.standardOutput)
+            // A list the core could not read is never taken for "no
+            // workspaces", and nothing in it is ever chosen as the target.
+            guard let workspaces = CoreBridge.parseWorkspaces(list.standardOutput) else {
+                return .failed("PowerUp couldn't read cmux's workspace list — pick a workspace in Settings → Remote.")
+            }
             guard let chosen = workspaces.first(where: { $0.selected }) ?? workspaces.first else {
                 return .failed("cmux has no open workspaces — open one, or pick a workspace in Settings → Remote.")
             }
@@ -500,101 +470,6 @@ final class RemoteControlService: ObservableObject {
             arguments.append(contentsOf: ["--surface", surface])
         }
         return .resolved(arguments)
-    }
-
-    /// Parses `cmux list-workspaces` output. Anything that doesn't look like a
-    /// workspace row (the legacy-alias notice, blank lines, future decorations)
-    /// is skipped rather than guessed at.
-    /// Cases: `Tests/Fixtures/text-safety/cmux-workspaces.json`.
-    nonisolated static func parseWorkspaces(_ output: String) -> [CmuxWorkspace] {
-        var result: [CmuxWorkspace] = []
-        /// Indexes into `result` of rows marked by the leading `*` — the only
-        /// unambiguous selection marker (it can only appear in column 0).
-        var starIndexes: [Int] = []
-
-        for rawLine in output.split(separator: "\n", omittingEmptySubsequences: false) {
-            var line = String(rawLine).trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !line.isEmpty else { continue }
-
-            // "cmux: 'list-workspaces' is now an alias for …" — printed unless
-            // CMUX_QUIET=1, kept here as a belt-and-braces guard.
-            if line.hasPrefix("cmux:") { continue }
-
-            var selected = false
-            var hadStar = false
-            if line.hasPrefix("*") {
-                selected = true
-                hadStar = true
-                line = String(line.dropFirst()).trimmingCharacters(in: .whitespaces)
-            }
-            // Only honour the tag as the *trailing* token. An unanchored search
-            // would flag any workspace whose own title happens to contain the
-            // literal text "[selected]" — and auto-targeting would then route
-            // the user's input into a workspace they never chose.
-            if line.hasSuffix("[selected]") {
-                selected = true
-                line = String(line.dropLast("[selected]".count)).trimmingCharacters(in: .whitespaces)
-            }
-
-            let parts = line.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
-            guard let first = parts.first else { continue }
-            let ref = String(first)
-            guard isWorkspaceReference(ref) else { continue }
-
-            let remainder = parts.count > 1 ? String(parts[1]) : ""
-            let title = stripStatusGlyph(remainder.trimmingCharacters(in: .whitespaces))
-            if hadStar { starIndexes.append(result.count) }
-            result.append(CmuxWorkspace(ref: ref, title: title, selected: selected))
-        }
-
-        // Defence in depth: if several rows still claim selection (a title
-        // ending in "[selected]" and the truly selected row), the leading `*`
-        // is authoritative — demote every selected row that lacks it.
-        let selectedCount = result.filter(\.selected).count
-        if selectedCount > 1, !starIndexes.isEmpty {
-            let keep = Set(starIndexes)
-            for index in result.indices where result[index].selected && !keep.contains(index) {
-                result[index] = CmuxWorkspace(ref: result[index].ref,
-                                              title: result[index].title,
-                                              selected: false)
-            }
-        }
-
-        return result
-    }
-
-    private nonisolated static func isWorkspaceReference(_ token: String) -> Bool {
-        if token.hasPrefix("workspace:") { return token.count > "workspace:".count }
-        // `--id-format uuids` would print bare UUIDs instead of short refs.
-        return UUID(uuidString: token) != nil
-    }
-
-    /// Drops the activity glyph cmux prints between the ref and the title
-    /// (⠐, ✳, …) — sometimes followed by a space, sometimes not. Only one
-    /// leading glyph is ever removed, so an emoji in the user's own title
-    /// survives. Cosmetic either way: `ref` is what targeting uses.
-    /// Cases: `Tests/Fixtures/text-safety/status-glyph.json`.
-    nonisolated static func stripStatusGlyph(_ title: String) -> String {
-        guard isStatusGlyph(title.first) else { return title }
-        return String(title.dropFirst()).trimmingCharacters(in: .whitespaces)
-    }
-
-    /// Only the glyphs cmux actually emits as activity markers: the Braille
-    /// Patterns block (its spinner frames, U+2800–U+28FF) and the Dingbats
-    /// block (✳, ✓, ✗, …, U+2700–U+27BF). Deliberately NOT the broad
-    /// symbols/punctuation categories — those would also eat the leading `…`
-    /// cmux prints on truncated path-style titles (turning
-    /// "…/git/Mose/Mose-UI" into a plausible-looking absolute path that
-    /// doesn't exist), along with quotes and other legitimate title starts.
-    /// Colour-emoji presentation is still excluded so a title like "🚀 Ship it"
-    /// keeps its rocket.
-    private nonisolated static func isStatusGlyph(_ character: Character?) -> Bool {
-        guard let character,
-              character.unicodeScalars.count == 1,
-              let scalar = character.unicodeScalars.first,
-              !scalar.properties.isEmojiPresentation else { return false }
-        return (0x2800...0x28FF).contains(scalar.value)   // Braille Patterns (spinner)
-            || (0x2700...0x27BF).contains(scalar.value)   // Dingbats (✳ ✓ ✗ …)
     }
 
     // MARK: - cmux binary resolution
@@ -644,6 +519,9 @@ final class RemoteControlService: ObservableObject {
 
     // MARK: - Subprocess plumbing (background only)
 
+    /// A finished command, as the core's friendly failure message reads it
+    /// (`CoreBridge.failureMessage`, cases:
+    /// `Tests/Fixtures/text-safety/failure-message.json`).
     struct CommandResult {
         let status: Int32
         let standardOutput: String
@@ -742,48 +620,6 @@ final class RemoteControlService: ObservableObject {
                              standardError: collector.standardErrorText(),
                              timedOut: timedOut,
                              spawnFailed: false)
-    }
-
-    /// The friendly, action-naming message for a failed cmux command.
-    /// Cases: `Tests/Fixtures/text-safety/failure-message.json`.
-    nonisolated static func failureMessage(action: String, result: CommandResult) -> String {
-        if result.spawnFailed {
-            let detail = condense(result.standardError, maxChars: 160)
-            return detail.isEmpty ? "\(action) failed to start." : "\(action) failed to start: \(detail)"
-        }
-        if result.timedOut {
-            return "\(action) timed out — is the cmux app running?"
-        }
-        var detail = condense(result.standardError, maxChars: 200)
-        if detail.isEmpty { detail = condense(result.standardOutput, maxChars: 200) }
-        let lowered = detail.lowercased()
-        // With the cmux app closed the CLI exits 1 with "Error: Socket not found
-        // at …/cmux.sock" (verified live, cmux 0.64.17). That is not a refusal:
-        // the socket-mode advice below would send the person off to change
-        // settings that are fine, so say what is actually wrong.
-        if lowered.contains("socket not found") {
-            return "\(action) failed — cmux isn’t running. Open the cmux app, then try again."
-        }
-        // cmux rejects a foreign app under its default "cmuxOnly" socket mode with
-        // a broken-pipe / socket write error. Translate that into something the
-        // user can act on, instead of a cryptic errno.
-        if lowered.contains("socket") || lowered.contains("broken pipe") || lowered.contains("permission") {
-            return "cmux refused the connection. In cmux, open Settings → Automation, set “Socket control mode” to Password (or Automation), then quit and reopen cmux. For Password mode, put the same password in PowerUp’s Remote settings."
-        }
-        if detail.isEmpty { return "\(action) failed (exit \(result.status))." }
-        return "\(action) failed: \(detail)"
-    }
-
-    /// Command output as one short display line, cut with "…" past `maxChars`
-    /// characters. Cases: `Tests/Fixtures/text-safety/condense.json`.
-    nonisolated static func condense(_ text: String, maxChars: Int) -> String {
-        let flattened = text
-            .replacingOccurrences(of: "\r", with: " ")
-            .replacingOccurrences(of: "\n", with: " ")
-            .replacingOccurrences(of: "\t", with: " ")
-        let collapsed = flattened.split(separator: " ", omittingEmptySubsequences: true).joined(separator: " ")
-        guard collapsed.count > maxChars else { return collapsed }
-        return String(collapsed.prefix(max(1, maxChars - 1))) + "…"
     }
 
     // MARK: - Keystroke injection (background only)

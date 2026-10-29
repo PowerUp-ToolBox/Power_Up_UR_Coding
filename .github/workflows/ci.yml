@@ -57,7 +57,8 @@ jobs:
           # The launch probe, the device layer the app now runs on (2.2), the
           # claude stream parser, line buffer, adapter and session, the status
           # derivation (2.3), the ACP adapter and its presets (2.4), and the
-          # config schema, the transcript and the hooks merge (2.5).
+          # config schema, the transcript, the hooks merge and the remote text
+          # safety rules (2.5).
           # nm writes to a file: piped into grep -q it dies of SIGPIPE, which
           # the runner's pipefail would report as a missing symbol.
           nm build/PowerUp.app/Contents/MacOS/PowerUp > "$RUNNER_TEMP/powerup-symbols.txt"
@@ -66,7 +67,7 @@ jobs:
                         method_coreclaudeadapter_stdout_event method_coresession_harness_event \
                         func_derived_status method_coreacpadapter_stdout_line \
                         func_acp_permission_choice func_load_config func_transcript_load \
-                        func_hook_install_edit; do
+                        func_hook_install_edit func_flatten_line_breaks; do
             grep -q "uniffi_powerup_core_ffi_fn_$symbol" "$RUNNER_TEMP/powerup-symbols.txt" \
               || { echo "::error::the app bundle does not link the Rust core ($symbol)"; exit 1; }
           done

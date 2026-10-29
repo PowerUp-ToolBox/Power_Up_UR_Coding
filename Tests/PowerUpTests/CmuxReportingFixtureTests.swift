@@ -6,8 +6,10 @@ import XCTest
 /// status-glyph stripping, condensing command output, and the friendly
 /// failure message per command result kind. The cases live in
 /// `Tests/Fixtures/text-safety/` (loaded by `TextSafetyFixtures`) so the Rust
-/// core and the Windows/Linux injectors are held to the same behavior.
-/// Pure functions only: no service, no cmux process, no actor hops.
+/// core and the Windows/Linux injectors are held to the same behavior. The
+/// core owns these rules since slice 2.5 (DESIGN v2.14), so the tables are
+/// played through the bridge (`CoreBridgeTextSafety.swift`). Pure functions
+/// only: no service, no cmux process, no actor hops.
 final class CmuxReportingFixtureTests: XCTestCase {
 
     private static let workspacesFile = "cmux-workspaces.json"
@@ -53,7 +55,7 @@ final class CmuxReportingFixtureTests: XCTestCase {
         let file = try TextSafetyFixtures.load(Self.workspacesFile, as: [WorkspaceRow].self)
         TextSafetyFixtures.assertWellFormed(file, Self.workspacesFile)
         for fixtureCase in file.cases {
-            let actual = RemoteControlService.parseWorkspaces(fixtureCase.input).map {
+            let actual = try XCTUnwrap(CoreBridge.parseWorkspaces(fixtureCase.input)).map {
                 WorkspaceRow(ref: $0.ref, title: $0.title, selected: $0.selected)
             }
             if let failure = TextSafetyFixtures.mismatch(in: Self.workspacesFile, fixtureCase, actual: actual) {
@@ -111,7 +113,7 @@ final class CmuxReportingFixtureTests: XCTestCase {
         let file = try TextSafetyFixtures.load(Self.statusGlyphFile, as: String.self)
         TextSafetyFixtures.assertWellFormed(file, Self.statusGlyphFile)
         for fixtureCase in file.cases {
-            let actual = RemoteControlService.stripStatusGlyph(fixtureCase.input)
+            let actual = try XCTUnwrap(CoreBridge.stripStatusGlyph(fixtureCase.input))
             if let failure = TextSafetyFixtures.mismatch(in: Self.statusGlyphFile, fixtureCase, actual: actual) {
                 XCTFail(failure)
             }
@@ -153,7 +155,8 @@ final class CmuxReportingFixtureTests: XCTestCase {
         let file = try TextSafetyFixtures.load(Self.condenseFile, input: CondenseInput.self, expected: String.self)
         TextSafetyFixtures.assertWellFormed(file, Self.condenseFile)
         for fixtureCase in file.cases {
-            let actual = RemoteControlService.condense(fixtureCase.input.text, maxChars: fixtureCase.input.maxChars)
+            let actual = try XCTUnwrap(CoreBridge.condense(fixtureCase.input.text,
+                                                           maxChars: fixtureCase.input.maxChars))
             if let failure = TextSafetyFixtures.mismatch(in: Self.condenseFile, fixtureCase, actual: actual) {
                 XCTFail(failure)
             }
@@ -166,7 +169,7 @@ final class CmuxReportingFixtureTests: XCTestCase {
         let file = try TextSafetyFixtures.load(Self.condenseFile, input: CondenseInput.self, expected: String.self)
         for fixtureCase in file.cases where fixtureCase.input.maxChars >= 2 {
             let input = fixtureCase.input
-            let actual = RemoteControlService.condense(input.text, maxChars: input.maxChars)
+            let actual = try XCTUnwrap(CoreBridge.condense(input.text, maxChars: input.maxChars))
             XCTAssertLessThanOrEqual(actual.count, input.maxChars,
                                      "\(Self.condenseFile) case \"\(fixtureCase.name)\" exceeds its limit")
             let collapsed = input.text.split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\r" || $0 == "\t" || $0 == "\r\n" })
@@ -203,8 +206,8 @@ final class CmuxReportingFixtureTests: XCTestCase {
         let file = try TextSafetyFixtures.load(Self.failureMessageFile, input: FailureInput.self, expected: String.self)
         TextSafetyFixtures.assertWellFormed(file, Self.failureMessageFile)
         for fixtureCase in file.cases {
-            let actual = RemoteControlService.failureMessage(action: fixtureCase.input.action,
-                                                             result: fixtureCase.input.commandResult)
+            let actual = CoreBridge.failureMessage(action: fixtureCase.input.action,
+                                                   result: fixtureCase.input.commandResult)
             if let failure = TextSafetyFixtures.mismatch(in: Self.failureMessageFile, fixtureCase, actual: actual) {
                 XCTFail(failure)
             }
@@ -243,12 +246,12 @@ final class CmuxReportingFixtureTests: XCTestCase {
 
     /// The structured envelope reports a wrong expectation under the case's
     /// own name, like the string one (proven without editing a shared fixture).
-    func testWrongStructuredExpectationIsReportedUnderTheCaseName() {
+    func testWrongStructuredExpectationIsReportedUnderTheCaseName() throws {
         let wrong = TextSafetyFixtures.StructuredCase(name: "above the limit",
                                                       input: CondenseInput(text: "abcdef", maxChars: 5),
                                                       expected: "abcdef",
                                                       reason: "long output must be shortened")
-        let actual = RemoteControlService.condense(wrong.input.text, maxChars: wrong.input.maxChars)
+        let actual = try XCTUnwrap(CoreBridge.condense(wrong.input.text, maxChars: wrong.input.maxChars))
         let failure = TextSafetyFixtures.mismatch(in: Self.condenseFile, wrong, actual: actual)
         XCTAssertNotNil(failure)
         XCTAssertTrue(failure?.contains("\"above the limit\"") ?? false, failure ?? "")

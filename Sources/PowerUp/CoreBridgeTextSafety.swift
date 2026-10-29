@@ -17,19 +17,21 @@ import PowerUpCore
 extension CoreBridge {
     /// The text with every line break flattened to a space, a run of them
     /// to one; nil when the core fails, and then nothing may be typed.
+    /// Cases: `Tests/Fixtures/text-safety/line-breaks.json`.
     static func flattenLineBreaks(_ text: String) -> String? {
         call("flattenLineBreaks", fallback: nil) { try PowerUpCore.flattenLineBreaks(text: text) }
     }
 
     /// The flattened text as `cmux send` segments cmux cannot reinterpret
     /// (empty text: no segment); nil when the core fails, and then nothing
-    /// is sent.
+    /// is sent. Cases: `Tests/Fixtures/text-safety/segmentation.json`.
     static func escapeSafeSegments(_ text: String) -> [String]? {
         call("escapeSafeSegments", fallback: nil) { try PowerUpCore.escapeSafeSegments(text: text) }
     }
 
     /// `cmux list-workspaces` output as rows; nil when the core fails, which
     /// the caller treats as a list it could not read (never as a target).
+    /// Cases: `Tests/Fixtures/text-safety/cmux-workspaces.json`.
     static func parseWorkspaces(_ output: String) -> [CmuxWorkspace]? {
         call("parseWorkspaces", fallback: nil) {
             try PowerUpCore.parseWorkspaces(output: output).map(CmuxWorkspace.init)
@@ -37,13 +39,15 @@ extension CoreBridge {
     }
 
     /// A workspace title without its leading activity glyph; nil when the
-    /// core fails.
+    /// core fails. `parseWorkspaces` already strips it; the tests call this.
+    /// Cases: `Tests/Fixtures/text-safety/status-glyph.json`.
     static func stripStatusGlyph(_ title: String) -> String? {
         call("stripStatusGlyph", fallback: nil) { try PowerUpCore.stripStatusGlyph(title: title) }
     }
 
     /// cmux output as one line of at most `maxChars` characters; nil when
-    /// the core fails.
+    /// the core fails. `failureMessage` already condenses; the tests call
+    /// this. Cases: `Tests/Fixtures/text-safety/condense.json`.
     static func condense(_ text: String, maxChars: Int) -> String? {
         call("condense", fallback: nil) {
             try PowerUpCore.condense(text: text, maxChars: Int64(maxChars))
@@ -53,6 +57,7 @@ extension CoreBridge {
     /// The friendly message for a cmux command `action` names that failed
     /// as `result` says. When the core fails it is "<action> failed.", so
     /// the failure is still reported.
+    /// Cases: `Tests/Fixtures/text-safety/failure-message.json`.
     static func failureMessage(action: String, result: RemoteControlService.CommandResult) -> String {
         call("failureMessage", fallback: "\(action) failed.") {
             try PowerUpCore.failureMessage(action: action, result: result.core)
