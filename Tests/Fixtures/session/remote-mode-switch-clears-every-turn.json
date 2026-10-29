@@ -4,7 +4,7 @@
   "description": "A remote session is working and focused when the person switches to built-in mode. Every remote turn and the focus are cleared, so the status goes idle, and hook events heard after the switch are ignored.",
   "reason": "Remote turns describe sessions PowerUp no longer drives once it is in built-in mode. Leaving them in place would keep the light amber for a session the person has stopped controlling.",
   "source": "DESIGN.md v1.10 'clearRemoteTurns() … every control-mode switch'; DESIGN.md v2.2 B 'Focus clears on control-mode switch'; AppState.syncControlMode, AppState.handleRemoteEvent (remote mode only)",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "controlMode": "remote",
     "controllerConnected": true

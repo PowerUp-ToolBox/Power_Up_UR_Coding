@@ -4,7 +4,7 @@
   "description": "A remote turn starts, and a tool call (PostToolUse) arrives ten minutes in. Twenty minutes after the turn started it is still working, because the heartbeat refreshed its expiry. With no further sign of life it goes idle fifteen minutes after that heartbeat.",
   "reason": "Long tool-using turns legitimately run past fifteen minutes; without the heartbeat they went idle mid-flight. Each heartbeat re-arms the expiry, so a turn kept alive this way that then dies silently still goes idle fifteen minutes after its last sign of life.",
   "source": "DESIGN.md v2.2 A 'PostToolUse heartbeat'; DESIGN.md v1.10 'Expiry' (15 minutes, remoteTurnExpiry); AppState.handleRemoteEvent(.postToolUse), AppState.beginRemoteTurn",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "controlMode": "remote",
     "controllerConnected": true

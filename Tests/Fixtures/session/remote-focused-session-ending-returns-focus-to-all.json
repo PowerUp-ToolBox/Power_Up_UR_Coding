@@ -4,7 +4,7 @@
   "description": "Two remote sessions are working and the focus is on alpha. Alpha's session ends mid-turn: the focus returns to all sessions, the transcript notes both the focus change and the ended session, and the status stays thinking because beta is still working.",
   "reason": "A focus on a session that no longer exists would mute every reply and leave the status idle while another session works, with nothing on screen to explain why.",
   "source": "DESIGN.md v2.2 B 'Focus clears on control-mode switch and when the focused session ends'; AppState.handleRemoteEvent(.sessionEnd)",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "controlMode": "remote",
     "controllerConnected": true

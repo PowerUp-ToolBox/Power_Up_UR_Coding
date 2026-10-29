@@ -4,7 +4,7 @@
   "description": "In remote mode Cycle Model types /model with the new alias, Cycle Effort types /effort with the new level, and New Session types /clear, each submitted with Enter. No harness of PowerUp's own is touched.",
   "reason": "PowerUp does not own the remote session, so it can only change its settings the way a person at the keyboard would: with slash commands. They are always submitted, whatever the auto-submit setting says, because a half-typed /model line does nothing.",
   "source": "DESIGN.md v1.8 remote mode; AppState.cycleModel / cycleEffort / newSession (remote branches)",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "controlMode": "remote"
   },

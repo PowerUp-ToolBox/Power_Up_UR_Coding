@@ -4,7 +4,7 @@
   "description": "When bypassPermissions was chosen in Settings, the first Cycle Permission Mode press moves to acceptEdits and the cycle never comes back to bypass. With no session running nothing is sent; the next launch carries the mode the cycle landed on.",
   "reason": "The cycle can lower the risk but never raise it to auto-approve-everything. A mode outside the cycle restarts it from its first entry, the safest editing mode.",
   "source": "DESIGN.md v1.7 'Safety invariants' 1; AppConfig.permissionModeCycle; AppState.nextValue(after:in:), AppState.cyclePermissionMode",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "claude",
     "controlMode": "builtin",

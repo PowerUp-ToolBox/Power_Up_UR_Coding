@@ -4,7 +4,7 @@
   "description": "In built-in mode with an ACP agent as the harness, Cycle Effort says the harness has no effort setting and changes nothing: no restart, no stop.",
   "reason": "Effort changes by relaunching the Claude CLI with --effort and --resume. An ACP agent has no such flag and cannot resume, so restarting it would only lose the conversation for nothing.",
   "source": "DESIGN.md v2.0 'cycleEffort refuses when !harness.supportsEffort'; AppState.cycleEffort",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "acp",
     "acpAgent": "custom",

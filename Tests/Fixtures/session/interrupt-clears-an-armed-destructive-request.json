@@ -4,7 +4,7 @@
   "description": "A destructive request is armed by one Approve, then the person interrupts. The request is cleared without an answer, so a later Approve can never complete the confirmation.",
   "reason": "The interrupt is the strongest 'not this': an armed confirmation must not outlive the turn it belongs to.",
   "source": "Epic #92 rules 'interrupt clears pending permission' and 'the armed state resets on any other intent'; ticket #116; AppState.interruptClaude",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "claude",
     "controlMode": "builtin",

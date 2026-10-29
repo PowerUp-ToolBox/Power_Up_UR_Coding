@@ -4,7 +4,7 @@
   "description": "The built-in Claude session is mid-turn, waiting on a permission, when the person switches to an ACP agent and sends a message. The stopped Claude process then flushes a late reply, completes its turn and exits. None of that touches the new agent's session: its pending permission, its working state and the stored Claude id stay as they were.",
   "reason": "Stopping the Claude CLI only closes its input; the process can take up to two seconds to exit. Its late events used to land in the new session: the late turn completion cleared the agent's permission request, and the late exit was taken for the new session ending. Because the ACP launch had reset the expected-termination count, that exit ran the resume retry, which wiped the stored Claude session id and restarted the agent in the middle of its turn.",
   "source": "DESIGN.md v2.0 AppState 'syncHarnessSelection() … stops the outgoing session'; AppState.syncHarnessSelection, AppState.handleHarnessEvent",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "claude",
     "controlMode": "builtin",

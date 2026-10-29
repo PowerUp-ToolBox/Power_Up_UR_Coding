@@ -40,7 +40,7 @@ fn a_session_scenario_parses_into_its_parts() {
     let path =
         fixtures_dir().join("session/remote-hooks-outside-the-project-folder-are-ignored.json");
     let scenario = load_session(&path);
-    assert_eq!(scenario.verified_by, ["swift"]);
+    assert_eq!(scenario.verified_by, ["swift", "rust"]);
     assert_eq!(scenario.config["controlMode"], "remote");
     assert_eq!(scenario.script.len(), 7);
     assert_eq!(

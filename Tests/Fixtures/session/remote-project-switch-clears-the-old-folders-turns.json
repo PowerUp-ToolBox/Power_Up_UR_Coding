@@ -4,7 +4,7 @@
   "description": "In remote mode a session in the project folder is mid-turn when the person switches to another folder. The old folder's turn is dropped with the switch, so the status goes idle at once, and that session's later reply is not heard.",
   "reason": "Once the folder changes, the old folder's hooks are filtered out, including the Stop that would end its turn. Keeping the turn would leave the light on thinking until the fifteen-minute expiry.",
   "source": "DESIGN.md v2.8 addendum A (remote read-back is scoped to the project folder); AppState.adoptProject",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "controlMode": "remote",
     "project": true,

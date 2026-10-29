@@ -4,7 +4,7 @@
   "description": "With the model left on \"default\", the model chip shows whatever name the harness echoes in its init, and follows it when a later init reports a different model. The \"Session started\" line is still logged once.",
   "reason": "\"default\" says nothing about which model is actually answering. The chip used to read a value that only refreshed on the next turn, so it showed stale information (v1.3 C).",
   "source": "DESIGN.md v1.3 C 'Chip display rules' and v2.0 'harnessReportedModel exposes the active adapter's model for the chip'; AppState.modelChipLabel / harnessReportedModel",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "claude",
     "controlMode": "builtin",

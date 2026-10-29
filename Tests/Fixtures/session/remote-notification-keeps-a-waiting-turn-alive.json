@@ -4,7 +4,7 @@
   "description": "A remote turn starts, and ten minutes in Claude sends a Notification (it is waiting on the person). Twenty minutes after the turn started it is still working, because the notification refreshed its expiry. If nothing else arrives, it goes idle fifteen minutes after the notification.",
   "reason": "A turn waiting on the person is alive, so a notification refreshes it. But a turn whose last sign of life was a notification can still die silently (the person presses Escape in the terminal itself, which sends no Stop); it must then go idle fifteen minutes later like any other silent turn, never stay amber forever.",
   "source": "DESIGN.md v1.10 'a notification refreshes an existing entry's timestamp' and 'Expiry: an entry with no hook activity for 15 minutes is presumed dead'; AppState.handleRemoteEvent(.notification)",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "controlMode": "remote",
     "controllerConnected": true

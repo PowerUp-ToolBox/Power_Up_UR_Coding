@@ -4,7 +4,7 @@
   "description": "With the focus on one remote session, another session's reply and notifications are still logged (its reply with a folder label), but they are not spoken and do not become the reply Replay speaks. The focused session's reply does. An empty notification reads 'Claude needs your attention.'.",
   "reason": "Focus exists so one session can be listened to while others keep working. Muting the others entirely would hide what they did; speaking them would defeat the focus.",
   "source": "DESIGN.md v2.2 B (remote session focus); AppState.handleRemoteEvent (isFocused gating)",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "controlMode": "remote",
     "controllerConnected": true

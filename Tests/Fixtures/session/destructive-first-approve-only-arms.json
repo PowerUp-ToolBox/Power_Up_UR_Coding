@@ -4,7 +4,7 @@
   "description": "The agent asks to run a destructive command. The first Approve only arms the request: nothing is sent to the harness, the request stays pending and armed, and the person is told to press again.",
   "reason": "A misheard word or a stray press must never approve something that deletes or rewrites work. One press is not enough for a destructive request.",
   "source": "DESIGN.md v2.2 §C (destructive-action confirmation); docs/harnesses.md 'Destructive requests take two presses'; AppState.approve",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "claude",
     "controlMode": "builtin",

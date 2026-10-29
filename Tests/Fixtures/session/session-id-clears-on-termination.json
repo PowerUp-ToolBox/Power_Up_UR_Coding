@@ -4,7 +4,7 @@
   "description": "When the harness process ends, the live session id it owned is cleared (protocol clients see no session id). The stored resumable id is kept, so the next launch resumes the same conversation.",
   "reason": "A dead process no longer owns its session id. Leaving it set kept the hook echo guard armed for an id nobody was running, so a terminal session resumed with that id had all its read-back silently thrown away. The conversation itself is still worth resuming.",
   "source": "DESIGN.md 'terminationHandler → .terminated(exitCode:), state .stopped'; ClaudeService / ACPAdapter termination ('A dead process no longer owns its session id'); AppState.startSessionIfNeeded",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "claude",
     "controlMode": "builtin",

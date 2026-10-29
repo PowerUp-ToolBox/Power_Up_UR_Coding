@@ -4,7 +4,7 @@
   "description": "\"Session started\" is logged once for each launch of the harness. A later init in the same launch (the CLI sends one after a live model switch) only refreshes the model; a new session or a relaunch after a crash logs it again.",
   "reason": "The CLI emits further system/init events mid-session. Logging each one faked a new session start in the transcript, while a real restart must still be visible.",
   "source": "DESIGN.md 'ready → … .system entry \"Session started (model)\"'; AppState.didLogSessionStart (re-armed in startSession)",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "claude",
     "controlMode": "builtin",

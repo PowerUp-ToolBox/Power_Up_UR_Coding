@@ -4,7 +4,7 @@
   "description": "Cycle Model pressed while the session is still starting (before the CLI's system/init) sends the live model switch at once rather than waiting for the session to be ready.",
   "reason": "The CLI buffers stdin while it boots and answers the request right after init, so writing now puts the change ahead of any turn sent before init. Waiting for ready let a first turn run on the old command-line model.",
   "source": "AppState.cycleModel (comment on the .starting case); DESIGN.md v1.1 A set_model",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "claude",
     "controlMode": "builtin",

@@ -4,7 +4,7 @@
   "description": "Two remote sessions work in different folders with the same name. Cycle Session Focus orders them by session id when their folder names tie, so every press steps the same way: the lower id, the higher id, then all sessions.",
   "reason": "The focus cycle is ordered by folder name for a stable order. Without a tiebreak two folders with the same name would be ordered by whatever the dictionary did that time, and a press could visit the same session twice.",
   "source": "AppState.cycleFocus (sorted by folder name, then session id)",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "controlMode": "remote"
   },

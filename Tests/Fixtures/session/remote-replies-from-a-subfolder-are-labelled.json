@@ -4,7 +4,7 @@
   "description": "In remote mode a reply from a session working in a subfolder of the project is logged with a [folder] label, while Replay Last Reply keeps the reply without it. A reply from the project folder itself has no label.",
   "reason": "With several sessions in one project the label tells their replies apart on screen, but reading the label aloud on Replay would speak a folder name as if Claude had said it.",
   "source": "AppState.handleRemoteEvent(.stop) ('Unprefixed, so Replay Last Reply speaks the reply and not the label') and remoteCwdPrefix",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "controlMode": "remote",
     "project": true

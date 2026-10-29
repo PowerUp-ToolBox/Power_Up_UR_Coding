@@ -4,7 +4,7 @@
   "description": "PowerUp stops its own session by switching to remote mode, then switches back and sends a message, which relaunches the session resuming the stored id. That resume fails at once: the failure is still retried as a fresh session, even though the stop PowerUp caused never reported an exit.",
   "reason": "PowerUp counts the exits it causes so they are not taken for crashes. A relaunch retires the old process, whose exit then never arrives, so a count left over from it would swallow the next real exit and turn off the resume retry.",
   "source": "AppState.startSession (comment: 'Any still-pending expected termination can therefore never arrive — clear the counter'); AppState.handleTermination",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "claude",
     "controlMode": "builtin",

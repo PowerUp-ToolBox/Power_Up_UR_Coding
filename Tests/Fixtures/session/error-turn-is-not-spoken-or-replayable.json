@@ -4,7 +4,7 @@
   "description": "A turn that ends with an error appends an error entry naming the CLI's subtype and the result text, and leaves nothing for Replay Last Reply. A successful turn's result text is what Replay speaks.",
   "reason": "An error result is not an answer: reading it aloud as one, or replaying it later, would present a failure as Claude's reply.",
   "source": "AppState.handleHarnessEvent(.turnCompleted); DESIGN.md v1.0 (the spoken reply is the turn's result text)",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "claude",
     "controlMode": "builtin",

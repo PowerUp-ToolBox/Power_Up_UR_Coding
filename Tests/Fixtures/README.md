@@ -5,8 +5,8 @@ checked against (PLAN-any-device-any-os.md, ADR 0012): the Swift app's XCTest
 suites play every file (`harness/claude-adapter.json` from slice 2.3's #152
 on), and the Rust core's `cargo test` plays the areas whose
 rules it owns so far (`mapping/` and `device/`, since slice 2.2, and
-`harness/` and `status/`, since slice 2.3) and checks the format of the
-rest, picking up
+`harness/`, `status/` and `session/`, since slice 2.3) and checks the
+format of the rest, picking up
 more as later slices port them. Each implementation loads these files from
 its own source location. Swift resolves
 them relative to `#filePath`, because SwiftPM accepts no resources outside a
@@ -217,7 +217,12 @@ injector standing in for the remote session, and a scripted clock. The file is n
 `<name>.json`. To pin a new session rule, add a scenario here rather than
 writing a bespoke test. The Swift runner is
 `Tests/PowerUpTests/SessionScenario.swift`, and the table test is
-`SessionScenarioTests`.
+`SessionScenarioTests`. The Rust core plays every scenario on its session
+machine (slice 2.3): the runner is `rust/powerup-core/tests/support/scenario.rs`
+and the table test `rust/powerup-core/tests/session.rs`, which also checks
+that every scenario lists `"rust"` in `verifiedBy`. A new scenario must pass
+in both, so write it against the Swift app first (its behaviour is the
+reference) and then run `cargo test`.
 
 ```json
 {
@@ -226,7 +231,7 @@ writing a bespoke test. The Swift runner is
   "description": "What happens, in one or two sentences.",
   "reason": "Why the rule exists (the failure it prevents).",
   "source": "DESIGN.md section / code location",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": { "harnessKind": "claude", "project": true, "lastSessionID": "stale-session-id" },
   "script": [
     { "call": "startSessionIfNeeded", "reason": "App launch." },

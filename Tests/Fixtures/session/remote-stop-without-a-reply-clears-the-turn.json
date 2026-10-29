@@ -4,7 +4,7 @@
   "description": "A remote turn ends with a Stop that carries no reply text. The working state clears, nothing is logged, and a later expiry has nothing left to clear.",
   "reason": "Stop is the normal end of a turn whether or not it carries text; an empty Stop must still end the turn, or the light waits the full fifteen minutes for the expiry.",
   "source": "DESIGN.md v1.10 'stop and sessionEnd remove their session's entry'; AppState.handleRemoteEvent(.stop)",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "controlMode": "remote",
     "controllerConnected": true

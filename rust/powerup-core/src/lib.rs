@@ -14,6 +14,7 @@ pub mod intent;
 pub mod mapping;
 pub mod probe;
 pub mod profile;
+pub mod session;
 pub mod slots;
 pub mod status;
 pub mod text;

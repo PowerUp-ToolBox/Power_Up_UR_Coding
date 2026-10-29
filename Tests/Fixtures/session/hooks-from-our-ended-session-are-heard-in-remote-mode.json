@@ -4,7 +4,7 @@
   "description": "PowerUp's own session is running when the person switches to remote mode. While that process is still shutting down, hooks carrying its session id are its own echo and are ignored. Once it has terminated its id is cleared, so a terminal session resumed with the same id is heard like any other.",
   "reason": "The echo guard compares hook session ids with the harness's live id. If termination left the id set, a person who resumed the conversation in a terminal (claude --resume) would get no read-back and no status light for it, with no hint why.",
   "source": "DESIGN.md v1.4 remote mode 'events whose sessionID == claude.sessionID' are dropped; ClaudeService termination clears sessionID; AppState.handleRemoteEvent, AppState.syncControlMode",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "claude",
     "controlMode": "builtin",

@@ -4,7 +4,7 @@
   "description": "When the fresh retry also exits before init, PowerUp does not retry again: the failure is reported as an unexpected end and no third start is made.",
   "reason": "The retry exists for stale ids only. A harness that cannot start at all (bad binary, not logged in) must surface as an error instead of a restart loop.",
   "source": "DESIGN.md core rule 'retry ONCE without resumeSessionID'; AppState.handleTermination",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "claude",
     "controlMode": "builtin",

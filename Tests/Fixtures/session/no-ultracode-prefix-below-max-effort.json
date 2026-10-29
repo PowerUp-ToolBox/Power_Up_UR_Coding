@@ -4,7 +4,7 @@
   "description": "On the built-in Claude harness at any effort below Ultra (here \"xhigh\"), a prompt is sent exactly as the person said it.",
   "reason": "The \"ultracode\" keyword opts into multi-agent workflows, which cost far more than a normal turn. Only Ultra effort asks for that.",
   "source": "DESIGN.md v2.1 A 'Wire behavior' (effort == \"max\" AND harness kind \"claude\"); AppState.outgoingText(for:)",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "claude",
     "controlMode": "builtin",

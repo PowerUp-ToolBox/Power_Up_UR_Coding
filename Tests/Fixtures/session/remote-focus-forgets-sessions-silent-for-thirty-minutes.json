@@ -4,7 +4,7 @@
   "description": "Cycle Session Focus steps only through remote sessions seen in the last 30 minutes. A session silent for longer is forgotten, so the focus goes straight to the session still active, then back to all sessions.",
   "reason": "Sessions end without telling PowerUp (a closed terminal sends no SessionEnd). Keeping them forever would fill the focus cycle with sessions that no longer exist, each muting the live ones.",
   "source": "AppState.cycleFocus (remoteSessionMemory = 30 minutes); DESIGN.md v2.2 B",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "controlMode": "remote"
   },

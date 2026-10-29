@@ -4,7 +4,7 @@
   "description": "A destructive request that one Approve has armed is denied by Reject: one deny answer is sent for that request and nothing stays pending.",
   "reason": "Reject denies at any point. Arming is a step towards allowing, never a lock that makes the request harder to refuse.",
   "source": "DESIGN.md v2.2 §C ('○ denies at any point'); docs/harnesses.md; AppState.reject",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "claude",
     "controlMode": "builtin",

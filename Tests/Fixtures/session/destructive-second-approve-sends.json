@@ -4,7 +4,7 @@
   "description": "A destructive request is approved with two presses in a row: the first arms it, the second sends exactly one allow answer for that request and clears it.",
   "reason": "Two deliberate presses are the confirmation. The second press must answer the request the first one armed, once, and leave nothing pending.",
   "source": "DESIGN.md v2.2 §C (destructive-action confirmation); docs/harnesses.md 'Destructive requests take two presses'; AppState.approve",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "claude",
     "controlMode": "builtin",

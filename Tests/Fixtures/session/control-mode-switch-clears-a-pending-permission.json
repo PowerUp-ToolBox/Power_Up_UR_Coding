@@ -4,7 +4,7 @@
   "description": "An ACP agent is waiting for a permission answer when the person switches to remote mode. The request is dropped unanswered and PowerUp's own session is stopped.",
   "reason": "In remote mode Approve and Reject press Enter and Escape in the person's real session. A banner left over from the built-in session would invite a press that lands in the wrong place.",
   "source": "AppState.syncControlMode (comment: 'A pending harness permission request belongs to the mode being left')",
-  "verifiedBy": ["swift"],
+  "verifiedBy": ["swift", "rust"],
   "config": {
     "harnessKind": "acp",
     "acpAgent": "custom",
