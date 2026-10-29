@@ -1,0 +1,44 @@
+{
+  "description": "The command PowerUp registers in ~/.claude/settings.json for its hook script: the script path in single quotes, each single quote in it written as '\\'' (one that a combining scalar follows is not a match, as Foundation's replacingOccurrences finds it). Claude Code runs the command through a shell, and the path holds a space (\"Application Support\").",
+  "function": "HookInstaller.hookCommand() — input the hook script's path, expected the command string",
+  "verifiedBy": "DESIGN.md v1.6, v2.14; Tests/PowerUpTests/HookFixtureTests.swift testHookCommandTable points the support directory at the path's folder and reads HookInstaller.hookCommand().",
+  "capturedAgainst": "Swift 5.9.2 Foundation (Xcode 15.2) on macOS 27.2, PowerUp at 2dd77aa",
+  "cases": [
+    {
+      "name": "a path with a space is single-quoted",
+      "input": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh",
+      "expected": "'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'",
+      "reason": "The support folder is under \"Application Support\": unquoted, the shell splits the path and every hook dies with exit 127 (HK-181)."
+    },
+    {
+      "name": "a single quote in the path is closed, escaped and reopened",
+      "input": "/tmp/PowerUp Hook's Fixture/support/powerup-hook.sh",
+      "expected": "'/tmp/PowerUp Hook'\\''s Fixture/support/powerup-hook.sh'",
+      "reason": "Inside single quotes nothing escapes, so an embedded quote is written as '\\'' (HK-181)."
+    },
+    {
+      "name": "every single quote is escaped",
+      "input": "/tmp/a'b'c/powerup-hook.sh",
+      "expected": "'/tmp/a'\\''b'\\''c/powerup-hook.sh'",
+      "reason": "Each quote gets its own close, escaped quote and reopen."
+    },
+    {
+      "name": "a path without spaces is quoted too",
+      "input": "/tmp/plain/powerup-hook.sh",
+      "expected": "'/tmp/plain/powerup-hook.sh'",
+      "reason": "The command is always quoted, so the registered string never depends on the path's characters."
+    },
+    {
+      "name": "a quote that a combining mark follows is not escaped",
+      "input": "/tmp/it'́s/powerup-hook.sh",
+      "expected": "'/tmp/it'́s/powerup-hook.sh'",
+      "reason": "Foundation's replacingOccurrences never matches a quote that a combining scalar extends into another character (measured on macOS 27.2); the core keeps that rule."
+    },
+    {
+      "name": "non-ASCII path characters are kept as they are",
+      "input": "/tmp/项目 Café/powerup-hook.sh",
+      "expected": "'/tmp/项目 Café/powerup-hook.sh'",
+      "reason": "The command is the path's own text; only quotes change. The accent is decomposed because the platform's file URL spells it so (the script path the app passes is URL.path)."
+    }
+  ]
+}

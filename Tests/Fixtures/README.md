@@ -27,8 +27,8 @@ case table's `verifiedBy` sentence.
 ## Conventions
 
 - One subdirectory per area: `session/` (scenarios), `text-safety/`,
-  `status/`, `mapping/`, `device/`, `harness/`, `config/` and `transcript/`
-  (case tables).
+  `status/`, `mapping/`, `device/`, `harness/`, `config/`, `transcript/`
+  and `hooks/` (case tables).
 - Plain JSON only, with no comments and no implementation-specific shapes.
   The one exception is `harness/acp-mock-agent.py`, the scripted ACP agent
   both suites run as a process (see [the ACP adapter](#harness-the-acp-adapter)):
@@ -39,7 +39,7 @@ case table's `verifiedBy` sentence.
     `description`, `reason` (why the rule exists), `source` (where the rule
     is written down) and `verifiedBy` (the implementations that run it, for
     example `["swift"]`). See [`session/`](#session-session-scenarios-format-1).
-  - Case tables (`text-safety/`, `status/`, `mapping/`, `device/`, `harness/`, `config/`, `transcript/`) use `description`,
+  - Case tables (`text-safety/`, `status/`, `mapping/`, `device/`, `harness/`, `config/`, `transcript/`, `hooks/`) use `description`,
     `function`, `verifiedBy`, `capturedAgainst` and a `cases` list in which
     every case has a `reason`. See [case tables](#text-safety-and-status-case-tables).
 - Add `capturedAgainst` when the data was recorded from a real tool (for
@@ -361,6 +361,38 @@ file name.
 The Swift runner is `Tests/PowerUpTests/TranscriptFixtureTests.swift`,
 which plays every table through `TranscriptStore` in a temporary support
 directory, and the Rust runner is `rust/powerup-core/tests/transcript.rs`.
+
+## `hooks/`: the Claude Code hooks in settings.json
+
+The hooks PowerUp registers in `~/.claude/settings.json` (spec #100, slice
+2.5): the command registered for the hook script (`command.json`), the
+script itself (`script.json`), installing (`install.json`) and removing
+(`uninstall.json`) the hooks, and whether they are installed as the app
+runs now (`install-state.json`). The platform keeps the files: the
+settings path and its test seam, reading it, the numbered backup, the
+atomic write and the script's own file and mode. Every input names the
+hook script's path; the tables use
+`/tmp/PowerUp Hook Fixture/support/powerup-hook.sh` (a space, as the real
+Application Support path has) and a path with a single quote. These are
+ordinary case tables with the file input and file lines of
+[`config/`](#config-configjson-as-the-app-reads-and-writes-it) (a file
+input may also be `null`: no file) and two more descriptors:
+
+| Descriptor | Shape |
+| --- | --- |
+| settings edit | `{"outcome": "write", "file": <file lines>}` (what the app writes: JSONSerialization with `.prettyPrinted`, `.sortedKeys` and `.withoutEscapingSlashes`, plus a newline), `{"outcome": "unchanged"}` (nothing is written and no backup is taken), or `{"outcome": "refused", "refusal": "invalidJSON"}`, `{"outcome": "refused", "refusal": "hooksNotAnObject"}`, `{"outcome": "refused", "refusal": "eventNotAnArray", "event": <name>}` (the file is left as it is) |
+| script on disk | a file input, `{"scriptFor": {"port", "token"}}` (the body `script.json` pins for them), `{"scriptForWithoutTrailingNewline": {"port", "token"}}` (that body without its last byte), or `null` (no script) |
+
+`command.json` takes a script path and expects the command string.
+`script.json` takes `{port, token}` and expects the script's file lines.
+`install.json` and `uninstall.json` take `{settings, scriptPath}`
+(`settings` a file input) and expect a settings edit. `install-state.json`
+takes `{settings, scriptPath, scriptOnDisk, port, token}` and expects
+`{installState, isInstalled}`, `installState` one of `notInstalled`,
+`installed` and `outOfDate`.
+
+The Swift runner is `Tests/PowerUpTests/HookFixtureTests.swift`, which
+compares every written file byte for byte.
 
 ## `session/`: session scenarios (format 1)
 

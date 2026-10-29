@@ -1,0 +1,470 @@
+{
+  "description": "Whether the hooks are installed as PowerUp runs now. notInstalled unless the settings file is a JSON object whose hooks.Stop array holds a group referencing the quoted command or the legacy path; outOfDate when only the legacy path is there, when any of the five events is not an array holding a group with the quoted command, when the script is missing, or when its bytes are not the body for the current port and token; installed otherwise. isInstalled looks only at Stop, legacy path included.",
+  "function": "HookInstaller.installState(port:token:settingsURL:) and isInstalled(settingsURL:) — input {settings, scriptPath, scriptOnDisk, port, token}: settings as install.json; scriptOnDisk the script file's bytes (a string, {\"hex\": <bytes>}, {\"scriptFor\": {port, token}} for the body script.json pins, {\"scriptForWithoutTrailingNewline\": {port, token}} for that body without its last byte, or null for no file); expected {installState, isInstalled}: installState one of notInstalled, installed, outOfDate",
+  "verifiedBy": "DESIGN.md v1.6, v2.14; Tests/PowerUpTests/HookFixtureTests.swift testHookInstallStateTable writes the settings and the script to temporary files and asks HookInstaller.installState and isInstalled.",
+  "capturedAgainst": "Swift 5.9.2 Foundation (Xcode 15.2) on macOS 27.2, PowerUp at 2dd77aa",
+  "cases": [
+    {
+      "name": "no settings file",
+      "input": {
+        "settings": null,
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh",
+        "scriptOnDisk": null,
+        "port": 48738,
+        "token": "tok"
+      },
+      "expected": {
+        "installState": "notInstalled",
+        "isInstalled": false
+      },
+      "reason": "Nothing is registered (HK-189)."
+    },
+    {
+      "name": "an empty file",
+      "input": {
+        "settings": "",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh",
+        "scriptOnDisk": null,
+        "port": 48738,
+        "token": "tok"
+      },
+      "expected": {
+        "installState": "notInstalled",
+        "isInstalled": false
+      },
+      "reason": "A blank file registers nothing."
+    },
+    {
+      "name": "an empty object",
+      "input": {
+        "settings": "{}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh",
+        "scriptOnDisk": {
+          "scriptFor": {
+            "port": 48738,
+            "token": "tok"
+          }
+        },
+        "port": 48738,
+        "token": "tok"
+      },
+      "expected": {
+        "installState": "notInstalled",
+        "isInstalled": false
+      },
+      "reason": "Nothing is registered (HK-189)."
+    },
+    {
+      "name": "installed with the current script",
+      "input": {
+        "settings": "{\"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"UserPromptSubmit\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"Notification\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"SessionEnd\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"PostToolUse\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}]}}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh",
+        "scriptOnDisk": {
+          "scriptFor": {
+            "port": 48738,
+            "token": "tok"
+          }
+        },
+        "port": 48738,
+        "token": "tok"
+      },
+      "expected": {
+        "installState": "installed",
+        "isInstalled": true
+      },
+      "reason": "Every event holds the quoted command and the script carries the current port and token."
+    },
+    {
+      "name": "installed among other settings",
+      "input": {
+        "settings": "{\"model\": \"opus\", \"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"UserPromptSubmit\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"Notification\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"SessionEnd\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"PostToolUse\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"PreToolUse\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"/x\"}]}]}}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh",
+        "scriptOnDisk": {
+          "scriptFor": {
+            "port": 48738,
+            "token": "tok"
+          }
+        },
+        "port": 48738,
+        "token": "tok"
+      },
+      "expected": {
+        "installState": "installed",
+        "isInstalled": true
+      },
+      "reason": "Other settings and events do not matter."
+    },
+    {
+      "name": "port drift",
+      "input": {
+        "settings": "{\"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"UserPromptSubmit\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"Notification\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"SessionEnd\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"PostToolUse\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}]}}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh",
+        "scriptOnDisk": {
+          "scriptFor": {
+            "port": 48738,
+            "token": "tok"
+          }
+        },
+        "port": 50000,
+        "token": "tok"
+      },
+      "expected": {
+        "installState": "outOfDate",
+        "isInstalled": true
+      },
+      "reason": "The script posts to another port than the listener's (HK-187)."
+    },
+    {
+      "name": "token drift",
+      "input": {
+        "settings": "{\"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"UserPromptSubmit\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"Notification\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"SessionEnd\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"PostToolUse\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}]}}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh",
+        "scriptOnDisk": {
+          "scriptFor": {
+            "port": 48738,
+            "token": "tok"
+          }
+        },
+        "port": 48738,
+        "token": "other"
+      },
+      "expected": {
+        "installState": "outOfDate",
+        "isInstalled": true
+      },
+      "reason": "The script sends another token (HK-187)."
+    },
+    {
+      "name": "the script is missing",
+      "input": {
+        "settings": "{\"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"UserPromptSubmit\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"Notification\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"SessionEnd\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"PostToolUse\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}]}}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh",
+        "scriptOnDisk": null,
+        "port": 48738,
+        "token": "tok"
+      },
+      "expected": {
+        "installState": "outOfDate",
+        "isInstalled": true
+      },
+      "reason": "A registration without its script never runs."
+    },
+    {
+      "name": "the script differs by a trailing newline",
+      "input": {
+        "settings": "{\"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"UserPromptSubmit\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"Notification\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"SessionEnd\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"PostToolUse\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}]}}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh",
+        "scriptOnDisk": {
+          "scriptForWithoutTrailingNewline": {
+            "port": 48738,
+            "token": "tok"
+          }
+        },
+        "port": 48738,
+        "token": "tok"
+      },
+      "expected": {
+        "installState": "outOfDate",
+        "isInstalled": true
+      },
+      "reason": "The script is compared byte for byte."
+    },
+    {
+      "name": "the script is not UTF-8",
+      "input": {
+        "settings": "{\"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"UserPromptSubmit\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"Notification\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"SessionEnd\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"PostToolUse\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}]}}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh",
+        "scriptOnDisk": {
+          "hex": "fffe"
+        },
+        "port": 48738,
+        "token": "tok"
+      },
+      "expected": {
+        "installState": "outOfDate",
+        "isInstalled": true
+      },
+      "reason": "Bytes that are not the body never match."
+    },
+    {
+      "name": "a legacy registration only",
+      "input": {
+        "settings": "{\"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"/tmp/PowerUp Hook Fixture/support/powerup-hook.sh\"}]}], \"UserPromptSubmit\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"/tmp/PowerUp Hook Fixture/support/powerup-hook.sh\"}]}], \"Notification\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"/tmp/PowerUp Hook Fixture/support/powerup-hook.sh\"}]}], \"SessionEnd\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"/tmp/PowerUp Hook Fixture/support/powerup-hook.sh\"}]}], \"PostToolUse\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"/tmp/PowerUp Hook Fixture/support/powerup-hook.sh\"}]}]}}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh",
+        "scriptOnDisk": {
+          "scriptFor": {
+            "port": 48738,
+            "token": "tok"
+          }
+        },
+        "port": 48738,
+        "token": "tok"
+      },
+      "expected": {
+        "installState": "outOfDate",
+        "isInstalled": true
+      },
+      "reason": "A legacy unquoted path never ran, so it is out of date; isInstalled still sees it (HK-182, HK-189)."
+    },
+    {
+      "name": "Stop missing",
+      "input": {
+        "settings": "{\"hooks\": {\"UserPromptSubmit\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"Notification\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"SessionEnd\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"PostToolUse\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}]}}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh",
+        "scriptOnDisk": {
+          "scriptFor": {
+            "port": 48738,
+            "token": "tok"
+          }
+        },
+        "port": 48738,
+        "token": "tok"
+      },
+      "expected": {
+        "installState": "notInstalled",
+        "isInstalled": false
+      },
+      "reason": "Stop holds the registration isInstalled checks, so without it nothing reads as installed (HK-189)."
+    },
+    {
+      "name": "UserPromptSubmit missing",
+      "input": {
+        "settings": "{\"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"Notification\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"SessionEnd\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"PostToolUse\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}]}}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh",
+        "scriptOnDisk": {
+          "scriptFor": {
+            "port": 48738,
+            "token": "tok"
+          }
+        },
+        "port": 48738,
+        "token": "tok"
+      },
+      "expected": {
+        "installState": "outOfDate",
+        "isInstalled": true
+      },
+      "reason": "An install missing UserPromptSubmit reads as out of date and never as installed, so Settings offers a reinstall (HK-188, #158)."
+    },
+    {
+      "name": "Notification missing",
+      "input": {
+        "settings": "{\"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"UserPromptSubmit\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"SessionEnd\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"PostToolUse\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}]}}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh",
+        "scriptOnDisk": {
+          "scriptFor": {
+            "port": 48738,
+            "token": "tok"
+          }
+        },
+        "port": 48738,
+        "token": "tok"
+      },
+      "expected": {
+        "installState": "outOfDate",
+        "isInstalled": true
+      },
+      "reason": "An install missing Notification reads as out of date and never as installed, so Settings offers a reinstall (HK-188, #158)."
+    },
+    {
+      "name": "SessionEnd missing",
+      "input": {
+        "settings": "{\"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"UserPromptSubmit\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"Notification\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"PostToolUse\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}]}}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh",
+        "scriptOnDisk": {
+          "scriptFor": {
+            "port": 48738,
+            "token": "tok"
+          }
+        },
+        "port": 48738,
+        "token": "tok"
+      },
+      "expected": {
+        "installState": "outOfDate",
+        "isInstalled": true
+      },
+      "reason": "An install missing SessionEnd reads as out of date and never as installed, so Settings offers a reinstall (HK-188, #158)."
+    },
+    {
+      "name": "PostToolUse missing",
+      "input": {
+        "settings": "{\"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"UserPromptSubmit\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"Notification\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"SessionEnd\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}]}}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh",
+        "scriptOnDisk": {
+          "scriptFor": {
+            "port": 48738,
+            "token": "tok"
+          }
+        },
+        "port": 48738,
+        "token": "tok"
+      },
+      "expected": {
+        "installState": "outOfDate",
+        "isInstalled": true
+      },
+      "reason": "An install missing PostToolUse reads as out of date and never as installed, so Settings offers a reinstall (HK-188, #158)."
+    },
+    {
+      "name": "an event that is not an array",
+      "input": {
+        "settings": "{\"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"UserPromptSubmit\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"Notification\": {\"x\": 1}, \"SessionEnd\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"PostToolUse\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}]}}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh",
+        "scriptOnDisk": {
+          "scriptFor": {
+            "port": 48738,
+            "token": "tok"
+          }
+        },
+        "port": 48738,
+        "token": "tok"
+      },
+      "expected": {
+        "installState": "outOfDate",
+        "isInstalled": true
+      },
+      "reason": "An event of another shape holds no registration."
+    },
+    {
+      "name": "an event holding only the legacy path",
+      "input": {
+        "settings": "{\"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"UserPromptSubmit\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"Notification\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"SessionEnd\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"/tmp/PowerUp Hook Fixture/support/powerup-hook.sh\"}]}], \"PostToolUse\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}]}}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh",
+        "scriptOnDisk": {
+          "scriptFor": {
+            "port": 48738,
+            "token": "tok"
+          }
+        },
+        "port": 48738,
+        "token": "tok"
+      },
+      "expected": {
+        "installState": "outOfDate",
+        "isInstalled": true
+      },
+      "reason": "Every event must hold the quoted command."
+    },
+    {
+      "name": "an event holding ours in a group with a matcher",
+      "input": {
+        "settings": "{\"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"UserPromptSubmit\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"Notification\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"SessionEnd\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"PostToolUse\": [{\"matcher\": \"*\", \"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}]}}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh",
+        "scriptOnDisk": {
+          "scriptFor": {
+            "port": 48738,
+            "token": "tok"
+          }
+        },
+        "port": 48738,
+        "token": "tok"
+      },
+      "expected": {
+        "installState": "installed",
+        "isInstalled": true
+      },
+      "reason": "Any group holding the quoted command counts."
+    },
+    {
+      "name": "Stop that is not an array",
+      "input": {
+        "settings": "{\"hooks\": {\"Stop\": {}, \"UserPromptSubmit\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"Notification\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"SessionEnd\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"PostToolUse\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}]}}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh",
+        "scriptOnDisk": {
+          "scriptFor": {
+            "port": 48738,
+            "token": "tok"
+          }
+        },
+        "port": 48738,
+        "token": "tok"
+      },
+      "expected": {
+        "installState": "notInstalled",
+        "isInstalled": false
+      },
+      "reason": "Without a Stop array nothing is registered."
+    },
+    {
+      "name": "hooks that is not an object",
+      "input": {
+        "settings": "{\"hooks\":[]}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh",
+        "scriptOnDisk": {
+          "scriptFor": {
+            "port": 48738,
+            "token": "tok"
+          }
+        },
+        "port": 48738,
+        "token": "tok"
+      },
+      "expected": {
+        "installState": "notInstalled",
+        "isInstalled": false
+      },
+      "reason": "Nothing is registered."
+    },
+    {
+      "name": "not JSON",
+      "input": {
+        "settings": "{ nope",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh",
+        "scriptOnDisk": {
+          "scriptFor": {
+            "port": 48738,
+            "token": "tok"
+          }
+        },
+        "port": 48738,
+        "token": "tok"
+      },
+      "expected": {
+        "installState": "notInstalled",
+        "isInstalled": false
+      },
+      "reason": "A file that is not JSON reads as not installed."
+    },
+    {
+      "name": "installed for a path with a single quote",
+      "input": {
+        "settings": "{\"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook'\\\\''s Fixture/support/powerup-hook.sh'\"}]}], \"UserPromptSubmit\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook'\\\\''s Fixture/support/powerup-hook.sh'\"}]}], \"Notification\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook'\\\\''s Fixture/support/powerup-hook.sh'\"}]}], \"SessionEnd\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook'\\\\''s Fixture/support/powerup-hook.sh'\"}]}], \"PostToolUse\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook'\\\\''s Fixture/support/powerup-hook.sh'\"}]}]}}",
+        "scriptPath": "/tmp/PowerUp Hook's Fixture/support/powerup-hook.sh",
+        "scriptOnDisk": {
+          "scriptFor": {
+            "port": 48738,
+            "token": "tok"
+          }
+        },
+        "port": 48738,
+        "token": "tok"
+      },
+      "expected": {
+        "installState": "installed",
+        "isInstalled": true
+      },
+      "reason": "The escaped command is recognised."
+    },
+    {
+      "name": "a duplicate hooks key",
+      "input": {
+        "settings": "{\"hooks\":{\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"UserPromptSubmit\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"Notification\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"SessionEnd\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"PostToolUse\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}]},\"hooks\":{}}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh",
+        "scriptOnDisk": {
+          "scriptFor": {
+            "port": 48738,
+            "token": "tok"
+          }
+        },
+        "port": 48738,
+        "token": "tok"
+      },
+      "expected": {
+        "installState": "installed",
+        "isInstalled": true
+      },
+      "reason": "The first of two equal keys wins."
+    }
+  ]
+}

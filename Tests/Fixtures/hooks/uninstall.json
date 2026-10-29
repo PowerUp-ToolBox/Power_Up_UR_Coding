@@ -1,0 +1,420 @@
+{
+  "description": "Removing the hooks from ~/.claude/settings.json. No file, a blank file or no hooks key changes nothing; a file that is not a JSON object, or a hooks value that is not an object (null too), is refused. Every event whose value is an array is rebuilt without the entries whose command is the quoted or the legacy path (a group left empty is dropped; a group that is not an object or has no hooks array is kept); an event left empty is removed, including one that was already empty when anything else changed; an event of another shape is skipped. Nothing removed means nothing is written; a hooks object left empty is removed. Writes as install.json describes.",
+  "function": "HookInstaller.uninstall(settingsURL:) — input {settings, scriptPath} as install.json, expected as install.json",
+  "verifiedBy": "DESIGN.md v1.6, v2.14; Tests/PowerUpTests/HookFixtureTests.swift testHookUninstallTable runs HookInstaller.uninstall on a temporary settings file and compares the written bytes exactly.",
+  "capturedAgainst": "Swift 5.9.2 Foundation (Xcode 15.2) on macOS 27.2, PowerUp at 2dd77aa",
+  "cases": [
+    {
+      "name": "no settings file",
+      "input": {
+        "settings": null,
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh"
+      },
+      "expected": {
+        "outcome": "unchanged"
+      },
+      "reason": "Nothing to remove, and no file is created (HK-195)."
+    },
+    {
+      "name": "an empty file",
+      "input": {
+        "settings": "",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh"
+      },
+      "expected": {
+        "outcome": "unchanged"
+      },
+      "reason": "A blank file has no hooks."
+    },
+    {
+      "name": "not JSON",
+      "input": {
+        "settings": "{ nope",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": "invalidJSON"
+      },
+      "reason": "A file that is not JSON is refused and left untouched."
+    },
+    {
+      "name": "a JSON array",
+      "input": {
+        "settings": "[1]",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": "invalidJSON"
+      },
+      "reason": "The root must be an object."
+    },
+    {
+      "name": "no hooks key",
+      "input": {
+        "settings": "{\"model\":\"opus\"}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh"
+      },
+      "expected": {
+        "outcome": "unchanged"
+      },
+      "reason": "No hooks, nothing to do."
+    },
+    {
+      "name": "hooks that is a string",
+      "input": {
+        "settings": "{\"hooks\":\"x\"}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": "hooksNotAnObject"
+      },
+      "reason": "A hooks value of the wrong shape is refused."
+    },
+    {
+      "name": "hooks that is null",
+      "input": {
+        "settings": "{\"hooks\":null}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": "hooksNotAnObject"
+      },
+      "reason": "null is present and not an object, so it is refused."
+    },
+    {
+      "name": "ours only",
+      "input": {
+        "settings": "{\"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"UserPromptSubmit\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"Notification\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"SessionEnd\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"PostToolUse\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}]}}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh"
+      },
+      "expected": {
+        "outcome": "write",
+        "file": [
+          "{",
+          "",
+          "}",
+          ""
+        ]
+      },
+      "reason": "Every event is left empty and pruned, and then the empty hooks key goes too (HK-195)."
+    },
+    {
+      "name": "ours among other settings",
+      "input": {
+        "settings": "{\"model\": \"opus\", \"n\": 0.1, \"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"UserPromptSubmit\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"Notification\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"SessionEnd\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"PostToolUse\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}]}}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh"
+      },
+      "expected": {
+        "outcome": "write",
+        "file": [
+          "{",
+          "  \"model\" : \"opus\",",
+          "  \"n\" : 0.10000000000000001",
+          "}",
+          ""
+        ]
+      },
+      "reason": "Only the hooks key goes; other settings and their numbers are written back as JSONSerialization writes them."
+    },
+    {
+      "name": "ours sharing a group with a foreign entry",
+      "input": {
+        "settings": "{\"hooks\": {\"Stop\": [{\"matcher\": \"m\", \"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}, {\"type\": \"command\", \"command\": \"/usr/bin/true\"}]}]}}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh"
+      },
+      "expected": {
+        "outcome": "write",
+        "file": [
+          "{",
+          "  \"hooks\" : {",
+          "    \"Stop\" : [",
+          "      {",
+          "        \"hooks\" : [",
+          "          {",
+          "            \"command\" : \"/usr/bin/true\",",
+          "            \"type\" : \"command\"",
+          "          }",
+          "        ],",
+          "        \"matcher\" : \"m\"",
+          "      }",
+          "    ]",
+          "  }",
+          "}",
+          ""
+        ]
+      },
+      "reason": "Only our entry goes; the group keeps the foreign one and its matcher."
+    },
+    {
+      "name": "ours in its own group beside foreign groups",
+      "input": {
+        "settings": "{\"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"/a\"}]}, {\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}, {\"hooks\": [{\"type\": \"command\", \"command\": \"/b\"}]}]}, \"x\": 1}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh"
+      },
+      "expected": {
+        "outcome": "write",
+        "file": [
+          "{",
+          "  \"hooks\" : {",
+          "    \"Stop\" : [",
+          "      {",
+          "        \"hooks\" : [",
+          "          {",
+          "            \"command\" : \"/a\",",
+          "            \"type\" : \"command\"",
+          "          }",
+          "        ]",
+          "      },",
+          "      {",
+          "        \"hooks\" : [",
+          "          {",
+          "            \"command\" : \"/b\",",
+          "            \"type\" : \"command\"",
+          "          }",
+          "        ]",
+          "      }",
+          "    ]",
+          "  },",
+          "  \"x\" : 1",
+          "}",
+          ""
+        ]
+      },
+      "reason": "Our group is dropped once empty; the foreign groups stay in order."
+    },
+    {
+      "name": "legacy entries are removed",
+      "input": {
+        "settings": "{\"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"/tmp/PowerUp Hook Fixture/support/powerup-hook.sh\"}]}], \"Notification\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"/tmp/PowerUp Hook Fixture/support/powerup-hook.sh\"}, {\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}]}}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh"
+      },
+      "expected": {
+        "outcome": "write",
+        "file": [
+          "{",
+          "",
+          "}",
+          ""
+        ]
+      },
+      "reason": "The legacy unquoted path counts as ours."
+    },
+    {
+      "name": "ours under an event PowerUp never registers",
+      "input": {
+        "settings": "{\"hooks\": {\"PreToolUse\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"/x\"}]}]}}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh"
+      },
+      "expected": {
+        "outcome": "write",
+        "file": [
+          "{",
+          "  \"hooks\" : {",
+          "    \"Stop\" : [",
+          "      {",
+          "        \"hooks\" : [",
+          "          {",
+          "            \"command\" : \"/x\",",
+          "            \"type\" : \"command\"",
+          "          }",
+          "        ]",
+          "      }",
+          "    ]",
+          "  }",
+          "}",
+          ""
+        ]
+      },
+      "reason": "Uninstall walks every event, not only the five."
+    },
+    {
+      "name": "an empty event is pruned when something else changed",
+      "input": {
+        "settings": "{\"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"PreToolUse\": [], \"Other\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"/x\"}]}]}}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh"
+      },
+      "expected": {
+        "outcome": "write",
+        "file": [
+          "{",
+          "  \"hooks\" : {",
+          "    \"Other\" : [",
+          "      {",
+          "        \"hooks\" : [",
+          "          {",
+          "            \"command\" : \"/x\",",
+          "            \"type\" : \"command\"",
+          "          }",
+          "        ]",
+          "      }",
+          "    ]",
+          "  }",
+          "}",
+          ""
+        ]
+      },
+      "reason": "Every event left empty is removed, including one that was already empty (quirk, kept)."
+    },
+    {
+      "name": "an empty event is kept when nothing changed",
+      "input": {
+        "settings": "{\"hooks\": {\"PreToolUse\": [], \"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"/x\"}]}]}}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh"
+      },
+      "expected": {
+        "outcome": "unchanged"
+      },
+      "reason": "When nothing of ours is found nothing is written, so the empty event stays."
+    },
+    {
+      "name": "an event that is not an array is skipped",
+      "input": {
+        "settings": "{\"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"Odd\": {\"a\": 1}, \"Str\": \"s\"}}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh"
+      },
+      "expected": {
+        "outcome": "write",
+        "file": [
+          "{",
+          "  \"hooks\" : {",
+          "    \"Odd\" : {",
+          "      \"a\" : 1",
+          "    },",
+          "    \"Str\" : \"s\"",
+          "  }",
+          "}",
+          ""
+        ]
+      },
+      "reason": "Uninstall leaves an event of another shape as it is."
+    },
+    {
+      "name": "nothing ours",
+      "input": {
+        "settings": "{\"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"/usr/bin/true\"}]}]}}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh"
+      },
+      "expected": {
+        "outcome": "unchanged"
+      },
+      "reason": "Nothing matched, so nothing is written (HK-195)."
+    },
+    {
+      "name": "odd groups are kept",
+      "input": {
+        "settings": "{\"hooks\": {\"Stop\": [\"s\", 5, null, {\"hooks\": \"x\"}, {\"other\": 1}, {\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}]}}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh"
+      },
+      "expected": {
+        "outcome": "write",
+        "file": [
+          "{",
+          "  \"hooks\" : {",
+          "    \"Stop\" : [",
+          "      \"s\",",
+          "      5,",
+          "      null,",
+          "      {",
+          "        \"hooks\" : \"x\"",
+          "      },",
+          "      {",
+          "        \"other\" : 1",
+          "      }",
+          "    ]",
+          "  }",
+          "}",
+          ""
+        ]
+      },
+      "reason": "A group that is not an object or has no hooks array is kept; ours goes."
+    },
+    {
+      "name": "entries that are not ours are kept",
+      "input": {
+        "settings": "{\"hooks\": {\"Stop\": [{\"hooks\": [5, {\"command\": 5}, {\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}, {\"type\": \"command\"}]}]}}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh"
+      },
+      "expected": {
+        "outcome": "write",
+        "file": [
+          "{",
+          "  \"hooks\" : {",
+          "    \"Stop\" : [",
+          "      {",
+          "        \"hooks\" : [",
+          "          5,",
+          "          {",
+          "            \"command\" : 5",
+          "          },",
+          "          {",
+          "            \"type\" : \"command\"",
+          "          }",
+          "        ]",
+          "      }",
+          "    ]",
+          "  }",
+          "}",
+          ""
+        ]
+      },
+      "reason": "Only entries whose command string is ours are removed."
+    },
+    {
+      "name": "duplicate hooks keys",
+      "input": {
+        "settings": "{\"hooks\":{\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"UserPromptSubmit\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"Notification\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"SessionEnd\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"PostToolUse\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}]},\"hooks\":\"x\"}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh"
+      },
+      "expected": {
+        "outcome": "write",
+        "file": [
+          "{",
+          "",
+          "}",
+          ""
+        ]
+      },
+      "reason": "The first of two equal keys wins; the second is not written back."
+    },
+    {
+      "name": "a byte order mark is skipped",
+      "input": {
+        "settings": {
+          "hex": "efbbbf7b22686f6f6b73223a207b2253746f70223a205b7b22686f6f6b73223a205b7b2274797065223a2022636f6d6d616e64222c2022636f6d6d616e64223a2022272f746d702f506f776572557020486f6f6b20466978747572652f737570706f72742f706f77657275702d686f6f6b2e736827227d5d7d5d2c20225573657250726f6d70745375626d6974223a205b7b22686f6f6b73223a205b7b2274797065223a2022636f6d6d616e64222c2022636f6d6d616e64223a2022272f746d702f506f776572557020486f6f6b20466978747572652f737570706f72742f706f77657275702d686f6f6b2e736827227d5d7d5d2c20224e6f74696669636174696f6e223a205b7b22686f6f6b73223a205b7b2274797065223a2022636f6d6d616e64222c2022636f6d6d616e64223a2022272f746d702f506f776572557020486f6f6b20466978747572652f737570706f72742f706f77657275702d686f6f6b2e736827227d5d7d5d2c202253657373696f6e456e64223a205b7b22686f6f6b73223a205b7b2274797065223a2022636f6d6d616e64222c2022636f6d6d616e64223a2022272f746d702f506f776572557020486f6f6b20466978747572652f737570706f72742f706f77657275702d686f6f6b2e736827227d5d7d5d2c2022506f7374546f6f6c557365223a205b7b22686f6f6b73223a205b7b2274797065223a2022636f6d6d616e64222c2022636f6d6d616e64223a2022272f746d702f506f776572557020486f6f6b20466978747572652f737570706f72742f706f77657275702d686f6f6b2e736827227d5d7d5d7d7d"
+        },
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh"
+      },
+      "expected": {
+        "outcome": "write",
+        "file": [
+          "{",
+          "",
+          "}",
+          ""
+        ]
+      },
+      "reason": "One UTF-8 byte order mark is read past."
+    },
+    {
+      "name": "the quoted path with a single quote",
+      "input": {
+        "settings": "{\"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook'\\\\''s Fixture/support/powerup-hook.sh'\"}]}], \"UserPromptSubmit\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook'\\\\''s Fixture/support/powerup-hook.sh'\"}]}], \"Notification\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook'\\\\''s Fixture/support/powerup-hook.sh'\"}]}], \"SessionEnd\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook'\\\\''s Fixture/support/powerup-hook.sh'\"}]}], \"PostToolUse\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook'\\\\''s Fixture/support/powerup-hook.sh'\"}]}]}}",
+        "scriptPath": "/tmp/PowerUp Hook's Fixture/support/powerup-hook.sh"
+      },
+      "expected": {
+        "outcome": "write",
+        "file": [
+          "{",
+          "",
+          "}",
+          ""
+        ]
+      },
+      "reason": "The escaped command is recognised as ours."
+    }
+  ]
+}
