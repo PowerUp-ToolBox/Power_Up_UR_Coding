@@ -8,6 +8,11 @@ import Foundation
 /// timeout, empty output, a "summary" longer than the reply) resolves the
 /// completion with nil and the caller speaks the full reply as it always did.
 /// Only the newest request matters — starting a new one abandons the old.
+///
+/// The prompt and the check of the model's answer are the Rust core's
+/// speech rules since slice 2.5 (DESIGN v2.14, `CoreBridgeSpeech.swift`);
+/// this type keeps the one-shot process: its arguments, the binary lookup,
+/// the timeout and the latest-wins generation.
 @MainActor
 final class SummaryService: ObservableObject {
 
@@ -26,31 +31,6 @@ final class SummaryService: ObservableObject {
         ["-p", "--model", model, "--output-format", "text", "--permission-mode", "default"]
     }
 
-    nonisolated static func prompt(for reply: String) -> String {
-        """
-        Summarize the following coding-assistant reply in one or two short \
-        sentences meant to be READ ALOUD: what was done or found, and anything \
-        the listener must do next. Plain prose only — no markdown, no lists, \
-        no preamble. Answer in the same language as the reply.
-
-        Reply to summarize:
-        \(reply)
-        """
-    }
-
-    /// The model's answer as it is spoken, or nil when the caller should
-    /// speak the full reply: a summary that is empty or not meaningfully
-    /// shorter than the reply is worse than the reply, so it counts as a
-    /// failure. Trimmed of `.whitespacesAndNewlines`, and usable only when
-    /// shorter than max(200, reply.count / 2) Characters (`reply` untrimmed).
-    nonisolated static func usableSummary(_ summary: String?, for reply: String) -> String? {
-        let trimmed = summary?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let trimmed, !trimmed.isEmpty, trimmed.count < max(200, reply.count / 2) else {
-            return nil
-        }
-        return trimmed
-    }
-
     /// Requests a summary. `completion` is invoked exactly once, on the main
     /// actor: the summary text, or nil when the caller should fall back to
     /// the full reply. A newer `summarize` call silently supersedes this one
@@ -63,16 +43,21 @@ final class SummaryService: ObservableObject {
         generation += 1
         let generation = self.generation
 
-        let prompt = SummaryService.prompt(for: reply)
         let arguments = SummaryService.arguments(model: model)
 
         Task.detached(priority: .utility) { [weak self] in
-            let binary = ClaudeService.resolveClaudeBinary(override: claudePathOverride)
-            let summary = binary.flatMap {
-                SummaryService.run(binary: $0, arguments: arguments, stdin: prompt)
+            // A prompt the core could not write runs no process: the
+            // completion still comes, on the main actor like any failure,
+            // with nil.
+            let summary = CoreBridge.summaryPrompt(for: reply).flatMap { prompt in
+                ClaudeService.resolveClaudeBinary(override: claudePathOverride).flatMap {
+                    SummaryService.run(binary: $0, arguments: arguments, stdin: prompt)
+                }
             }
 
-            let usable = SummaryService.usableSummary(summary, for: reply)
+            // Empty, or not meaningfully shorter than the reply: nil, and the
+            // caller speaks the full reply (HK-170).
+            let usable = CoreBridge.usableSummary(summary, for: reply)
 
             guard let service = self else { return }
             await MainActor.run {

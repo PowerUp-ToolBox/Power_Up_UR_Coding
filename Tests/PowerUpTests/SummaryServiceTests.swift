@@ -1,7 +1,8 @@
 import XCTest
 @testable import PowerUp
 
-/// Covers the pure parts of the spoken-summaries feature. The process spawn
+/// Covers the pure parts of the spoken-summaries feature (the prompt through
+/// the bridge, the arguments and defaults in Swift). The process spawn
 /// itself is deliberately untested — tests never run real `claude` sessions
 /// (see CLAUDE.md); every failure of that path resolves to nil, which callers
 /// treat as "speak the full reply".
@@ -17,8 +18,10 @@ final class SummaryServiceTests: XCTestCase {
         XCTAssertFalse(arguments.contains("bypassPermissions"))
     }
 
-    func testPromptEmbedsTheReplyAndAsksForSpokenProse() {
-        let prompt = SummaryService.prompt(for: "I refactored the parser and all tests pass.")
+    /// The prompt is the core's since slice 2.5 (`summary-prompt.json` pins
+    /// it whole); SummaryService writes it to the process's stdin.
+    func testPromptEmbedsTheReplyAndAsksForSpokenProse() throws {
+        let prompt = try XCTUnwrap(CoreBridge.summaryPrompt(for: "I refactored the parser and all tests pass."))
         XCTAssertTrue(prompt.contains("I refactored the parser and all tests pass."))
         XCTAssertTrue(prompt.contains("READ ALOUD"))
         XCTAssertTrue(prompt.contains("same language"),

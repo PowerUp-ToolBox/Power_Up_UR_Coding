@@ -461,9 +461,13 @@ text the Swift app read as Japanese reading as Chinese (HK-420); the Rust
 runner rejects any other.
 
 The Swift runner is `Tests/PowerUpTests/SpeechFixtureTests.swift`, which
-also checks that the truncation cases cover every sentence ender, a hard
-cut and a multi-scalar Character at the cut, and that the agreement corpus
-holds at least 80 sentences with every kind represented. The Rust runner
+plays every table through the bridge (`CoreBridgeSpeech.swift`), compares
+an agreement case with `expected.core` where it records one and
+`expected.swift` everywhere else, and also checks that the truncation
+cases cover every sentence ender, a hard cut and a multi-scalar Character
+at the cut, that the agreement corpus holds at least 80 sentences with
+every kind represented, and that each recorded difference is real and of
+an accepted kind. The Rust runner
 is `rust/powerup-core/tests/speech.rs`, one test per table; it compares
 `expected.core` where an agreement case records one and `expected.swift`
 everywhere else, and checks that a recorded difference still differs.

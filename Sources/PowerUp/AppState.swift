@@ -897,10 +897,10 @@ final class AppState: ObservableObject {
     // MARK: - Spoken confirmations
 
     /// Short spoken confirmation of a setting change. Deliberately NOT run
-    /// through `speechText` — these phrases are already plain and short. The
-    /// language is pinned to English: these are app-generated English
-    /// constants, and statistical detection on strings this short misfiles
-    /// them ("Model: Sonnet" → German) onto foreign voices.
+    /// through the core's spoken text — these phrases are already plain and
+    /// short. The language is pinned to English: these are app-generated
+    /// English constants, and statistical detection on strings this short
+    /// misfiles them ("Model: Sonnet" → German) onto foreign voices.
     private func announce(_ phrase: String) {
         guard configStore.config.ttsEnabled else { return }
         let trimmed = phrase.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1174,29 +1174,27 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Minimum reply length before a summary is worth a model call — anything
-    /// shorter is faster to just speak in full.
-    private static let summaryMinimumReplyLength = 350
-
-    /// Whether a completed reply goes to the summarizer instead of being
-    /// spoken in full: Spoken Summaries on, and at least
-    /// `summaryMinimumReplyLength` Characters (extended grapheme clusters).
-    static func wantsSummary(of reply: String, speakSummaries: Bool) -> Bool {
-        speakSummaries && reply.count >= summaryMinimumReplyLength
-    }
+    /// Spoken, in English, instead of a reply the Rust core could not turn
+    /// into speech (a core failure, logged by `CoreBridge`): never the raw
+    /// markdown or its fenced code, and never a silence the person would
+    /// take for broken speech. A reply that is only markup speaks nothing.
+    private static let unreadableReplyPhrase = "Sorry, I couldn't read that reply aloud."
 
     /// Speaks a completed reply. Normally that's the reply itself
     /// (markdown-stripped, truncated per settings). With Spoken Summaries on
-    /// and a long reply, a lightweight model writes a 1-2 sentence conclusion
+    /// and a long reply (`CoreBridge.wantsSummary`: at least 350
+    /// Characters), a lightweight model writes a 1-2 sentence conclusion
     /// and THAT is spoken instead — the full reply stays in the transcript,
     /// `lastAssistantReply`, and Replay. Every summary failure falls back to
     /// the full reply; a summary that arrives after the moment has passed
-    /// (new turn, interrupt, an active recording) is dropped.
+    /// (new turn, interrupt, an active recording) is dropped. The spoken
+    /// text, its language and the summary rules are the core's (slice 2.5);
+    /// the generation counter and the fallbacks are AppState's.
     private func speakReply(_ reply: String) {
         guard configStore.config.ttsEnabled, !reply.isEmpty else { return }
 
         let config = configStore.config
-        guard AppState.wantsSummary(of: reply, speakSummaries: config.speakSummaries) else {
+        guard CoreBridge.wantsSummary(of: reply, speakSummaries: config.speakSummaries) else {
             speakFullReply(reply)
             return
         }
@@ -1212,8 +1210,10 @@ final class AppState: ObservableObject {
                 return
             }
             self.appendEntry(.system, "Summary: \(text)")
-            let spoken = TTSService.spokenReply(fromMarkdown: text, maxChars: 0)
-            guard !spoken.text.isEmpty else {
+            // Markdown-stripped but never cut. A summary the core could not
+            // read falls back to the full reply, like an empty one.
+            guard let spoken = CoreBridge.spokenReply(fromMarkdown: text, maxChars: 0),
+                  !spoken.text.isEmpty else {
                 self.speakFullReply(reply)
                 return
             }
@@ -1226,12 +1226,25 @@ final class AppState: ObservableObject {
     }
 
     private func speakFullReply(_ reply: String) {
-        let spoken = TTSService.spokenReply(fromMarkdown: reply, maxChars: configStore.config.maxSpokenChars)
+        guard let spoken = CoreBridge.spokenReply(fromMarkdown: reply,
+                                                  maxChars: configStore.config.maxSpokenChars) else {
+            speakUnreadableReply()
+            return
+        }
         guard !spoken.text.isEmpty else { return }
         tts.speak(spoken.text,
                   voiceID: configStore.config.ttsVoiceID,
                   rate: configStore.config.ttsRate,
                   language: spoken.language)
+    }
+
+    /// The core failed to read a reply: say so in English (see
+    /// `unreadableReplyPhrase`).
+    private func speakUnreadableReply() {
+        tts.speak(AppState.unreadableReplyPhrase,
+                  voiceID: configStore.config.ttsVoiceID,
+                  rate: configStore.config.ttsRate,
+                  language: "en")
     }
 
     /// A pending summary belongs to a moment that's over — drop it.
@@ -1245,7 +1258,12 @@ final class AppState: ObservableObject {
             errorHaptic()
             return
         }
-        let spoken = TTSService.spokenReply(fromMarkdown: reply, maxChars: configStore.config.maxSpokenChars)
+        guard let spoken = CoreBridge.spokenReply(fromMarkdown: reply,
+                                                  maxChars: configStore.config.maxSpokenChars) else {
+            speakUnreadableReply()
+            updateStatus()
+            return
+        }
         guard !spoken.text.isEmpty else {
             errorHaptic()
             return

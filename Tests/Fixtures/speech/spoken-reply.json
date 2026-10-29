@@ -1,7 +1,7 @@
 {
   "description": "The spoken text of a reply together with the language its phrases were chosen for, which the caller hands to speak(_:voiceID:rate:language:) so the voice can never disagree with the phrases (spec #100 slice 2.5, ticket #160). The language is decided ONCE, on the input after fences became U+FFFC and before any other rule (so a link's URL still counts), as the lowercased primary subtag of dominantLanguageCode(of:) or \"en\" when that is undecided. Only zh gets localized phrases (（代码已省略）, ……回复已截断。 joined with no space); every other language, ja and ko included, gets the English ones. The text rules are those of speech-text.json.",
-  "function": "TTSService.spokenReply(fromMarkdown:maxChars:) — input {text, maxChars} with text a text descriptor, expected {text, language}",
-  "verifiedBy": "DESIGN.md v1.2 A, v1.12, v2.14; Tests/PowerUpTests/SpeechFixtureTests.swift testSpokenReplyTable plays it through TTSService.spokenReply(fromMarkdown:maxChars:). Rust: rust/powerup-core/tests/speech.rs spoken_reply_cases runs speech::spoken_reply.",
+  "function": "speech::spoken_reply (Swift: CoreBridge.spokenReply(fromMarkdown:maxChars:); until slice 2.5 TTSService.spokenReply(fromMarkdown:maxChars:)) — input {text, maxChars} with text a text descriptor, expected {text, language}",
+  "verifiedBy": "DESIGN.md v1.2 A, v1.12, v2.14; Tests/PowerUpTests/SpeechFixtureTests.swift testSpokenReplyTable plays it through CoreBridge.spokenReply(fromMarkdown:maxChars:). Rust: rust/powerup-core/tests/speech.rs spoken_reply_cases runs speech::spoken_reply.",
   "capturedAgainst": "Swift 5.9.2 Foundation and NaturalLanguage (Xcode 15.2) on macOS 27.2, PowerUp at 67659a4",
   "cases": [
     {

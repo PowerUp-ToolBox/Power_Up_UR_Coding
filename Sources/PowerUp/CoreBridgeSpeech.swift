@@ -16,14 +16,14 @@ import PowerUpCore
 /// TTSService; the prompt and the summary check run on SummaryService's
 /// detached task; like every `CoreBridge` function, they are safe from
 /// either. A failed call never speaks raw markdown or fenced code: the text
-/// wrappers answer nil and the caller says nothing, a failed decision reads
-/// as undecided (English), and a failed summary rule speaks the full reply
-/// instead.
+/// wrappers answer nil and AppState speaks a short English apology instead
+/// of the reply, a failed decision reads as undecided (English), and a
+/// failed summary rule speaks the full reply instead.
 extension CoreBridge {
     /// A markdown reply as spoken text, with the lowercased primary subtag
     /// its phrases were chosen for ("en" when undecided), cut after
     /// `maxChars` Characters when that is above 0; nil when the core fails,
-    /// and then nothing is spoken.
+    /// and then the reply is not spoken (AppState says it couldn't read it).
     /// Cases: `Tests/Fixtures/speech/spoken-reply.json`.
     static func spokenReply(fromMarkdown markdown: String,
                             maxChars: Int) -> (text: String, language: String)? {
@@ -33,8 +33,8 @@ extension CoreBridge {
         }
     }
 
-    /// The spoken text of `spokenReply` alone; nil when the core fails, and
-    /// then nothing is spoken. Cases: `Tests/Fixtures/speech/speech-text.json`.
+    /// The spoken text of `spokenReply` alone; nil when the core fails.
+    /// Cases: `Tests/Fixtures/speech/speech-text.json`.
     static func speechText(fromMarkdown markdown: String, maxChars: Int) -> String? {
         call("speechText", fallback: nil) {
             try PowerUpCore.speechText(markdown: markdown, maxChars: Int64(maxChars))

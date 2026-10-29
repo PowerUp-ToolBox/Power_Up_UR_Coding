@@ -1,7 +1,7 @@
 {
   "description": "Whether a completed reply goes to the summarizer instead of being spoken in full (spec #100 slice 2.5, ticket #160): only with Spoken Summaries on (off by default, they cost tokens) and a reply of at least 350 Characters (extended grapheme clusters, counted on the reply as it is, untrimmed). The summarizer process, its timeout and the generation counter that drops a late summary stay with the platform.",
-  "function": "AppState.wantsSummary(of:speakSummaries:) — input {reply, speakSummaries} with reply a text descriptor, expected a bool",
-  "verifiedBy": "DESIGN.md v1.12, v2.14; Tests/PowerUpTests/SpeechFixtureTests.swift testSummaryThresholdTable plays it through AppState.wantsSummary(of:speakSummaries:). Rust: rust/powerup-core/tests/speech.rs summary_threshold_cases runs speech::wants_summary.",
+  "function": "speech::wants_summary (Swift: CoreBridge.wantsSummary(of:speakSummaries:); until slice 2.5 AppState.wantsSummary(of:speakSummaries:)) — input {reply, speakSummaries} with reply a text descriptor, expected a bool",
+  "verifiedBy": "DESIGN.md v1.12, v2.14; Tests/PowerUpTests/SpeechFixtureTests.swift testSummaryThresholdTable plays it through CoreBridge.wantsSummary(of:speakSummaries:). Rust: rust/powerup-core/tests/speech.rs summary_threshold_cases runs speech::wants_summary.",
   "capturedAgainst": "Swift 5.9.2 Foundation and NaturalLanguage (Xcode 15.2) on macOS 27.2, PowerUp at 67659a4",
   "cases": [
     {

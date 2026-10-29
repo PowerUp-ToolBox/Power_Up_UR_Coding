@@ -4,11 +4,12 @@ import XCTest
 /// Plays the eight `Tests/Fixtures/speech/` tables against the app's speech
 /// rules: the spoken text of a reply, the language its phrases and voice are
 /// chosen for, the voice language a caller may pin, and the pure rules of
-/// spoken summaries (spec #100 slice 2.5, ticket #160). Every expected value
-/// was captured from the Swift code these tests call, and
-/// `language-agreement.json` is the corpus the Rust core's own detector is
-/// held to. Pure functions only: nothing is spoken, no voice is resolved and
-/// no summarizer runs.
+/// spoken summaries (spec #100 slice 2.5, ticket #160). Played through the
+/// bridge (`CoreBridgeSpeech.swift`) since the Rust core owns the rules
+/// (slice 2.5, DESIGN v2.14); every expected value was captured from the
+/// Swift code the core replaced, and `language-agreement.json` records where
+/// the core's detector is allowed to differ from it. Pure functions only:
+/// nothing is spoken, no voice is resolved and no summarizer runs.
 @MainActor
 final class SpeechFixtureTests: XCTestCase {
 
@@ -18,7 +19,7 @@ final class SpeechFixtureTests: XCTestCase {
         try play("speech-text.json") { input in
             let text = try SpeechFixtures.text(input["text"])
             let maxChars = try SpeechFixtures.integer(input["maxChars"])
-            return .string(TTSService.speechText(fromMarkdown: text, maxChars: maxChars))
+            return .string(try XCTUnwrap(CoreBridge.speechText(fromMarkdown: text, maxChars: maxChars)))
         } expected: { .string(try SpeechFixtures.text($0)) }
     }
 
@@ -26,8 +27,8 @@ final class SpeechFixtureTests: XCTestCase {
 
     func testSpokenReplyTable() throws {
         try play("spoken-reply.json") { input in
-            let spoken = TTSService.spokenReply(fromMarkdown: try SpeechFixtures.text(input["text"]),
-                                                maxChars: try SpeechFixtures.integer(input["maxChars"]))
+            let spoken = try XCTUnwrap(CoreBridge.spokenReply(fromMarkdown: try SpeechFixtures.text(input["text"]),
+                                                              maxChars: try SpeechFixtures.integer(input["maxChars"])))
             return .object(["text": .string(spoken.text), "language": .string(spoken.language)])
         }
     }
@@ -36,32 +37,49 @@ final class SpeechFixtureTests: XCTestCase {
 
     func testLanguageTable() throws {
         try play("language.json") { input in
-            SpeechFixtures.optional(TTSService.dominantLanguageCode(of: try SpeechFixtures.text(input)))
+            SpeechFixtures.optional(CoreBridge.dominantLanguage(of: try SpeechFixtures.text(input)))
         }
     }
 
-    /// Compares the Swift decision, `expected.swift`. A `core` beside it
-    /// records an accepted difference of the Rust detector, which only the
-    /// core's runner reads.
+    /// Compares the app's decision, the core's since slice 2.5, with
+    /// `expected.core` where the table records an accepted difference and
+    /// with the Swift app's captured `expected.swift` everywhere else.
     func testLanguageAgreementTable() throws {
         try play("language-agreement.json") { input in
-            .object(["swift": SpeechFixtures.optional(TTSService.dominantLanguageCode(of: try SpeechFixtures.text(input)))])
+            SpeechFixtures.optional(CoreBridge.dominantLanguage(of: try SpeechFixtures.text(input)))
         } expected: { expected in
             guard case .object(let fields) = expected,
                   Set(fields.keys).isSubset(of: ["swift", "core"]),
                   let swift = fields["swift"] else {
                 throw FixtureValueError(description: "not an agreement expectation: \(expected)")
             }
-            return .object(["swift": swift])
+            return fields["core"] ?? swift
         }
+    }
+
+    /// An accepted difference is a real one, and of the two kinds the
+    /// ledger accepts: the core undecided (spoken in English), or Han-only
+    /// text the Swift app read as Japanese read as Chinese.
+    func testAgreementDifferencesAreRealAndOfAnAcceptedKind() throws {
+        let file = try SpeechFixtures.load("language-agreement.json")
+        var differences = 0
+        for fixtureCase in file.cases {
+            guard case .object(let fields) = fixtureCase.expected, let core = fields["core"] else { continue }
+            differences += 1
+            let swift = fields["swift"]
+            XCTAssertNotEqual(swift, core, "\(fixtureCase.name): a recorded difference that is none")
+            XCTAssertTrue(core == .null || (core == .string("zh") && swift == .string("ja")),
+                          "\(fixtureCase.name): core \(core) where Swift said \(String(describing: swift))")
+        }
+        XCTAssertGreaterThan(differences, 0, "the table records its accepted differences")
     }
 
     // MARK: summary-*.json
 
     func testSummaryThresholdTable() throws {
         try play("summary-threshold.json") { input in
-            .bool(AppState.wantsSummary(of: try SpeechFixtures.text(input["reply"]),
-                                        speakSummaries: try SpeechFixtures.bool(input["speakSummaries"])))
+            .bool(CoreBridge.wantsSummary(of: try SpeechFixtures.text(input["reply"]),
+                                          speakSummaries: try SpeechFixtures.bool(input["speakSummaries"])))
         }
     }
 
@@ -69,13 +87,13 @@ final class SpeechFixtureTests: XCTestCase {
         try play("summary-acceptance.json") { input in
             let summary = try SpeechFixtures.optionalText(input["summary"])
             let reply = try SpeechFixtures.text(input["reply"])
-            return SpeechFixtures.optional(SummaryService.usableSummary(summary, for: reply))
+            return SpeechFixtures.optional(CoreBridge.usableSummary(summary, for: reply))
         } expected: { SpeechFixtures.optional(try SpeechFixtures.optionalText($0)) }
     }
 
     func testSummaryPromptTable() throws {
         try play("summary-prompt.json") { input in
-            .string(SummaryService.prompt(for: try SpeechFixtures.text(input)))
+            .string(try XCTUnwrap(CoreBridge.summaryPrompt(for: try SpeechFixtures.text(input))))
         }
     }
 
@@ -83,7 +101,7 @@ final class SpeechFixtureTests: XCTestCase {
 
     func testVoiceLanguageTable() throws {
         try play("voice-language.json") { input in
-            .string(TTSService.voiceLanguage(for: try SpeechFixtures.text(input["text"]),
+            .string(CoreBridge.voiceLanguage(for: try SpeechFixtures.text(input["text"]),
                                              language: try SpeechFixtures.optionalText(input["language"])))
         }
     }
