@@ -1178,6 +1178,13 @@ final class AppState: ObservableObject {
     /// shorter is faster to just speak in full.
     private static let summaryMinimumReplyLength = 350
 
+    /// Whether a completed reply goes to the summarizer instead of being
+    /// spoken in full: Spoken Summaries on, and at least
+    /// `summaryMinimumReplyLength` Characters (extended grapheme clusters).
+    static func wantsSummary(of reply: String, speakSummaries: Bool) -> Bool {
+        speakSummaries && reply.count >= summaryMinimumReplyLength
+    }
+
     /// Speaks a completed reply. Normally that's the reply itself
     /// (markdown-stripped, truncated per settings). With Spoken Summaries on
     /// and a long reply, a lightweight model writes a 1-2 sentence conclusion
@@ -1189,7 +1196,7 @@ final class AppState: ObservableObject {
         guard configStore.config.ttsEnabled, !reply.isEmpty else { return }
 
         let config = configStore.config
-        guard config.speakSummaries, reply.count >= AppState.summaryMinimumReplyLength else {
+        guard AppState.wantsSummary(of: reply, speakSummaries: config.speakSummaries) else {
             speakFullReply(reply)
             return
         }

@@ -1,0 +1,880 @@
+{
+  "description": "Agreement between the Swift app's language decision (NLLanguageRecognizer under the gates of language.json) and the Rust core's (a Rust detector under the same gates), on natural sentences of the kind replies hold (spec #100 slice 2.5, ticket #160; ADR 0011: the speech text rules are shared, the engines and voices are per OS). expected.swift is the decision the Swift app made (a language code, or null for undecided, read as English). A Rust decision that differs is either resolved toward the Swift one or recorded as an accepted difference: expected gains \"core\" with the core's decision, the reason says why the difference is accepted, and the ledger names it. The corpus covers en, de, fr, es, it, pt, nl, simplified and traditional Chinese, ja, ko, mixed CJK and Latin, short strings, Han-only text, text that is no language, and code-heavy prose.",
+  "function": "TTSService.dominantLanguageCode(of:) — input the text, expected {swift} (plus core for an accepted difference), each a language code or null",
+  "verifiedBy": "DESIGN.md v1.2 A, v2.14; Tests/PowerUpTests/SpeechFixtureTests.swift testLanguageAgreementTable plays it through TTSService.dominantLanguageCode(of:) and compares expected.swift.",
+  "capturedAgainst": "Swift 5.9.2 Foundation and NaturalLanguage (Xcode 15.2) on macOS 27.2, PowerUp at 67659a4",
+  "cases": [
+    {
+      "name": "en: I refactored the parser so it handles empty arrays, and eve…",
+      "input": "I refactored the parser so it handles empty arrays, and every test passes now.",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "A clear English reply routes to an English voice. Swift: NLLanguageRecognizer says English at 1.00 with 63 letters; the gates admit it: en."
+    },
+    {
+      "name": "en: The build failed because the linker could not find the Rust…",
+      "input": "The build failed because the linker could not find the Rust core library.",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "A clear English reply routes to an English voice. Swift: NLLanguageRecognizer says English at 1.00 with 60 letters; the gates admit it: en."
+    },
+    {
+      "name": "en: I added a retry with exponential backoff to the network cli…",
+      "input": "I added a retry with exponential backoff to the network client.",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "A clear English reply routes to an English voice. Swift: NLLanguageRecognizer says English at 1.00 with 52 letters; the gates admit it: en."
+    },
+    {
+      "name": "en: Could you confirm whether the migration should also rename…",
+      "input": "Could you confirm whether the migration should also rename the old columns?",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "A clear English reply routes to an English voice. Swift: NLLanguageRecognizer says English at 1.00 with 63 letters; the gates admit it: en."
+    },
+    {
+      "name": "en: Done. I updated the README and pushed nothing, as you asked.",
+      "input": "Done. I updated the README and pushed nothing, as you asked.",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "A clear English reply routes to an English voice. Swift: NLLanguageRecognizer says English at 1.00 with 47 letters; the gates admit it: en."
+    },
+    {
+      "name": "en: There are three failing tests, all in the transcript store,…",
+      "input": "There are three failing tests, all in the transcript store, and they share one cause.",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "A clear English reply routes to an English voice. Swift: NLLanguageRecognizer says English at 1.00 with 68 letters; the gates admit it: en."
+    },
+    {
+      "name": "en: The function now returns early when the input is empty, whi…",
+      "input": "The function now returns early when the input is empty, which fixes the crash.",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "A clear English reply routes to an English voice. Swift: NLLanguageRecognizer says English at 1.00 with 63 letters; the gates admit it: en."
+    },
+    {
+      "name": "en: I could not reproduce the hang on my side; can you share th…",
+      "input": "I could not reproduce the hang on my side; can you share the log from your run?",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "A clear English reply routes to an English voice. Swift: NLLanguageRecognizer says English at 1.00 with 61 letters; the gates admit it: en."
+    },
+    {
+      "name": "en: Let me know if you want me to split this change into smalle…",
+      "input": "Let me know if you want me to split this change into smaller commits.",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "A clear English reply routes to an English voice. Swift: NLLanguageRecognizer says English at 1.00 with 55 letters; the gates admit it: en."
+    },
+    {
+      "name": "en: Everything compiles cleanly and the warnings about unused v…",
+      "input": "Everything compiles cleanly and the warnings about unused variables are gone.",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "A clear English reply routes to an English voice. Swift: NLLanguageRecognizer says English at 1.00 with 66 letters; the gates admit it: en."
+    },
+    {
+      "name": "de: Ich habe den Parser überarbeitet, und jetzt laufen alle Tes…",
+      "input": "Ich habe den Parser überarbeitet, und jetzt laufen alle Tests ohne Fehler durch.",
+      "expected": {
+        "swift": "de"
+      },
+      "reason": "A clear German reply routes to a German voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says German at 1.00 with 66 letters; the gates admit it: de."
+    },
+    {
+      "name": "de: Der Build ist fehlgeschlagen, weil die Bibliothek nicht gef…",
+      "input": "Der Build ist fehlgeschlagen, weil die Bibliothek nicht gefunden wurde.",
+      "expected": {
+        "swift": "de"
+      },
+      "reason": "A clear German reply routes to a German voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says German at 1.00 with 60 letters; the gates admit it: de."
+    },
+    {
+      "name": "de: Soll ich die alten Spalten bei der Migration ebenfalls umbe…",
+      "input": "Soll ich die alten Spalten bei der Migration ebenfalls umbenennen?",
+      "expected": {
+        "swift": "de"
+      },
+      "reason": "A clear German reply routes to a German voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says German at 1.00 with 56 letters; the gates admit it: de."
+    },
+    {
+      "name": "de: Die Funktion gibt jetzt früh zurück, wenn die Eingabe leer…",
+      "input": "Die Funktion gibt jetzt früh zurück, wenn die Eingabe leer ist.",
+      "expected": {
+        "swift": "de"
+      },
+      "reason": "A clear German reply routes to a German voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says German at 1.00 with 51 letters; the gates admit it: de."
+    },
+    {
+      "name": "de: Ich konnte das Problem auf meinem Rechner leider nicht nach…",
+      "input": "Ich konnte das Problem auf meinem Rechner leider nicht nachstellen.",
+      "expected": {
+        "swift": "de"
+      },
+      "reason": "A clear German reply routes to a German voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says German at 1.00 with 57 letters; the gates admit it: de."
+    },
+    {
+      "name": "de: Alle Warnungen wegen unbenutzter Variablen sind jetzt versc…",
+      "input": "Alle Warnungen wegen unbenutzter Variablen sind jetzt verschwunden.",
+      "expected": {
+        "swift": "de"
+      },
+      "reason": "A clear German reply routes to a German voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says German at 1.00 with 59 letters; the gates admit it: de."
+    },
+    {
+      "name": "de: Bitte prüfe, ob die neue Konfiguration für dich so passt.",
+      "input": "Bitte prüfe, ob die neue Konfiguration für dich so passt.",
+      "expected": {
+        "swift": "de"
+      },
+      "reason": "A clear German reply routes to a German voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says German at 1.00 with 46 letters; the gates admit it: de."
+    },
+    {
+      "name": "fr: J'ai corrigé la fonction parseJSON et tous les tests passen…",
+      "input": "J'ai corrigé la fonction parseJSON et tous les tests passent maintenant.",
+      "expected": {
+        "swift": "fr"
+      },
+      "reason": "A clear French reply routes to a French voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says French at 1.00 with 60 letters; the gates admit it: fr."
+    },
+    {
+      "name": "fr: La compilation a échoué parce que l'éditeur de liens ne tro…",
+      "input": "La compilation a échoué parce que l'éditeur de liens ne trouve pas la bibliothèque.",
+      "expected": {
+        "swift": "fr"
+      },
+      "reason": "A clear French reply routes to a French voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says French at 1.00 with 68 letters; the gates admit it: fr."
+    },
+    {
+      "name": "fr: Voulez-vous que je renomme aussi les anciennes colonnes pen…",
+      "input": "Voulez-vous que je renomme aussi les anciennes colonnes pendant la migration ?",
+      "expected": {
+        "swift": "fr"
+      },
+      "reason": "A clear French reply routes to a French voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says French at 1.00 with 65 letters; the gates admit it: fr."
+    },
+    {
+      "name": "fr: La fonction retourne maintenant plus tôt quand l'entrée est…",
+      "input": "La fonction retourne maintenant plus tôt quand l'entrée est vide.",
+      "expected": {
+        "swift": "fr"
+      },
+      "reason": "A clear French reply routes to a French voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says French at 1.00 with 54 letters; the gates admit it: fr."
+    },
+    {
+      "name": "fr: Je n'ai pas pu reproduire le blocage de mon côté, pouvez-vo…",
+      "input": "Je n'ai pas pu reproduire le blocage de mon côté, pouvez-vous partager le journal ?",
+      "expected": {
+        "swift": "fr"
+      },
+      "reason": "A clear French reply routes to a French voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says French at 1.00 with 65 letters; the gates admit it: fr."
+    },
+    {
+      "name": "fr: Tout compile proprement et les avertissements ont disparu.",
+      "input": "Tout compile proprement et les avertissements ont disparu.",
+      "expected": {
+        "swift": "fr"
+      },
+      "reason": "A clear French reply routes to a French voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says French at 1.00 with 50 letters; the gates admit it: fr."
+    },
+    {
+      "name": "fr: Dites-moi si vous préférez découper ce changement en plusie…",
+      "input": "Dites-moi si vous préférez découper ce changement en plusieurs commits.",
+      "expected": {
+        "swift": "fr"
+      },
+      "reason": "A clear French reply routes to a French voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says French at 1.00 with 60 letters; the gates admit it: fr."
+    },
+    {
+      "name": "es: He corregido el analizador y ahora todas las pruebas pasan…",
+      "input": "He corregido el analizador y ahora todas las pruebas pasan sin errores.",
+      "expected": {
+        "swift": "es"
+      },
+      "reason": "A clear Spanish reply routes to a Spanish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Spanish at 1.00 with 59 letters; the gates admit it: es."
+    },
+    {
+      "name": "es: La compilación falló porque el enlazador no encontró la bib…",
+      "input": "La compilación falló porque el enlazador no encontró la biblioteca.",
+      "expected": {
+        "swift": "es"
+      },
+      "reason": "A clear Spanish reply routes to a Spanish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Spanish at 1.00 with 57 letters; the gates admit it: es."
+    },
+    {
+      "name": "es: ¿Quieres que también cambie el nombre de las columnas antig…",
+      "input": "¿Quieres que también cambie el nombre de las columnas antiguas en la migración?",
+      "expected": {
+        "swift": "es"
+      },
+      "reason": "A clear Spanish reply routes to a Spanish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Spanish at 0.99 with 65 letters; the gates admit it: es."
+    },
+    {
+      "name": "es: La función ahora devuelve antes cuando la entrada está vací…",
+      "input": "La función ahora devuelve antes cuando la entrada está vacía.",
+      "expected": {
+        "swift": "es"
+      },
+      "reason": "A clear Spanish reply routes to a Spanish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Spanish at 1.00 with 51 letters; the gates admit it: es."
+    },
+    {
+      "name": "es: No pude reproducir el bloqueo en mi equipo; ¿puedes compart…",
+      "input": "No pude reproducir el bloqueo en mi equipo; ¿puedes compartir el registro?",
+      "expected": {
+        "swift": "es"
+      },
+      "reason": "A clear Spanish reply routes to a Spanish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Spanish at 1.00 with 60 letters; the gates admit it: es."
+    },
+    {
+      "name": "es: Todo compila correctamente y las advertencias han desaparec…",
+      "input": "Todo compila correctamente y las advertencias han desaparecido.",
+      "expected": {
+        "swift": "es"
+      },
+      "reason": "A clear Spanish reply routes to a Spanish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Spanish at 1.00 with 55 letters; the gates admit it: es."
+    },
+    {
+      "name": "es: Avísame si prefieres dividir este cambio en varios commits…",
+      "input": "Avísame si prefieres dividir este cambio en varios commits más pequeños.",
+      "expected": {
+        "swift": "es"
+      },
+      "reason": "A clear Spanish reply routes to a Spanish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Spanish at 1.00 with 61 letters; the gates admit it: es."
+    },
+    {
+      "name": "it: Ho corretto la funzione e ora tutti i test passano senza al…",
+      "input": "Ho corretto la funzione e ora tutti i test passano senza alcun problema.",
+      "expected": {
+        "swift": "it"
+      },
+      "reason": "A clear Italian reply routes to a Italian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Italian at 1.00 with 59 letters; the gates admit it: it."
+    },
+    {
+      "name": "it: La compilazione non è riuscita perché il linker non trova l…",
+      "input": "La compilazione non è riuscita perché il linker non trova la libreria.",
+      "expected": {
+        "swift": "it"
+      },
+      "reason": "A clear Italian reply routes to a Italian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Italian at 1.00 with 58 letters; the gates admit it: it."
+    },
+    {
+      "name": "it: Vuoi che rinomini anche le vecchie colonne durante la migra…",
+      "input": "Vuoi che rinomini anche le vecchie colonne durante la migrazione?",
+      "expected": {
+        "swift": "it"
+      },
+      "reason": "A clear Italian reply routes to a Italian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Italian at 1.00 with 55 letters; the gates admit it: it."
+    },
+    {
+      "name": "it: La funzione ora ritorna subito quando l'input è vuoto, e il…",
+      "input": "La funzione ora ritorna subito quando l'input è vuoto, e il crash è risolto.",
+      "expected": {
+        "swift": "it"
+      },
+      "reason": "A clear Italian reply routes to a Italian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Italian at 1.00 with 60 letters; the gates admit it: it."
+    },
+    {
+      "name": "it: Non sono riuscito a riprodurre il blocco sul mio computer.",
+      "input": "Non sono riuscito a riprodurre il blocco sul mio computer.",
+      "expected": {
+        "swift": "it"
+      },
+      "reason": "A clear Italian reply routes to a Italian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Italian at 1.00 with 48 letters; the gates admit it: it."
+    },
+    {
+      "name": "it: Fammi sapere se preferisci dividere questa modifica in più…",
+      "input": "Fammi sapere se preferisci dividere questa modifica in più commit.",
+      "expected": {
+        "swift": "it"
+      },
+      "reason": "A clear Italian reply routes to a Italian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Italian at 1.00 with 56 letters; the gates admit it: it."
+    },
+    {
+      "name": "pt: Corrigi o analisador e agora todos os testes passam sem err…",
+      "input": "Corrigi o analisador e agora todos os testes passam sem erros.",
+      "expected": {
+        "swift": "pt"
+      },
+      "reason": "A clear Portuguese reply routes to a Portuguese voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Portuguese at 1.00 with 51 letters; the gates admit it: pt."
+    },
+    {
+      "name": "pt: A compilação falhou porque o vinculador não encontrou a bib…",
+      "input": "A compilação falhou porque o vinculador não encontrou a biblioteca.",
+      "expected": {
+        "swift": "pt"
+      },
+      "reason": "A clear Portuguese reply routes to a Portuguese voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Portuguese at 1.00 with 57 letters; the gates admit it: pt."
+    },
+    {
+      "name": "pt: Você quer que eu também renomeie as colunas antigas durante…",
+      "input": "Você quer que eu também renomeie as colunas antigas durante a migração?",
+      "expected": {
+        "swift": "pt"
+      },
+      "reason": "A clear Portuguese reply routes to a Portuguese voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Portuguese at 1.00 with 59 letters; the gates admit it: pt."
+    },
+    {
+      "name": "pt: A função agora retorna mais cedo quando a entrada está vazi…",
+      "input": "A função agora retorna mais cedo quando a entrada está vazia.",
+      "expected": {
+        "swift": "pt"
+      },
+      "reason": "A clear Portuguese reply routes to a Portuguese voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Portuguese at 1.00 with 50 letters; the gates admit it: pt."
+    },
+    {
+      "name": "pt: Não consegui reproduzir o travamento no meu computador.",
+      "input": "Não consegui reproduzir o travamento no meu computador.",
+      "expected": {
+        "swift": "pt"
+      },
+      "reason": "A clear Portuguese reply routes to a Portuguese voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Portuguese at 1.00 with 47 letters; the gates admit it: pt."
+    },
+    {
+      "name": "pt: Avise-me se preferir dividir esta alteração em vários commi…",
+      "input": "Avise-me se preferir dividir esta alteração em vários commits menores.",
+      "expected": {
+        "swift": "pt"
+      },
+      "reason": "A clear Portuguese reply routes to a Portuguese voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Portuguese at 1.00 with 59 letters; the gates admit it: pt."
+    },
+    {
+      "name": "nl: Ik heb de parser aangepast en nu slagen alle tests zonder f…",
+      "input": "Ik heb de parser aangepast en nu slagen alle tests zonder fouten.",
+      "expected": {
+        "swift": "nl"
+      },
+      "reason": "A clear Dutch reply routes to a Dutch voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Dutch at 1.00 with 53 letters; the gates admit it: nl."
+    },
+    {
+      "name": "nl: De build is mislukt omdat de linker de bibliotheek niet kon…",
+      "input": "De build is mislukt omdat de linker de bibliotheek niet kon vinden.",
+      "expected": {
+        "swift": "nl"
+      },
+      "reason": "A clear Dutch reply routes to a Dutch voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Dutch at 1.00 with 55 letters; the gates admit it: nl."
+    },
+    {
+      "name": "nl: Wil je dat ik de oude kolommen tijdens de migratie ook hern…",
+      "input": "Wil je dat ik de oude kolommen tijdens de migratie ook hernoem?",
+      "expected": {
+        "swift": "nl"
+      },
+      "reason": "A clear Dutch reply routes to a Dutch voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Dutch at 1.00 with 51 letters; the gates admit it: nl."
+    },
+    {
+      "name": "nl: De functie geeft nu meteen terug als de invoer leeg is.",
+      "input": "De functie geeft nu meteen terug als de invoer leeg is.",
+      "expected": {
+        "swift": "nl"
+      },
+      "reason": "A clear Dutch reply routes to a Dutch voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Dutch at 1.00 with 44 letters; the gates admit it: nl."
+    },
+    {
+      "name": "nl: Ik kon het probleem op mijn computer helaas niet reproducer…",
+      "input": "Ik kon het probleem op mijn computer helaas niet reproduceren.",
+      "expected": {
+        "swift": "nl"
+      },
+      "reason": "A clear Dutch reply routes to a Dutch voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Dutch at 1.00 with 52 letters; the gates admit it: nl."
+    },
+    {
+      "name": "nl: Laat het me weten als je deze wijziging liever in kleinere…",
+      "input": "Laat het me weten als je deze wijziging liever in kleinere commits opsplitst.",
+      "expected": {
+        "swift": "nl"
+      },
+      "reason": "A clear Dutch reply routes to a Dutch voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Dutch at 1.00 with 64 letters; the gates admit it: nl."
+    },
+    {
+      "name": "zh-Hans: 我重构了解析器，现在所有测试都通过了。",
+      "input": "我重构了解析器，现在所有测试都通过了。",
+      "expected": {
+        "swift": "zh"
+      },
+      "reason": "Simplified Chinese is zh; the simplified-or-traditional region is voice resolution and stays with the platform (HK-335). Swift: NLLanguageRecognizer says Simplified Chinese at 1.00 with 17 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "zh-Hans: 构建失败了，因为链接器找不到核心库。",
+      "input": "构建失败了，因为链接器找不到核心库。",
+      "expected": {
+        "swift": "zh"
+      },
+      "reason": "Simplified Chinese is zh; the simplified-or-traditional region is voice resolution and stays with the platform (HK-335). Swift: NLLanguageRecognizer says Simplified Chinese at 1.00 with 16 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "zh-Hans: 你希望我在迁移时也重命名旧的列吗？",
+      "input": "你希望我在迁移时也重命名旧的列吗？",
+      "expected": {
+        "swift": "zh"
+      },
+      "reason": "Simplified Chinese is zh; the simplified-or-traditional region is voice resolution and stays with the platform (HK-335). Swift: NLLanguageRecognizer says Simplified Chinese at 1.00 with 16 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "zh-Hans: 现在输入为空时函数会提前返回，崩溃已经修复。",
+      "input": "现在输入为空时函数会提前返回，崩溃已经修复。",
+      "expected": {
+        "swift": "zh"
+      },
+      "reason": "Simplified Chinese is zh; the simplified-or-traditional region is voice resolution and stays with the platform (HK-335). Swift: NLLanguageRecognizer says Simplified Chinese at 1.00 with 20 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "zh-Hans: 我在本机上无法复现这个卡死问题，能把日志发给我吗？",
+      "input": "我在本机上无法复现这个卡死问题，能把日志发给我吗？",
+      "expected": {
+        "swift": "zh"
+      },
+      "reason": "Simplified Chinese is zh; the simplified-or-traditional region is voice resolution and stays with the platform (HK-335). Swift: NLLanguageRecognizer says Simplified Chinese at 1.00 with 23 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "zh-Hans: 好的。",
+      "input": "好的。",
+      "expected": {
+        "swift": "zh"
+      },
+      "reason": "Simplified Chinese is zh; the simplified-or-traditional region is voice resolution and stays with the platform (HK-335). Swift: NLLanguageRecognizer says Traditional Chinese at 0.57 with 2 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "zh-Hans: 完成",
+      "input": "完成",
+      "expected": {
+        "swift": "zh"
+      },
+      "reason": "Simplified Chinese is zh; the simplified-or-traditional region is voice resolution and stays with the platform (HK-335). Swift: NLLanguageRecognizer says Traditional Chinese at 0.50 with 2 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "zh-Hant: 我重構了解析器，現在所有測試都通過了。",
+      "input": "我重構了解析器，現在所有測試都通過了。",
+      "expected": {
+        "swift": "zh"
+      },
+      "reason": "Traditional Chinese is zh too; the region is voice resolution and stays with the platform (HK-335). Swift: NLLanguageRecognizer says Traditional Chinese at 0.91 with 17 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "zh-Hant: 建置失敗了，因為連結器找不到核心函式庫。",
+      "input": "建置失敗了，因為連結器找不到核心函式庫。",
+      "expected": {
+        "swift": "zh"
+      },
+      "reason": "Traditional Chinese is zh too; the region is voice resolution and stays with the platform (HK-335). Swift: NLLanguageRecognizer says Traditional Chinese at 0.96 with 18 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "zh-Hant: 你希望我在遷移時也重新命名舊的欄位嗎？",
+      "input": "你希望我在遷移時也重新命名舊的欄位嗎？",
+      "expected": {
+        "swift": "zh"
+      },
+      "reason": "Traditional Chinese is zh too; the region is voice resolution and stays with the platform (HK-335). Swift: NLLanguageRecognizer says Traditional Chinese at 1.00 with 18 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "zh-Hant: 現在輸入為空時函式會提前返回，當機問題已經修正。",
+      "input": "現在輸入為空時函式會提前返回，當機問題已經修正。",
+      "expected": {
+        "swift": "zh"
+      },
+      "reason": "Traditional Chinese is zh too; the region is voice resolution and stays with the platform (HK-335). Swift: NLLanguageRecognizer says Traditional Chinese at 0.99 with 22 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "zh-Hant: 請確認新的設定是否符合你的需求。",
+      "input": "請確認新的設定是否符合你的需求。",
+      "expected": {
+        "swift": "zh"
+      },
+      "reason": "Traditional Chinese is zh too; the region is voice resolution and stays with the platform (HK-335). Swift: NLLanguageRecognizer says Traditional Chinese at 0.99 with 15 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "ja: パーサーを修正したので、すべてのテストが通るようになりました。",
+      "input": "パーサーを修正したので、すべてのテストが通るようになりました。",
+      "expected": {
+        "swift": "ja"
+      },
+      "reason": "Japanese routes to a Japanese voice. Swift: NLLanguageRecognizer says Japanese at 1.00 with 29 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "ja: リンカーがライブラリを見つけられなかったため、ビルドに失敗しました。",
+      "input": "リンカーがライブラリを見つけられなかったため、ビルドに失敗しました。",
+      "expected": {
+        "swift": "ja"
+      },
+      "reason": "Japanese routes to a Japanese voice. Swift: NLLanguageRecognizer says Japanese at 1.00 with 32 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "ja: 移行の際に古い列の名前も変更しますか？",
+      "input": "移行の際に古い列の名前も変更しますか？",
+      "expected": {
+        "swift": "ja"
+      },
+      "reason": "Japanese routes to a Japanese voice. Swift: NLLanguageRecognizer says Japanese at 1.00 with 18 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "ja: 入力が空のときは関数がすぐに戻るようにしました。",
+      "input": "入力が空のときは関数がすぐに戻るようにしました。",
+      "expected": {
+        "swift": "ja"
+      },
+      "reason": "Japanese routes to a Japanese voice. Swift: NLLanguageRecognizer says Japanese at 1.00 with 23 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "ja: 東京で会議があります。",
+      "input": "東京で会議があります。",
+      "expected": {
+        "swift": "ja"
+      },
+      "reason": "Japanese routes to a Japanese voice. Swift: NLLanguageRecognizer says Japanese at 1.00 with 10 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "ja: 完了しました。",
+      "input": "完了しました。",
+      "expected": {
+        "swift": "ja"
+      },
+      "reason": "Japanese routes to a Japanese voice. Swift: NLLanguageRecognizer says Japanese at 1.00 with 6 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "ko: 파서를 수정했고 이제 모든 테스트가 통과합니다.",
+      "input": "파서를 수정했고 이제 모든 테스트가 통과합니다.",
+      "expected": {
+        "swift": "ko"
+      },
+      "reason": "Korean routes to a Korean voice. Swift: NLLanguageRecognizer says Korean at 1.00 with 20 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "ko: 링커가 라이브러리를 찾지 못해서 빌드가 실패했습니다.",
+      "input": "링커가 라이브러리를 찾지 못해서 빌드가 실패했습니다.",
+      "expected": {
+        "swift": "ko"
+      },
+      "reason": "Korean routes to a Korean voice. Swift: NLLanguageRecognizer says Korean at 1.00 with 23 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "ko: 마이그레이션할 때 예전 열의 이름도 바꿀까요?",
+      "input": "마이그레이션할 때 예전 열의 이름도 바꿀까요?",
+      "expected": {
+        "swift": "ko"
+      },
+      "reason": "Korean routes to a Korean voice. Swift: NLLanguageRecognizer says Korean at 1.00 with 19 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "ko: 입력이 비어 있으면 함수가 바로 반환하도록 고쳤습니다.",
+      "input": "입력이 비어 있으면 함수가 바로 반환하도록 고쳤습니다.",
+      "expected": {
+        "swift": "ko"
+      },
+      "reason": "Korean routes to a Korean voice. Swift: NLLanguageRecognizer says Korean at 1.00 with 23 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "ko: 완료했습니다.",
+      "input": "완료했습니다.",
+      "expected": {
+        "swift": "ko"
+      },
+      "reason": "Korean routes to a Korean voice. Swift: NLLanguageRecognizer says Korean at 1.00 with 6 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "ko: 韓國語와 한국어를 함께 씁니다.",
+      "input": "韓國語와 한국어를 함께 씁니다.",
+      "expected": {
+        "swift": "ko"
+      },
+      "reason": "Korean routes to a Korean voice. Swift: NLLanguageRecognizer says Korean at 1.00 with 13 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "mixed: 我修改了 parseJSON() 函数",
+      "input": "我修改了 parseJSON() 函数",
+      "expected": {
+        "swift": "zh"
+      },
+      "reason": "Mixed CJK and Latin text: script evidence decides once CJK is at least 20% of the letters (HK-212). Swift: NLLanguageRecognizer says Turkish at 0.25 with 15 letters; script evidence gives zh."
+    },
+    {
+      "name": "mixed: 已经把 README.md 和 CONTRIBUTING.md 都更新了。",
+      "input": "已经把 README.md 和 CONTRIBUTING.md 都更新了。",
+      "expected": {
+        "swift": "zh"
+      },
+      "reason": "Mixed CJK and Latin text: script evidence decides once CJK is at least 20% of the letters (HK-212). Swift: NLLanguageRecognizer says English at 1.00 with 30 letters; script evidence gives zh."
+    },
+    {
+      "name": "mixed: 请运行 swift test --filter SpeechFixtureTests 来验证。",
+      "input": "请运行 swift test --filter SpeechFixtureTests 来验证。",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "Mixed CJK and Latin text: script evidence decides once CJK is at least 20% of the letters (HK-212). Swift: NLLanguageRecognizer says English at 0.77 with 39 letters; the gates admit it: en."
+    },
+    {
+      "name": "mixed: ビルドは swift build で実行してください。",
+      "input": "ビルドは swift build で実行してください。",
+      "expected": {
+        "swift": "ja"
+      },
+      "reason": "Mixed CJK and Latin text: script evidence decides once CJK is at least 20% of the letters (HK-212). Swift: NLLanguageRecognizer says Japanese at 1.00 with 23 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "mixed: PR #160 のレビューをお願いします。",
+      "input": "PR #160 のレビューをお願いします。",
+      "expected": {
+        "swift": "ja"
+      },
+      "reason": "Mixed CJK and Latin text: script evidence decides once CJK is at least 20% of the letters (HK-212). Swift: NLLanguageRecognizer says Japanese at 1.00 with 14 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "mixed: cargo test 명령으로 테스트를 실행하세요.",
+      "input": "cargo test 명령으로 테스트를 실행하세요.",
+      "expected": {
+        "swift": "ko"
+      },
+      "reason": "Mixed CJK and Latin text: script evidence decides once CJK is at least 20% of the letters (HK-212). Swift: NLLanguageRecognizer says Korean at 1.00 with 22 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "mixed: The variable named 中 is renamed everywhere in the file,…",
+      "input": "The variable named 中 is renamed everywhere in the file, and the build now passes cleanly.",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "Mixed CJK and Latin text: script evidence decides once CJK is at least 20% of the letters (HK-212). Swift: NLLanguageRecognizer says English at 1.00 with 72 letters; the gates admit it: en."
+    },
+    {
+      "name": "mixed: The Japanese word テスト means test, and the build still pa…",
+      "input": "The Japanese word テスト means test, and the build still passes.",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "Mixed CJK and Latin text: script evidence decides once CJK is at least 20% of the letters (HK-212). Swift: NLLanguageRecognizer says English at 1.00 with 49 letters; the gates admit it: en."
+    },
+    {
+      "name": "mixed: Use the 设置 page to pick a voice for every language you r…",
+      "input": "Use the 设置 page to pick a voice for every language you read.",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "Mixed CJK and Latin text: script evidence decides once CJK is at least 20% of the letters (HK-212). Swift: NLLanguageRecognizer says English at 1.00 with 47 letters; the gates admit it: en."
+    },
+    {
+      "name": "mixed: Fixed the bug in 解析器 module.",
+      "input": "Fixed the bug in 解析器 module.",
+      "expected": {
+        "swift": null
+      },
+      "reason": "Mixed CJK and Latin text: script evidence decides once CJK is at least 20% of the letters (HK-212). Swift: NLLanguageRecognizer says English at 0.99 with 22 letters; that is under 25 letters, so it is undecided."
+    },
+    {
+      "name": "short: OK",
+      "input": "OK",
+      "expected": {
+        "swift": null
+      },
+      "reason": "A short string must not route to a foreign voice (HK-213). Swift: NLLanguageRecognizer says Polish at 0.29 with 2 letters; that is under 25 letters, so it is undecided."
+    },
+    {
+      "name": "short: Done.",
+      "input": "Done.",
+      "expected": {
+        "swift": null
+      },
+      "reason": "A short string must not route to a foreign voice (HK-213). Swift: NLLanguageRecognizer says English at 0.45 with 4 letters; that is under 25 letters, so it is undecided."
+    },
+    {
+      "name": "short: Model: Sonnet",
+      "input": "Model: Sonnet",
+      "expected": {
+        "swift": null
+      },
+      "reason": "A short string must not route to a foreign voice (HK-213). Swift: NLLanguageRecognizer says German at 0.27 with 11 letters; that is under 25 letters, so it is undecided."
+    },
+    {
+      "name": "short: Effort: high",
+      "input": "Effort: high",
+      "expected": {
+        "swift": null
+      },
+      "reason": "A short string must not route to a foreign voice (HK-213). Swift: NLLanguageRecognizer says English at 0.94 with 10 letters; that is under 25 letters, so it is undecided."
+    },
+    {
+      "name": "short: Yes",
+      "input": "Yes",
+      "expected": {
+        "swift": null
+      },
+      "reason": "A short string must not route to a foreign voice (HK-213). Swift: NLLanguageRecognizer says English at 0.90 with 3 letters; that is under 25 letters, so it is undecided."
+    },
+    {
+      "name": "short: Ja, genau.",
+      "input": "Ja, genau.",
+      "expected": {
+        "swift": null
+      },
+      "reason": "A short string must not route to a foreign voice (HK-213). Swift: NLLanguageRecognizer says German at 0.95 with 7 letters; that is under 25 letters, so it is undecided."
+    },
+    {
+      "name": "short: Merci beaucoup !",
+      "input": "Merci beaucoup !",
+      "expected": {
+        "swift": null
+      },
+      "reason": "A short string must not route to a foreign voice (HK-213). Swift: NLLanguageRecognizer says French at 0.94 with 13 letters; that is under 25 letters, so it is undecided."
+    },
+    {
+      "name": "short: Listo.",
+      "input": "Listo.",
+      "expected": {
+        "swift": null
+      },
+      "reason": "A short string must not route to a foreign voice (HK-213). Swift: NLLanguageRecognizer says Italian at 0.38 with 5 letters; that is under 25 letters, so it is undecided."
+    },
+    {
+      "name": "short: Tests pass.",
+      "input": "Tests pass.",
+      "expected": {
+        "swift": null
+      },
+      "reason": "A short string must not route to a foreign voice (HK-213). Swift: NLLanguageRecognizer says English at 0.50 with 9 letters; that is under 25 letters, so it is undecided."
+    },
+    {
+      "name": "short: I fixed it.",
+      "input": "I fixed it.",
+      "expected": {
+        "swift": null
+      },
+      "reason": "A short string must not route to a foreign voice (HK-213). Swift: NLLanguageRecognizer says English at 0.99 with 8 letters; that is under 25 letters, so it is undecided."
+    },
+    {
+      "name": "han: 東京駅",
+      "input": "東京駅",
+      "expected": {
+        "swift": "ja"
+      },
+      "reason": "Han-only text: a recognizer answer of zh, ja or ko is trusted whatever its confidence, so Han with no kana can still read as ja (HK-212). Swift: NLLanguageRecognizer says Japanese at 1.00 with 3 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "han: 日本語",
+      "input": "日本語",
+      "expected": {
+        "swift": "ja"
+      },
+      "reason": "Han-only text: a recognizer answer of zh, ja or ko is trusted whatever its confidence, so Han with no kana can still read as ja (HK-212). Swift: NLLanguageRecognizer says Japanese at 0.58 with 3 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "han: 新幹線",
+      "input": "新幹線",
+      "expected": {
+        "swift": "ja"
+      },
+      "reason": "Han-only text: a recognizer answer of zh, ja or ko is trusted whatever its confidence, so Han with no kana can still read as ja (HK-212). Swift: NLLanguageRecognizer says Japanese at 0.66 with 3 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "han: 大丈夫",
+      "input": "大丈夫",
+      "expected": {
+        "swift": "zh"
+      },
+      "reason": "Han-only text: a recognizer answer of zh, ja or ko is trusted whatever its confidence, so Han with no kana can still read as ja (HK-212). Swift: NLLanguageRecognizer says Traditional Chinese at 0.44 with 3 letters; its CJK answer is trusted."
+    },
+    {
+      "name": "gate: parseJSON fetchData renderView updateState",
+      "input": "parseJSON fetchData renderView updateState",
+      "expected": {
+        "swift": null
+      },
+      "reason": "Text that is no language meets the Latin gates (HK-213). Swift: NLLanguageRecognizer says Indonesian at 0.20 with 39 letters; 0.20 is not above 0.7, so it is undecided."
+    },
+    {
+      "name": "gate: Sonnet Opus Haiku Claude Model Effort Default",
+      "input": "Sonnet Opus Haiku Claude Model Effort Default",
+      "expected": {
+        "swift": null
+      },
+      "reason": "Text that is no language meets the Latin gates (HK-213). Swift: NLLanguageRecognizer says English at 0.57 with 39 letters; 0.57 is not above 0.7, so it is undecided."
+    },
+    {
+      "name": "gate: Model Sonnet Effort High Permission Default Mode",
+      "input": "Model Sonnet Effort High Permission Default Mode",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "Text that is no language meets the Latin gates (HK-213). Swift: NLLanguageRecognizer says English at 0.87 with 42 letters; the gates admit it: en."
+    },
+    {
+      "name": "gate: Ni hao, wo shi zhongguo ren, xie xie ni.",
+      "input": "Ni hao, wo shi zhongguo ren, xie xie ni.",
+      "expected": {
+        "swift": null
+      },
+      "reason": "Text that is no language meets the Latin gates (HK-213). Swift: NLLanguageRecognizer says Indonesian at 0.21 with 29 letters; 0.21 is not above 0.7, so it is undecided."
+    },
+    {
+      "name": "code: Call fetchUserProfile(id:) then updateCache(for:) and fin…",
+      "input": "Call fetchUserProfile(id:) then updateCache(for:) and finally renderView().",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "Code-heavy prose without fences: identifiers count as letters (HK-213, HK-214). Swift: NLLanguageRecognizer says English at 0.97 with 60 letters; the gates admit it: en."
+    },
+    {
+      "name": "code: let result = try decoder.decode(Config.self, from: data)…",
+      "input": "let result = try decoder.decode(Config.self, from: data) // throws on bad JSON",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "Code-heavy prose without fences: identifiers count as letters (HK-213, HK-214). Swift: NLLanguageRecognizer says English at 0.99 with 58 letters; the gates admit it: en."
+    },
+    {
+      "name": "code: Set PATH=/usr/local/bin:$PATH and run make install from b…",
+      "input": "Set PATH=/usr/local/bin:$PATH and run make install from build/release.",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "Code-heavy prose without fences: identifiers count as letters (HK-213, HK-214). Swift: NLLanguageRecognizer says English at 0.99 with 55 letters; the gates admit it: en."
+    },
+    {
+      "name": "code: fn main() { let x = vec![1, 2, 3]; println!(\"{:?}\", x); }",
+      "input": "fn main() { let x = vec![1, 2, 3]; println!(\"{:?}\", x); }",
+      "expected": {
+        "swift": null
+      },
+      "reason": "Code-heavy prose without fences: identifiers count as letters (HK-213, HK-214). Swift: NLLanguageRecognizer says Indonesian at 0.37 with 21 letters; that is under 25 letters, so it is undecided."
+    },
+    {
+      "name": "code: src/main.rs src/lib.rs tests/fixtures.rs Cargo.toml Cargo…",
+      "input": "src/main.rs src/lib.rs tests/fixtures.rs Cargo.toml Cargo.lock",
+      "expected": {
+        "swift": null
+      },
+      "reason": "Code-heavy prose without fences: identifiers count as letters (HK-213, HK-214). Swift: NLLanguageRecognizer says Dutch at 0.31 with 50 letters; 0.31 is not above 0.7, so it is undecided."
+    },
+    {
+      "name": "code: I renamed parse_json_value to parseJsonValue in src/parse…",
+      "input": "I renamed parse_json_value to parseJsonValue in src/parser/value.rs and updated the callers.",
+      "expected": {
+        "swift": "en"
+      },
+      "reason": "Code-heavy prose without fences: identifiers count as letters (HK-213, HK-214). Swift: NLLanguageRecognizer says English at 1.00 with 76 letters; the gates admit it: en."
+    },
+    {
+      "name": "code: Ich habe parse_json_value in src/parser/value.rs umbenann…",
+      "input": "Ich habe parse_json_value in src/parser/value.rs umbenannt und alle Aufrufer angepasst.",
+      "expected": {
+        "swift": "de"
+      },
+      "reason": "Code-heavy prose without fences: identifiers count as letters (HK-213, HK-214). Swift: NLLanguageRecognizer says German at 1.00 with 72 letters; the gates admit it: de."
+    },
+    {
+      "name": "code: 我把 src/parser/value.rs 里的 parse_json_value 改名为 parseJsonV…",
+      "input": "我把 src/parser/value.rs 里的 parse_json_value 改名为 parseJsonValue 了。",
+      "expected": {
+        "swift": null
+      },
+      "reason": "Code-heavy prose without fences: identifiers count as letters (HK-213, HK-214). Swift: NLLanguageRecognizer says English at 0.61 with 52 letters; 0.61 is not above 0.7, so it is undecided."
+    }
+  ]
+}

@@ -1,0 +1,303 @@
+{
+  "description": "Whether the summarizer's answer is spoken (spec #100 slice 2.5, ticket #160): the answer trimmed of .whitespacesAndNewlines is used only when it is not empty and is shorter than max(200, reply.count / 2) Characters (integer division on the untrimmed reply's extended grapheme clusters, strict). Otherwise, as for no answer at all, the full reply is spoken. Markdown is not stripped here; spokenReply does that afterwards with no length cap.",
+  "function": "SummaryService.usableSummary(_:for:) — input {summary, reply} with summary a text descriptor or null and reply a text descriptor, expected the summary that is spoken (a text descriptor) or null",
+  "verifiedBy": "DESIGN.md v1.12, v2.14; Tests/PowerUpTests/SpeechFixtureTests.swift testSummaryAcceptanceTable plays it through SummaryService.usableSummary(_:for:).",
+  "capturedAgainst": "Swift 5.9.2 Foundation and NaturalLanguage (Xcode 15.2) on macOS 27.2, PowerUp at 67659a4",
+  "cases": [
+    {
+      "name": "no summary falls back",
+      "input": {
+        "summary": null,
+        "reply": "A long reply."
+      },
+      "expected": null,
+      "reason": "A failed or timed-out summarizer gives nil and the full reply is spoken (HK-171)."
+    },
+    {
+      "name": "an empty summary falls back",
+      "input": {
+        "summary": "",
+        "reply": "A long reply."
+      },
+      "expected": null,
+      "reason": "An empty answer is a failure (HK-170)."
+    },
+    {
+      "name": "a whitespace summary falls back",
+      "input": {
+        "summary": " \n\t ",
+        "reply": "A long reply."
+      },
+      "expected": null,
+      "reason": "An answer that trims to nothing is a failure (HK-170)."
+    },
+    {
+      "name": "a short summary is used trimmed",
+      "input": {
+        "summary": "  The parser is fixed.\n",
+        "reply": [
+          {
+            "repeat": "a",
+            "times": 1000
+          }
+        ]
+      },
+      "expected": "The parser is fixed.",
+      "reason": "A usable summary is spoken trimmed of whitespace and newlines (HK-170)."
+    },
+    {
+      "name": "199 Characters against a short reply is used",
+      "input": {
+        "summary": [
+          {
+            "repeat": "s",
+            "times": 199
+          }
+        ],
+        "reply": [
+          {
+            "repeat": "a",
+            "times": 100
+          }
+        ]
+      },
+      "expected": [
+        {
+          "repeat": "s",
+          "times": 199
+        }
+      ],
+      "reason": "max(200, reply.count / 2) is 200 for a short reply, and 199 is under it (HK-170)."
+    },
+    {
+      "name": "200 Characters against a short reply falls back",
+      "input": {
+        "summary": [
+          {
+            "repeat": "s",
+            "times": 200
+          }
+        ],
+        "reply": [
+          {
+            "repeat": "a",
+            "times": 100
+          }
+        ]
+      },
+      "expected": null,
+      "reason": "The limit is strict (HK-170)."
+    },
+    {
+      "name": "half the reply minus one is used",
+      "input": {
+        "summary": [
+          {
+            "repeat": "s",
+            "times": 299
+          }
+        ],
+        "reply": [
+          {
+            "repeat": "a",
+            "times": 600
+          }
+        ]
+      },
+      "expected": [
+        {
+          "repeat": "s",
+          "times": 299
+        }
+      ],
+      "reason": "For a long reply the limit is half its length (HK-170)."
+    },
+    {
+      "name": "half the reply falls back",
+      "input": {
+        "summary": [
+          {
+            "repeat": "s",
+            "times": 300
+          }
+        ],
+        "reply": [
+          {
+            "repeat": "a",
+            "times": 600
+          }
+        ]
+      },
+      "expected": null,
+      "reason": "A summary half as long as the reply is not short enough (HK-170)."
+    },
+    {
+      "name": "half of an odd reply rounds down",
+      "input": {
+        "summary": [
+          {
+            "repeat": "s",
+            "times": 300
+          }
+        ],
+        "reply": [
+          {
+            "repeat": "a",
+            "times": 601
+          }
+        ]
+      },
+      "expected": null,
+      "reason": "reply.count / 2 is integer division: 601 / 2 is 300 (HK-170)."
+    },
+    {
+      "name": "half of an odd reply rounds down, one under",
+      "input": {
+        "summary": [
+          {
+            "repeat": "s",
+            "times": 299
+          }
+        ],
+        "reply": [
+          {
+            "repeat": "a",
+            "times": 601
+          }
+        ]
+      },
+      "expected": [
+        {
+          "repeat": "s",
+          "times": 299
+        }
+      ],
+      "reason": "299 is under 601 / 2 (HK-170)."
+    },
+    {
+      "name": "the summary is measured after trimming",
+      "input": {
+        "summary": [
+          "  ",
+          {
+            "repeat": "s",
+            "times": 199
+          },
+          "  "
+        ],
+        "reply": [
+          {
+            "repeat": "a",
+            "times": 100
+          }
+        ]
+      },
+      "expected": [
+        {
+          "repeat": "s",
+          "times": 199
+        }
+      ],
+      "reason": "Padding around the summary does not count (HK-170)."
+    },
+    {
+      "name": "the reply is measured untrimmed",
+      "input": {
+        "summary": [
+          {
+            "repeat": "s",
+            "times": 250
+          }
+        ],
+        "reply": [
+          {
+            "repeat": " ",
+            "times": 300
+          },
+          {
+            "repeat": "a",
+            "times": 302
+          }
+        ]
+      },
+      "expected": [
+        {
+          "repeat": "s",
+          "times": 250
+        }
+      ],
+      "reason": "The reply's own whitespace counts toward the limit: 602 / 2 is 301 (HK-170)."
+    },
+    {
+      "name": "the summary length counts Characters",
+      "input": {
+        "summary": [
+          {
+            "repeat": "👨\u200D👩\u200D👧\u200D👦",
+            "times": 199
+          }
+        ],
+        "reply": [
+          {
+            "repeat": "a",
+            "times": 100
+          }
+        ]
+      },
+      "expected": [
+        {
+          "repeat": "👨\u200D👩\u200D👧\u200D👦",
+          "times": 199
+        }
+      ],
+      "reason": "199 ZWJ families are 199 Characters, under 200 (HK-173)."
+    },
+    {
+      "name": "the reply length counts Characters",
+      "input": {
+        "summary": [
+          {
+            "repeat": "s",
+            "times": 250
+          }
+        ],
+        "reply": [
+          {
+            "repeat": "👨\u200D👩\u200D👧\u200D👦",
+            "times": 600
+          }
+        ]
+      },
+      "expected": [
+        {
+          "repeat": "s",
+          "times": 250
+        }
+      ],
+      "reason": "600 emoji Characters make a limit of 300, not one from their scalars or UTF-16 units (HK-173)."
+    },
+    {
+      "name": "a summary as long as a short reply is used",
+      "input": {
+        "summary": "The parser is fixed.",
+        "reply": "The parser is fixed."
+      },
+      "expected": "The parser is fixed.",
+      "reason": "The limit is max(200, reply.count / 2), so a short reply's summary may be as long as the reply and still be used (HK-170)."
+    },
+    {
+      "name": "markdown in the summary is kept here",
+      "input": {
+        "summary": "**Fixed** the parser.",
+        "reply": [
+          {
+            "repeat": "a",
+            "times": 400
+          }
+        ]
+      },
+      "expected": "**Fixed** the parser.",
+      "reason": "Acceptance does not strip markdown; spokenReply does that afterwards with no length cap (HK-171)."
+    }
+  ]
+}

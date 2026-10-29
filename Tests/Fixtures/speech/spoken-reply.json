@@ -1,0 +1,251 @@
+{
+  "description": "The spoken text of a reply together with the language its phrases were chosen for, which the caller hands to speak(_:voiceID:rate:language:) so the voice can never disagree with the phrases (spec #100 slice 2.5, ticket #160). The language is decided ONCE, on the input after fences became U+FFFC and before any other rule (so a link's URL still counts), as the lowercased primary subtag of dominantLanguageCode(of:) or \"en\" when that is undecided. Only zh gets localized phrases (（代码已省略）, ……回复已截断。 joined with no space); every other language, ja and ko included, gets the English ones. The text rules are those of speech-text.json.",
+  "function": "TTSService.spokenReply(fromMarkdown:maxChars:) — input {text, maxChars} with text a text descriptor, expected {text, language}",
+  "verifiedBy": "DESIGN.md v1.2 A, v1.12, v2.14; Tests/PowerUpTests/SpeechFixtureTests.swift testSpokenReplyTable plays it through TTSService.spokenReply(fromMarkdown:maxChars:).",
+  "capturedAgainst": "Swift 5.9.2 Foundation and NaturalLanguage (Xcode 15.2) on macOS 27.2, PowerUp at 67659a4",
+  "cases": [
+    {
+      "name": "a Chinese reply gets the Chinese phrases",
+      "input": {
+        "text": "我已经修改了这个函数。\n```python\nprint(1)\n```\n现在测试可以通过了。",
+        "maxChars": 0
+      },
+      "expected": {
+        "text": "我已经修改了这个函数。 （代码已省略） 现在测试可以通过了。",
+        "language": "zh"
+      },
+      "reason": "Chinese gets （代码已省略） and the language zh (HK-211; SpeechTextTests.testChineseReplyGetsChinesePhrases)."
+    },
+    {
+      "name": "Chinese truncation uses the Chinese suffix and full-width enders",
+      "input": {
+        "text": [
+          {
+            "repeat": "这个函数已经被修改并且通过了所有的测试。",
+            "times": 20
+          }
+        ],
+        "maxChars": 60
+      },
+      "expected": {
+        "text": "这个函数已经被修改并且通过了所有的测试。这个函数已经被修改并且通过了所有的测试。这个函数已经被修改并且通过了所有的测试。……回复已截断。",
+        "language": "zh"
+      },
+      "reason": "The cut is after a full-width 。 and the Chinese suffix joins with no space (HK-211, HK-216; SpeechTextTests.testChineseTruncationUsesChineseSuffixAndFullWidthEnders)."
+    },
+    {
+      "name": "a code-heavy Chinese reply is still Chinese",
+      "input": {
+        "text": [
+          "修改完成。\n```\n",
+          {
+            "repeat": "func veryLongEnglishIdentifierName() {}\n",
+            "times": 20
+          },
+          "```"
+        ],
+        "maxChars": 0
+      },
+      "expected": {
+        "text": "修改完成。 （代码已省略）",
+        "language": "zh"
+      },
+      "reason": "The fences are replaced before detection, so identifiers inside them cannot swamp the letter counts (HK-214; SpeechTextTests.testCodeHeavyChineseReplyIsStillDetectedAsChinese)."
+    },
+    {
+      "name": "the language is decided once, before the phrase goes in",
+      "input": {
+        "text": "好的。\n```\nlet x = 1\n```",
+        "maxChars": 0
+      },
+      "expected": {
+        "text": "好的。 （代码已省略）",
+        "language": "zh"
+      },
+      "reason": "Re-detecting on the output would read 好的。 plus an injected phrase differently; the phrases and the voice share one decision (HK-211)."
+    },
+    {
+      "name": "a traditional Chinese reply gets the Chinese phrases",
+      "input": {
+        "text": "我已經修改了這個函數。\n```\nx = 1\n```\n現在測試可以通過了。",
+        "maxChars": 0
+      },
+      "expected": {
+        "text": "我已經修改了這個函數。 （代码已省略） 現在測試可以通過了。",
+        "language": "zh"
+      },
+      "reason": "zh-Hant is zh too, so it gets the Chinese phrases (HK-211)."
+    },
+    {
+      "name": "a Japanese reply keeps the English phrases",
+      "input": {
+        "text": "テストを修正しました。\n```\nlet x = 1\n```\n全部通りました。",
+        "maxChars": 0
+      },
+      "expected": {
+        "text": "テストを修正しました。 code omitted 全部通りました。",
+        "language": "ja"
+      },
+      "reason": "Only zh is localized; ja gets code omitted (HK-211)."
+    },
+    {
+      "name": "a Korean reply keeps the English phrases",
+      "input": {
+        "text": "테스트를 수정했습니다.\n```\nlet x = 1\n```\n모두 통과했습니다.",
+        "maxChars": 0
+      },
+      "expected": {
+        "text": "테스트를 수정했습니다. code omitted 모두 통과했습니다.",
+        "language": "ko"
+      },
+      "reason": "Only zh is localized; ko gets code omitted (HK-211)."
+    },
+    {
+      "name": "Japanese truncation uses the English suffix with a space",
+      "input": {
+        "text": [
+          {
+            "repeat": "このテストは全部通りました。",
+            "times": 4
+          }
+        ],
+        "maxChars": 20
+      },
+      "expected": {
+        "text": "このテストは全部通りました。 … reply truncated.",
+        "language": "ja"
+      },
+      "reason": "ja gets the English suffix and its space (HK-211, HK-216)."
+    },
+    {
+      "name": "Korean truncation uses the English suffix with a space",
+      "input": {
+        "text": [
+          {
+            "repeat": "테스트가 모두 통과했습니다. ",
+            "times": 4
+          }
+        ],
+        "maxChars": 20
+      },
+      "expected": {
+        "text": "테스트가 모두 통과했습니다. … reply truncated.",
+        "language": "ko"
+      },
+      "reason": "ko gets the English suffix and its space (HK-211, HK-216)."
+    },
+    {
+      "name": "an English reply",
+      "input": {
+        "text": "I updated the parser and all of the tests pass now.\n```\nlet x = 1\n```\nNothing else changed.",
+        "maxChars": 0
+      },
+      "expected": {
+        "text": "I updated the parser and all of the tests pass now. code omitted Nothing else changed.",
+        "language": "en"
+      },
+      "reason": "English is detected and gets the English phrases (HK-211)."
+    },
+    {
+      "name": "a German reply keeps the English phrases",
+      "input": {
+        "text": "Ich habe den Parser angepasst und jetzt laufen alle Tests ohne Fehler durch.\n```\nlet x = 1\n```",
+        "maxChars": 0
+      },
+      "expected": {
+        "text": "Ich habe den Parser angepasst und jetzt laufen alle Tests ohne Fehler durch. code omitted",
+        "language": "de"
+      },
+      "reason": "Only zh is localized; de gets code omitted but keeps its language for the voice (HK-211)."
+    },
+    {
+      "name": "a short reply falls back to English",
+      "input": {
+        "text": "OK",
+        "maxChars": 0
+      },
+      "expected": {
+        "text": "OK",
+        "language": "en"
+      },
+      "reason": "No language decided means English (HK-213)."
+    },
+    {
+      "name": "an empty reply is English and empty",
+      "input": {
+        "text": "",
+        "maxChars": 0
+      },
+      "expected": {
+        "text": "",
+        "language": "en"
+      },
+      "reason": "Empty text has no language; the fallback is English (HK-213)."
+    },
+    {
+      "name": "a reply of only a fence",
+      "input": {
+        "text": "```\nlet x = 1\n```",
+        "maxChars": 0
+      },
+      "expected": {
+        "text": "code omitted",
+        "language": "en"
+      },
+      "reason": "The placeholder has no letters, so the language falls back to English (HK-213, HK-214)."
+    },
+    {
+      "name": "a summary of only markup speaks as empty",
+      "input": {
+        "text": "**",
+        "maxChars": 0
+      },
+      "expected": {
+        "text": "",
+        "language": "en"
+      },
+      "reason": "An empty spoken summary makes AppState speak the full reply instead (HK-171)."
+    },
+    {
+      "name": "the decision sees link targets",
+      "input": {
+        "text": "请看[文档](https://example.com/reference/documentation/getting-started/installation)。",
+        "maxChars": 0
+      },
+      "expected": {
+        "text": "请看文档。",
+        "language": "en"
+      },
+      "reason": "Detection runs before links are stripped, so a long URL's letters count (HK-211, HK-215)."
+    },
+    {
+      "name": "Chinese with English identifiers",
+      "input": {
+        "text": "我修改了 parseJSON() 函数，现在可以正确处理空数组了。",
+        "maxChars": 0
+      },
+      "expected": {
+        "text": "我修改了 parseJSON() 函数，现在可以正确处理空数组了。",
+        "language": "zh"
+      },
+      "reason": "Han at 20% or more of the letters decides zh (HK-212)."
+    },
+    {
+      "name": "a Chinese reply cut at a full-width comma hard cuts",
+      "input": {
+        "text": [
+          {
+            "repeat": "我们修改了这个函数，",
+            "times": 10
+          }
+        ],
+        "maxChars": 15
+      },
+      "expected": {
+        "text": "我们修改了这个函数，我们修改了……回复已截断。",
+        "language": "zh"
+      },
+      "reason": "，is no sentence ender, so the window is kept whole and joined with no space (HK-216)."
+    }
+  ]
+}

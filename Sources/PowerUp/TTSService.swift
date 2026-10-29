@@ -420,6 +420,15 @@ final class TTSService: NSObject, ObservableObject {
             ?? bcp47Tag.lowercased()
     }
 
+    /// The language a voice is routed for: the caller-supplied `language`
+    /// when given (taken as it is, never re-checked, so an appended phrase or
+    /// a too-short string cannot flip the voice), else the dominant language
+    /// of `text`, else "en" — the right default for an app whose own strings
+    /// are English.
+    static func voiceLanguage(for text: String, language: String?) -> String {
+        language ?? dominantLanguageCode(of: text) ?? "en"
+    }
+
     // MARK: - Voice resolution
 
     /// All installed voices whose language's primary subtag matches
@@ -488,7 +497,7 @@ final class TTSService: NSObject, ObservableObject {
     /// 4. A system voice for a reasonable BCP-47 locale guess for that language.
     /// 5. The existing en fallback chain (best-ranked en voice, else en-US).
     private static func resolveVoice(text: String, voiceID: String?, language: String? = nil) -> AVSpeechSynthesisVoice? {
-        let lang = language ?? dominantLanguageCode(of: text) ?? "en"
+        let lang = voiceLanguage(for: text, language: language)
 
         // A stale config can point at a voice the picker no longer lists
         // (e.g. a super-compact one chosen before that tier was excluded) —

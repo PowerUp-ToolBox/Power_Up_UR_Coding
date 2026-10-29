@@ -1,0 +1,682 @@
+{
+  "description": "Turning a markdown-ish reply into the text that is spoken (spec #100 slice 2.5, ticket #160). Fenced code (``` to the next ```, non-greedy, across lines; an unclosed fence is no fence) becomes U+FFFC before the language is decided, once, on that text (language.json); then every U+FFFC Character becomes the code-omitted phrase, \"code omitted\", or \"（代码已省略）\" when the decision is zh, spliced in with no spaces added. Then, in this fixed order and with NSRegularExpression (ICU) semantics: inline code `x` keeps x (it may cross lines); [text](url) and ![alt](url) keep the text (the url ends at the first ), the text at the first ]); line-start heading markers ^\\s{0,3}#{1,6}\\s+ and quote markers ^\\s{0,3}>\\s? go (a line starts after any Unicode line terminator, and \\s is White_Space, line breaks included, so these can swallow blank lines); **x**, *x*, __x__, _x_ and ~~x~~ keep x, in that order and across lines; line-start bullets ^\\s{0,3}[-*+]\\s+ go (after emphasis, so star bullets can pair as italic markers first); every remaining # * _ > and backtick goes; every run of White_Space becomes one space and the result is trimmed of .whitespacesAndNewlines (which, unlike the collapse, includes U+200B). When maxChars > 0 and the result is longer than maxChars Characters (extended grapheme clusters, never scalars or UTF-16 units), the first maxChars Characters are kept up to and including the last sentence ender among . ! ? 。 ！ ？ … (each compared as a whole Character, so one a combining mark extends is no ender), or all of them when the window holds none, trimmed; then \" … reply truncated.\" follows after a space, or \"……回复已截断。\" with no space when the decision is zh. maxChars of 0 or less never truncates. Every case's input is in English or has no language, so only the English phrases appear; spoken-reply.json pins the language.",
+  "function": "TTSService.speechText(fromMarkdown:maxChars:) — input {text, maxChars} with text a text descriptor (a string, or a list of strings and {repeat, times} parts joined in order), expected the spoken string (a text descriptor)",
+  "verifiedBy": "DESIGN.md TTSService contract, v1.1 D, v1.2 A, v2.14; Tests/PowerUpTests/SpeechFixtureTests.swift testSpeechTextTable plays it through TTSService.speechText(fromMarkdown:maxChars:).",
+  "capturedAgainst": "Swift 5.9.2 Foundation and NaturalLanguage (Xcode 15.2) on macOS 27.2, PowerUp at 67659a4",
+  "cases": [
+    {
+      "name": "a fenced code block collapses",
+      "input": {
+        "text": "Here is the fix:\n```swift\nlet x = 1\n```\nAll done.",
+        "maxChars": 0
+      },
+      "expected": "Here is the fix: code omitted All done.",
+      "reason": "A fence becomes the code-omitted phrase between the prose around it, never read out (HK-214, HK-215; SpeechTextTests.testFencedCodeBlocksCollapse)."
+    },
+    {
+      "name": "inline markdown is stripped",
+      "input": {
+        "text": "Use `swift build` to **compile** the [project](https://example.com) _now_.",
+        "maxChars": 0
+      },
+      "expected": "Use swift build to compile the project now.",
+      "reason": "Inline code, bold, a link and underscore emphasis lose their syntax and keep their text (HK-215; SpeechTextTests.testInlineMarkdownIsStripped)."
+    },
+    {
+      "name": "headings quotes and bullets are stripped",
+      "input": {
+        "text": "# Title\n> quoted line\n- first item\n* second item\nplain",
+        "maxChars": 0
+      },
+      "expected": "Title quoted line first item second item plain",
+      "reason": "Line-start heading, quote and bullet markers are dropped (HK-215; SpeechTextTests.testHeadingsQuotesAndBulletsAreStripped)."
+    },
+    {
+      "name": "whitespace collapses",
+      "input": {
+        "text": "a\n\n\n   b\t\tc",
+        "maxChars": 0
+      },
+      "expected": "a b c",
+      "reason": "Any run of whitespace is one space (HK-215; SpeechTextTests.testWhitespaceCollapses)."
+    },
+    {
+      "name": "zero maxChars means no limit",
+      "input": {
+        "text": [
+          {
+            "repeat": "word ",
+            "times": 2000
+          }
+        ],
+        "maxChars": 0
+      },
+      "expected": [
+        {
+          "repeat": "word ",
+          "times": 1999
+        },
+        "word"
+      ],
+      "reason": "A limit of 0 never truncates, however long the reply (HK-216; SpeechTextTests.testZeroMaxCharsMeansNoLimit)."
+    },
+    {
+      "name": "truncation cuts at a sentence boundary",
+      "input": {
+        "text": [
+          "First sentence. Second sentence. ",
+          {
+            "repeat": "x",
+            "times": 200
+          }
+        ],
+        "maxChars": 40
+      },
+      "expected": "First sentence. Second sentence. … reply truncated.",
+      "reason": "The cut falls after the last sentence ender in the window and the English suffix follows a space (HK-216; SpeechTextTests.testTruncationCutsAtSentenceBoundary)."
+    },
+    {
+      "name": "no sentence boundary hard cuts",
+      "input": {
+        "text": [
+          {
+            "repeat": "a",
+            "times": 100
+          }
+        ],
+        "maxChars": 30
+      },
+      "expected": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa … reply truncated.",
+      "reason": "Without an ender in the window the window itself is kept (HK-216; SpeechTextTests.testTruncationWithoutSentenceBoundaryHardCuts)."
+    },
+    {
+      "name": "short text is untouched",
+      "input": {
+        "text": "Hi there.",
+        "maxChars": 600
+      },
+      "expected": "Hi there.",
+      "reason": "Text within the limit gets no suffix (HK-216; SpeechTextTests.testShortTextIsUntouched)."
+    },
+    {
+      "name": "two fences become two phrases",
+      "input": {
+        "text": "One:\n```\na\n```\nTwo:\n```\nb\n```\nEnd.",
+        "maxChars": 0
+      },
+      "expected": "One: code omitted Two: code omitted End.",
+      "reason": "The fence match is non-greedy, so the prose between two fences is kept (HK-214)."
+    },
+    {
+      "name": "a fence is spliced in without spaces",
+      "input": {
+        "text": "a```b```c",
+        "maxChars": 0
+      },
+      "expected": "acode omittedc",
+      "reason": "The phrase replaces the fence exactly, with no space added around it (HK-214)."
+    },
+    {
+      "name": "an unterminated fence is left to the later rules",
+      "input": {
+        "text": "Done.\n```swift\nlet x = 1",
+        "maxChars": 0
+      },
+      "expected": "Done. swift let x = 1",
+      "reason": "Only a closed fence is a fence; an open one is stripped as stray backticks (HK-214)."
+    },
+    {
+      "name": "a fence spans blank lines",
+      "input": {
+        "text": "Look:\n```\n\nfirst\n\nsecond\n\n```\nok",
+        "maxChars": 0
+      },
+      "expected": "Look: code omitted ok",
+      "reason": "The fence pattern crosses any line breaks, blank lines included (HK-214)."
+    },
+    {
+      "name": "a literal object replacement character reads as code omitted",
+      "input": {
+        "text": "See \uFFFC here.",
+        "maxChars": 0
+      },
+      "expected": "See code omitted here.",
+      "reason": "Every U+FFFC is replaced by the phrase, the reply's own included, because the placeholder is that character (HK-214)."
+    },
+    {
+      "name": "an object replacement character a combining mark extends is kept",
+      "input": {
+        "text": "x\uFFFC\u0301y",
+        "maxChars": 0
+      },
+      "expected": "x\uFFFC\u0301y",
+      "reason": "The placeholder swap compares Characters, so U+FFFC with a combining acute is a different Character and survives (HK-214)."
+    },
+    {
+      "name": "inline code keeps its content",
+      "input": {
+        "text": "Run `a` and `b` now",
+        "maxChars": 0
+      },
+      "expected": "Run a and b now",
+      "reason": "Each backtick pair goes and its content stays (HK-215)."
+    },
+    {
+      "name": "inline code spans a line break",
+      "input": {
+        "text": "x `a\nb` y",
+        "maxChars": 0
+      },
+      "expected": "x a b y",
+      "reason": "An inline code span may cross a newline; the newline later collapses (HK-215)."
+    },
+    {
+      "name": "an unpaired backtick is dropped",
+      "input": {
+        "text": "it`s fine",
+        "maxChars": 0
+      },
+      "expected": "its fine",
+      "reason": "A lone backtick is stray punctuation (HK-215)."
+    },
+    {
+      "name": "empty inline code vanishes",
+      "input": {
+        "text": "x `` y",
+        "maxChars": 0
+      },
+      "expected": "x y",
+      "reason": "A backtick pair with nothing between is removed (HK-215)."
+    },
+    {
+      "name": "an image keeps its alt text",
+      "input": {
+        "text": "![diagram](a.png) shows it",
+        "maxChars": 0
+      },
+      "expected": "diagram shows it",
+      "reason": "An image's ! is consumed with the link syntax (HK-215)."
+    },
+    {
+      "name": "a URL with a parenthesis leaves its tail",
+      "input": {
+        "text": "[wiki](https://en.wikipedia.org/wiki/Swift_(language)) page",
+        "maxChars": 0
+      },
+      "expected": "wiki) page",
+      "reason": "The URL ends at the first ), so the rest of it is read (HK-215)."
+    },
+    {
+      "name": "link text cannot hold a closing bracket",
+      "input": {
+        "text": "[a]b](c) end",
+        "maxChars": 0
+      },
+      "expected": "[a]b](c) end",
+      "reason": "Link text stops at the first ], so this is no link (HK-215)."
+    },
+    {
+      "name": "bare brackets are kept",
+      "input": {
+        "text": "[x] done (soon)",
+        "maxChars": 0
+      },
+      "expected": "[x] done (soon)",
+      "reason": "Brackets that are not a link are ordinary text (HK-215)."
+    },
+    {
+      "name": "every heading level is stripped",
+      "input": {
+        "text": "# One\n## Two\n### Three\n#### Four\n##### Five\n###### Six",
+        "maxChars": 0
+      },
+      "expected": "One Two Three Four Five Six",
+      "reason": "One to six # with a space after them are a heading marker (HK-215)."
+    },
+    {
+      "name": "seven hashes are no heading but still lose their hashes",
+      "input": {
+        "text": "####### Seven",
+        "maxChars": 0
+      },
+      "expected": "Seven",
+      "reason": "Seven # are no heading; the stray-punctuation rule removes them anyway (HK-215)."
+    },
+    {
+      "name": "a hashtag loses its hash",
+      "input": {
+        "text": "#hashtag and C# code",
+        "maxChars": 0
+      },
+      "expected": "hashtag and C code",
+      "reason": "Every # left after the heading rule is stray punctuation (HK-215)."
+    },
+    {
+      "name": "a heading indented by three spaces is stripped",
+      "input": {
+        "text": "   # Title\ntext",
+        "maxChars": 0
+      },
+      "expected": "Title text",
+      "reason": "Up to three spaces may precede a heading marker (HK-215)."
+    },
+    {
+      "name": "a heading marker swallows the blank lines after it",
+      "input": {
+        "text": "#\n\ntext",
+        "maxChars": 0
+      },
+      "expected": "text",
+      "reason": "The whitespace after # includes newlines (HK-215)."
+    },
+    {
+      "name": "quote markers are stripped",
+      "input": {
+        "text": "> a\n>b\n> > nested",
+        "maxChars": 0
+      },
+      "expected": "a b nested",
+      "reason": "A quote marker needs no space after it; only the first > of a nested quote is the marker and the stray rule takes the rest (HK-215)."
+    },
+    {
+      "name": "a quote after a blank line is stripped",
+      "input": {
+        "text": "x\n\n> y",
+        "maxChars": 0
+      },
+      "expected": "x y",
+      "reason": "Line starts after blank lines are line starts (HK-215)."
+    },
+    {
+      "name": "a greater-than sign in prose is dropped",
+      "input": {
+        "text": "a > b holds",
+        "maxChars": 0
+      },
+      "expected": "a b holds",
+      "reason": "Every > left after the quote rule is stray punctuation (HK-215)."
+    },
+    {
+      "name": "every emphasis kind is stripped",
+      "input": {
+        "text": "**b** *i* __u__ _e_ ~~s~~",
+        "maxChars": 0
+      },
+      "expected": "b i u e s",
+      "reason": "Bold, italic, both underscore forms and strikethrough keep their text (HK-215)."
+    },
+    {
+      "name": "snake case loses its underscores",
+      "input": {
+        "text": "call snake_case_name now",
+        "maxChars": 0
+      },
+      "expected": "call snakecasename now",
+      "reason": "Underscore emphasis runs before identifiers are known, so snake_case_name reads as one word (HK-215)."
+    },
+    {
+      "name": "multiplication stars read as emphasis",
+      "input": {
+        "text": "2 * 3 * 4 = 24",
+        "maxChars": 0
+      },
+      "expected": "2 3 4 = 24",
+      "reason": "Two lone stars pair as italic markers (HK-215)."
+    },
+    {
+      "name": "emphasis crosses lines",
+      "input": {
+        "text": "*a\nb*",
+        "maxChars": 0
+      },
+      "expected": "a b",
+      "reason": "An emphasis span may cross a newline (HK-215)."
+    },
+    {
+      "name": "a lone tilde pair is kept",
+      "input": {
+        "text": "~x~ and ~~y~~",
+        "maxChars": 0
+      },
+      "expected": "~x~ and y",
+      "reason": "Only a double tilde is strikethrough (HK-215)."
+    },
+    {
+      "name": "dash plus and star bullets are stripped",
+      "input": {
+        "text": "- one\n+ two\n* three",
+        "maxChars": 0
+      },
+      "expected": "one two three",
+      "reason": "All three bullet markers go (HK-215)."
+    },
+    {
+      "name": "three star bullets are read as emphasis first",
+      "input": {
+        "text": "* a\n* b\n* c",
+        "maxChars": 0
+      },
+      "expected": "a b c",
+      "reason": "Emphasis runs before bullets, so the first two star bullets pair as italic markers and the third goes as stray punctuation; reordering would change the output (HK-215)."
+    },
+    {
+      "name": "a dash without a space is kept",
+      "input": {
+        "text": "-x and --flag",
+        "maxChars": 0
+      },
+      "expected": "-x and --flag",
+      "reason": "A bullet needs whitespace after the marker, and - is not stray punctuation (HK-215)."
+    },
+    {
+      "name": "a bullet indented by four spaces is kept",
+      "input": {
+        "text": "- a\n  - b\n    - c",
+        "maxChars": 0
+      },
+      "expected": "a b - c",
+      "reason": "Up to three spaces may precede a bullet marker (HK-215)."
+    },
+    {
+      "name": "a numbered list is kept",
+      "input": {
+        "text": "1. first\n2. second",
+        "maxChars": 0
+      },
+      "expected": "1. first 2. second",
+      "reason": "Numbers are not bullet markers (HK-215)."
+    },
+    {
+      "name": "every Unicode space collapses",
+      "input": {
+        "text": "a\u00A0b\u3000c\u0085d\u2028e\u2029f\u000Bg\fh\u1680i\u202Fj",
+        "maxChars": 0
+      },
+      "expected": "a b c d e f g h i j",
+      "reason": "Whitespace is the Unicode White_Space set, not only ASCII (HK-215)."
+    },
+    {
+      "name": "a zero width space survives inside and is trimmed at the ends",
+      "input": {
+        "text": "\u200Ba\u200Bb \u200B",
+        "maxChars": 0
+      },
+      "expected": "a\u200Bb",
+      "reason": "U+200B is no whitespace for the collapse but the final trim removes it (HK-215)."
+    },
+    {
+      "name": "whitespace only is empty",
+      "input": {
+        "text": " \n\t ",
+        "maxChars": 0
+      },
+      "expected": "",
+      "reason": "Nothing to say speaks as empty, so the caller says nothing (HK-171)."
+    },
+    {
+      "name": "empty is empty",
+      "input": {
+        "text": "",
+        "maxChars": 0
+      },
+      "expected": "",
+      "reason": "Empty in, empty out (HK-171)."
+    },
+    {
+      "name": "only markdown punctuation is empty",
+      "input": {
+        "text": "> # * _ `",
+        "maxChars": 0
+      },
+      "expected": "",
+      "reason": "A reply of only markup speaks as empty, which sends a summary back to the full reply (HK-171)."
+    },
+    {
+      "name": "an exclamation mark ends a sentence",
+      "input": {
+        "text": "Done! more text here",
+        "maxChars": 10
+      },
+      "expected": "Done! … reply truncated.",
+      "reason": "! is a sentence ender (HK-216)."
+    },
+    {
+      "name": "a question mark ends a sentence",
+      "input": {
+        "text": "Ready? more text here",
+        "maxChars": 10
+      },
+      "expected": "Ready? … reply truncated.",
+      "reason": "? is a sentence ender (HK-216)."
+    },
+    {
+      "name": "an ideographic full stop ends a sentence",
+      "input": {
+        "text": "Done。 more text here",
+        "maxChars": 10
+      },
+      "expected": "Done。 … reply truncated.",
+      "reason": "。 is a sentence ender (HK-216)."
+    },
+    {
+      "name": "a full-width exclamation mark ends a sentence",
+      "input": {
+        "text": "Done！ more text here",
+        "maxChars": 10
+      },
+      "expected": "Done！ … reply truncated.",
+      "reason": "！ is a sentence ender (HK-216)."
+    },
+    {
+      "name": "a full-width question mark ends a sentence",
+      "input": {
+        "text": "Done？ more text here",
+        "maxChars": 10
+      },
+      "expected": "Done？ … reply truncated.",
+      "reason": "？ is a sentence ender (HK-216)."
+    },
+    {
+      "name": "an ellipsis character ends a sentence",
+      "input": {
+        "text": "Wait… more text here",
+        "maxChars": 10
+      },
+      "expected": "Wait… … reply truncated.",
+      "reason": "U+2026 is a sentence ender (HK-216)."
+    },
+    {
+      "name": "three dots end at the last one",
+      "input": {
+        "text": "Wait... more words here",
+        "maxChars": 12
+      },
+      "expected": "Wait... … reply truncated.",
+      "reason": "Each . is an ender, so the cut is after the third (HK-216)."
+    },
+    {
+      "name": "a decimal point counts as an ender",
+      "input": {
+        "text": "Version 3.14 is out now and more",
+        "maxChars": 15
+      },
+      "expected": "Version 3. … reply truncated.",
+      "reason": "There is no lookahead: the . in 3.14 is the last ender in the window (HK-216)."
+    },
+    {
+      "name": "an ender a combining mark extends is no ender",
+      "input": {
+        "text": "Done.\u0301 more words here",
+        "maxChars": 12
+      },
+      "expected": "Done.\u0301 more w … reply truncated.",
+      "reason": "Enders are compared as whole Characters (HK-216)."
+    },
+    {
+      "name": "an ender at the window's end",
+      "input": {
+        "text": "Hello. World",
+        "maxChars": 6
+      },
+      "expected": "Hello. … reply truncated.",
+      "reason": "An ender as the window's last Character is found (HK-216)."
+    },
+    {
+      "name": "an ender just past the window hard cuts",
+      "input": {
+        "text": "Hello world. Next",
+        "maxChars": 11
+      },
+      "expected": "Hello world … reply truncated.",
+      "reason": "Only enders inside the window count (HK-216)."
+    },
+    {
+      "name": "the cut keeps the last of several enders",
+      "input": {
+        "text": "One. Two. Three. Four five six",
+        "maxChars": 20
+      },
+      "expected": "One. Two. Three. … reply truncated.",
+      "reason": "The scan finds the last ender in the window, not the first (HK-216)."
+    },
+    {
+      "name": "length equal to maxChars is untouched",
+      "input": {
+        "text": "abcde",
+        "maxChars": 5
+      },
+      "expected": "abcde",
+      "reason": "Only text longer than maxChars is truncated (HK-216)."
+    },
+    {
+      "name": "one Character over maxChars is truncated",
+      "input": {
+        "text": "abcdef",
+        "maxChars": 5
+      },
+      "expected": "abcde … reply truncated.",
+      "reason": "Truncation starts one Character past the limit (HK-216)."
+    },
+    {
+      "name": "negative maxChars means no limit",
+      "input": {
+        "text": [
+          {
+            "repeat": "word ",
+            "times": 100
+          }
+        ],
+        "maxChars": -1
+      },
+      "expected": [
+        {
+          "repeat": "word ",
+          "times": 99
+        },
+        "word"
+      ],
+      "reason": "A limit of 0 or less never truncates (HK-216)."
+    },
+    {
+      "name": "maxChars of one",
+      "input": {
+        "text": "ab",
+        "maxChars": 1
+      },
+      "expected": "a … reply truncated.",
+      "reason": "The smallest limit keeps one Character (HK-216)."
+    },
+    {
+      "name": "a hard cut is trimmed",
+      "input": {
+        "text": "aaaa bbbb",
+        "maxChars": 5
+      },
+      "expected": "aaaa … reply truncated.",
+      "reason": "The window's trailing space goes before the suffix (HK-216)."
+    },
+    {
+      "name": "markdown is stripped before counting",
+      "input": {
+        "text": "**bold** text that is long",
+        "maxChars": 4
+      },
+      "expected": "bold … reply truncated.",
+      "reason": "The limit applies to the spoken text, not the markdown (HK-216)."
+    },
+    {
+      "name": "the limit is measured after whitespace collapses",
+      "input": {
+        "text": "a\n\n\n\nb. c d e",
+        "maxChars": 4
+      },
+      "expected": "a b. … reply truncated.",
+      "reason": "Collapsed whitespace counts once (HK-216)."
+    },
+    {
+      "name": "a skin-tone emoji is never split at the cut",
+      "input": {
+        "text": [
+          {
+            "repeat": "👍🏽",
+            "times": 4
+          }
+        ],
+        "maxChars": 2
+      },
+      "expected": "👍🏽👍🏽 … reply truncated.",
+      "reason": "The limit counts Characters, so an emoji and its skin-tone modifier stay whole (HK-173)."
+    },
+    {
+      "name": "a flag is never split at the cut",
+      "input": {
+        "text": [
+          {
+            "repeat": "🇯🇵",
+            "times": 3
+          }
+        ],
+        "maxChars": 2
+      },
+      "expected": "🇯🇵🇯🇵 … reply truncated.",
+      "reason": "A regional-indicator pair is one Character (HK-173)."
+    },
+    {
+      "name": "a ZWJ family is never split at the cut",
+      "input": {
+        "text": [
+          {
+            "repeat": "👨\u200D👩\u200D👧\u200D👦",
+            "times": 3
+          }
+        ],
+        "maxChars": 1
+      },
+      "expected": "👨\u200D👩\u200D👧\u200D👦 … reply truncated.",
+      "reason": "A ZWJ sequence is one Character (HK-173)."
+    },
+    {
+      "name": "a decomposed accent is never split at the cut",
+      "input": {
+        "text": [
+          {
+            "repeat": "e\u0301",
+            "times": 3
+          }
+        ],
+        "maxChars": 2
+      },
+      "expected": "e\u0301e\u0301 … reply truncated.",
+      "reason": "A letter and its combining accent are one Character (HK-173)."
+    },
+    {
+      "name": "a combining mark after an ender keeps the cut whole",
+      "input": {
+        "text": "Hi.\u0301 there friend",
+        "maxChars": 5
+      },
+      "expected": "Hi.\u0301 t … reply truncated.",
+      "reason": "The window ends on a whole Character and the mark-extended . is no ender (HK-173, HK-216)."
+    }
+  ]
+}

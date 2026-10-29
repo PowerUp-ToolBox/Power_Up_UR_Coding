@@ -1,0 +1,32 @@
+{
+  "description": "The prompt the one-shot summarizer is given on stdin (spec #100 slice 2.5, ticket #160): a fixed English instruction to summarize in one or two short sentences meant to be READ ALOUD, plain prose with no markdown, lists or preamble, in the same language as the reply, then a blank line, \"Reply to summarize:\", a newline and the reply exactly as it is. The arguments, the binary and the process stay with the platform (HK-280).",
+  "function": "SummaryService.prompt(for:) — input the reply, expected the whole prompt",
+  "verifiedBy": "DESIGN.md v1.12, v2.14; Tests/PowerUpTests/SpeechFixtureTests.swift testSummaryPromptTable plays it through SummaryService.prompt(for:).",
+  "capturedAgainst": "Swift 5.9.2 Foundation and NaturalLanguage (Xcode 15.2) on macOS 27.2, PowerUp at 67659a4",
+  "cases": [
+    {
+      "name": "an English reply is embedded",
+      "input": "I refactored the parser and all tests pass.",
+      "expected": "Summarize the following coding-assistant reply in one or two short sentences meant to be READ ALOUD: what was done or found, and anything the listener must do next. Plain prose only — no markdown, no lists, no preamble. Answer in the same language as the reply.\n\nReply to summarize:\nI refactored the parser and all tests pass.",
+      "reason": "The prompt asks for prose READ ALOUD, no markdown, in the reply's language, and embeds the reply after it (HK-172; SummaryServiceTests.testPromptEmbedsTheReplyAndAsksForSpokenProse)."
+    },
+    {
+      "name": "the reply is embedded unmodified",
+      "input": "  # Heading\n\n```swift\nlet x = 1\n```\ntrailing  \n",
+      "expected": "Summarize the following coding-assistant reply in one or two short sentences meant to be READ ALOUD: what was done or found, and anything the listener must do next. Plain prose only — no markdown, no lists, no preamble. Answer in the same language as the reply.\n\nReply to summarize:\n  # Heading\n\n```swift\nlet x = 1\n```\ntrailing  \n",
+      "reason": "Nothing is trimmed or stripped before the model sees the reply (HK-172)."
+    },
+    {
+      "name": "an empty reply",
+      "input": "",
+      "expected": "Summarize the following coding-assistant reply in one or two short sentences meant to be READ ALOUD: what was done or found, and anything the listener must do next. Plain prose only — no markdown, no lists, no preamble. Answer in the same language as the reply.\n\nReply to summarize:\n",
+      "reason": "An empty reply still makes the whole prompt (HK-172)."
+    },
+    {
+      "name": "a Chinese reply",
+      "input": "我重构了解析器，现在所有测试都通过了。",
+      "expected": "Summarize the following coding-assistant reply in one or two short sentences meant to be READ ALOUD: what was done or found, and anything the listener must do next. Plain prose only — no markdown, no lists, no preamble. Answer in the same language as the reply.\n\nReply to summarize:\n我重构了解析器，现在所有测试都通过了。",
+      "reason": "The instruction stays English and asks for the reply's own language (HK-172)."
+    }
+  ]
+}

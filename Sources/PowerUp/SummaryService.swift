@@ -38,6 +38,19 @@ final class SummaryService: ObservableObject {
         """
     }
 
+    /// The model's answer as it is spoken, or nil when the caller should
+    /// speak the full reply: a summary that is empty or not meaningfully
+    /// shorter than the reply is worse than the reply, so it counts as a
+    /// failure. Trimmed of `.whitespacesAndNewlines`, and usable only when
+    /// shorter than max(200, reply.count / 2) Characters (`reply` untrimmed).
+    nonisolated static func usableSummary(_ summary: String?, for reply: String) -> String? {
+        let trimmed = summary?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let trimmed, !trimmed.isEmpty, trimmed.count < max(200, reply.count / 2) else {
+            return nil
+        }
+        return trimmed
+    }
+
     /// Requests a summary. `completion` is invoked exactly once, on the main
     /// actor: the summary text, or nil when the caller should fall back to
     /// the full reply. A newer `summarize` call silently supersedes this one
@@ -59,15 +72,7 @@ final class SummaryService: ObservableObject {
                 SummaryService.run(binary: $0, arguments: arguments, stdin: prompt)
             }
 
-            // A summary that is empty or not meaningfully shorter than the
-            // reply is worse than the reply — treat it as a failure.
-            let trimmed = summary?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let usable: String?
-            if let trimmed, !trimmed.isEmpty, trimmed.count < max(200, reply.count / 2) {
-                usable = trimmed
-            } else {
-                usable = nil
-            }
+            let usable = SummaryService.usableSummary(summary, for: reply)
 
             guard let service = self else { return }
             await MainActor.run {

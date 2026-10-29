@@ -27,8 +27,8 @@ case table's `verifiedBy` sentence.
 ## Conventions
 
 - One subdirectory per area: `session/` (scenarios), `text-safety/`,
-  `status/`, `mapping/`, `device/`, `harness/`, `config/`, `transcript/`
-  and `hooks/` (case tables).
+  `status/`, `mapping/`, `device/`, `harness/`, `config/`, `transcript/`,
+  `hooks/` and `speech/` (case tables).
 - Plain JSON only, with no comments and no implementation-specific shapes.
   The one exception is `harness/acp-mock-agent.py`, the scripted ACP agent
   both suites run as a process (see [the ACP adapter](#harness-the-acp-adapter)):
@@ -39,7 +39,7 @@ case table's `verifiedBy` sentence.
     `description`, `reason` (why the rule exists), `source` (where the rule
     is written down) and `verifiedBy` (the implementations that run it, for
     example `["swift"]`). See [`session/`](#session-session-scenarios-format-1).
-  - Case tables (`text-safety/`, `status/`, `mapping/`, `device/`, `harness/`, `config/`, `transcript/`, `hooks/`) use `description`,
+  - Case tables (`text-safety/`, `status/`, `mapping/`, `device/`, `harness/`, `config/`, `transcript/`, `hooks/`, `speech/`) use `description`,
     `function`, `verifiedBy`, `capturedAgainst` and a `cases` list in which
     every case has a `reason`. See [case tables](#text-safety-and-status-case-tables).
 - Add `capturedAgainst` when the data was recorded from a real tool (for
@@ -402,6 +402,57 @@ compares every written file byte for byte. The Rust runner is
 the platform's writer, so it compares that with the file as JSON: numbers
 by value, members in any order, and each string read back as Foundation
 reads it (one leading U+FEFF dropped).
+
+## `speech/`: the spoken text, its language and spoken summaries
+
+What PowerUp reads aloud and in which language (spec #100, slice 2.5,
+ticket #160): the spoken text of a markdown reply (`speech-text.json`),
+that text with the language its phrases and voice are chosen for
+(`spoken-reply.json`), the language decision's gates (`language.json`),
+the language a voice is routed for when a caller pins one
+(`voice-language.json`), and the pure rules of spoken summaries: when a
+reply is summarized (`summary-threshold.json`), whether the summarizer's
+answer is spoken (`summary-acceptance.json`) and the prompt it is given
+(`summary-prompt.json`). The platform keeps the speech engine, the voices
+(which installed voice serves a language, and the simplified or
+traditional Chinese region), audio routing and the summarizer process.
+Every expected value was captured from the Swift app, including its
+NLLanguageRecognizer answers, so the tables say what the app does, not
+what a rule should do. These are ordinary case tables with one more
+descriptor:
+
+| Descriptor | Shape |
+| --- | --- |
+| text | a string, or a list of strings and `{"repeat": <string>, "times": <n>}` parts joined in order (so a 2000-word reply stays one line); used for every reply, summary and spoken text |
+
+`speech-text.json` and `spoken-reply.json` take `{text, maxChars}` and
+expect the spoken text, or `{text, language}`. `language.json` takes a
+string and expects a language code or `null` (undecided, which callers
+read as English). `voice-language.json` takes `{text, language}`
+(`language` a string or `null`) and expects the language.
+`summary-threshold.json` takes `{reply, speakSummaries}` and expects a
+bool, `summary-acceptance.json` takes `{summary, reply}` (`summary` may be
+`null`: no answer) and expects the summary that is spoken or `null`, and
+`summary-prompt.json` takes the reply and expects the whole prompt.
+Strings are compared scalar for scalar.
+
+`language-agreement.json` is a corpus of natural sentences, each named
+after its kind (`en: …`, `zh-Hant: …`, `mixed: …`, `short: …`, `code: …`,
+`han: …`, `gate: …`). The language decision is the one rule two
+libraries can legitimately disagree on (ADR 0011): the Swift app asks
+NLLanguageRecognizer, the Rust core its own detector, both under the gates
+of `language.json`. Its input is a string and its expected value is
+`{"swift": <code or null>}`, the decision the Swift app made, and each
+reason gives the recognizer's answer, confidence and letter count. A core
+decision that differs is either resolved toward the Swift one or recorded
+as an accepted difference: the expected value gains `"core": <code or
+null>`, the reason says why the difference is accepted, and the ledger
+names it. No other key is allowed in an agreement expectation.
+
+The Swift runner is `Tests/PowerUpTests/SpeechFixtureTests.swift`, which
+also checks that the truncation cases cover every sentence ender, a hard
+cut and a multi-scalar Character at the cut, and that the agreement corpus
+holds at least 80 sentences with every kind represented.
 
 ## `session/`: session scenarios (format 1)
 

@@ -1,0 +1,212 @@
+{
+  "description": "The language decision that routes a reply to a voice (spec #100 slice 2.5, ticket #160): the lowercased primary BCP-47 subtag (zh for zh-Hans and zh-Hant alike), or null for undecided, which callers read as English. Empty text is undecided. A zh, ja or ko answer from the statistical recognizer is trusted as it is. Otherwise CJK script decides when CJK scalars are at least 20% of the Alphabetic scalars (inclusive): any kana (U+3040..U+30FF) means ja, else any hangul (U+AC00..U+D7AF, U+1100..U+11FF, U+3130..U+318F) ko, else Han (U+4E00..U+9FFF, U+3400..U+4DBF, U+F900..U+FAFF) zh; no other ranges count as CJK, though their letters count toward the total. Otherwise a statistical answer is admitted only with at least 25 Alphabetic scalars AND a top-hypothesis confidence above 0.7. These cases pin the gates; language-agreement.json pins what the statistical answer is for natural sentences, and the cases whose outcome rests on the recognizer's own confidence (the 0.7 gate) name the measured value in their reason.",
+  "function": "TTSService.dominantLanguageCode(of:) — input the text, expected the language code or null",
+  "verifiedBy": "DESIGN.md v1.2 A, v1.9, v2.14; Tests/PowerUpTests/SpeechFixtureTests.swift testLanguageTable plays it through TTSService.dominantLanguageCode(of:).",
+  "capturedAgainst": "Swift 5.9.2 Foundation and NaturalLanguage (Xcode 15.2) on macOS 27.2, PowerUp at 67659a4",
+  "cases": [
+    {
+      "name": "empty is undecided",
+      "input": "",
+      "expected": null,
+      "reason": "Empty text has no language (HK-213)."
+    },
+    {
+      "name": "whitespace only is undecided",
+      "input": "   \n  ",
+      "expected": null,
+      "reason": "Whitespace has no letters (HK-213)."
+    },
+    {
+      "name": "OK is undecided",
+      "input": "OK",
+      "expected": null,
+      "reason": "Too short; NLLanguageRecognizer files it as Polish (HK-213; SpeechTextTests.testShortAmbiguousStringsReturnNil)."
+    },
+    {
+      "name": "Model Sonnet is undecided",
+      "input": "Model: Sonnet",
+      "expected": null,
+      "reason": "An app phrase NLLanguageRecognizer files as German must not route to a German voice (HK-210, HK-213)."
+    },
+    {
+      "name": "a short confident sentence is undecided",
+      "input": "I fixed it.",
+      "expected": null,
+      "reason": "Fewer than 25 letters is never enough, however confident the recognizer (HK-213)."
+    },
+    {
+      "name": "24 letters is undecided",
+      "input": "All of the unit tests pass now.",
+      "expected": null,
+      "reason": "24 alphabetic scalars sit just under the gate (HK-213)."
+    },
+    {
+      "name": "25 letters is decided",
+      "input": "The new unit tests all pass now.",
+      "expected": "en",
+      "reason": "25 alphabetic scalars pass the letter gate (HK-213)."
+    },
+    {
+      "name": "digits are not letters",
+      "input": "Build 1234567890 1234567890 1234567890 done",
+      "expected": null,
+      "reason": "Only Alphabetic scalars count toward the 25 (HK-213)."
+    },
+    {
+      "name": "clear English is detected",
+      "input": "The build completed successfully and all of the tests passed without any failures.",
+      "expected": "en",
+      "reason": "A long clear sentence is decided (SpeechTextTests.testClearEnglishIsDetected)."
+    },
+    {
+      "name": "English quoting a character stays English",
+      "input": "The variable named 中 is renamed everywhere in the file, and the build now passes cleanly.",
+      "expected": "en",
+      "reason": "One Han letter in a long English sentence is under 20% (HK-212; SpeechTextTests.testEnglishQuotingACharacterOrTwoStaysEnglish)."
+    },
+    {
+      "name": "Chinese with an identifier is Chinese",
+      "input": "我修改了 parseJSON() 函数",
+      "expected": "zh",
+      "reason": "Script evidence rescues what NLLanguageRecognizer files as Turkish (HK-212; SpeechTextTests.testCJKScriptWinsEvenInShortMixedText)."
+    },
+    {
+      "name": "Japanese is Japanese",
+      "input": "テストは全部通りました",
+      "expected": "ja",
+      "reason": "Kana means ja (HK-212; SpeechTextTests.testCJKScriptWinsEvenInShortMixedText)."
+    },
+    {
+      "name": "Korean is Korean",
+      "input": "테스트가 모두 통과했습니다",
+      "expected": "ko",
+      "reason": "Hangul means ko (HK-212; SpeechTextTests.testCJKScriptWinsEvenInShortMixedText)."
+    },
+    {
+      "name": "exactly 20 percent CJK is Chinese",
+      "input": "test 中",
+      "expected": "zh",
+      "reason": "The script share is inclusive at 20% (HK-212)."
+    },
+    {
+      "name": "under 20 percent CJK falls to the Latin gates",
+      "input": "tests 中",
+      "expected": null,
+      "reason": "1 of 6 letters is under 20%, and 6 letters fail the 25 gate (HK-212, HK-213)."
+    },
+    {
+      "name": "kana in English is Japanese",
+      "input": "Run the build コマンド now",
+      "expected": "ja",
+      "reason": "Kana at 20% or more of the letters means ja (HK-212)."
+    },
+    {
+      "name": "any kana beats Han",
+      "input": "漢字漢字漢字漢字の",
+      "expected": "ja",
+      "reason": "One kana with Han decides ja (HK-212)."
+    },
+    {
+      "name": "hangul beats Han",
+      "input": "韓國語 한 word",
+      "expected": "ko",
+      "reason": "Hangul with Han decides ko when no kana is present (HK-212)."
+    },
+    {
+      "name": "hangul in English is Korean",
+      "input": "Open 설정 now",
+      "expected": "ko",
+      "reason": "Hangul at 20% or more of the letters means ko (HK-212)."
+    },
+    {
+      "name": "Han in English is Chinese",
+      "input": "Open 设置 now",
+      "expected": "zh",
+      "reason": "Han at 20% or more of the letters means zh (HK-212)."
+    },
+    {
+      "name": "CJK extension A is Han",
+      "input": "Use 㐀㐁 here",
+      "expected": "zh",
+      "reason": "U+3400..U+4DBF counts as Han (HK-212)."
+    },
+    {
+      "name": "a compatibility ideograph is Han",
+      "input": "Use 豈更 here",
+      "expected": "zh",
+      "reason": "U+F900..U+FAFF counts as Han (HK-212)."
+    },
+    {
+      "name": "CJK extension B is no Han",
+      "input": "Use 𠀀𠀁 here",
+      "expected": null,
+      "reason": "U+20000 and up are letters but not counted as Han (HK-212)."
+    },
+    {
+      "name": "halfwidth katakana is no kana",
+      "input": "Use ｶﾀｶﾅ here",
+      "expected": null,
+      "reason": "U+FF66..U+FF9F is outside the kana ranges (HK-212)."
+    },
+    {
+      "name": "hangul compatibility jamo is hangul",
+      "input": "Use ㅋㅋㅋ here",
+      "expected": "ko",
+      "reason": "U+3130..U+318F counts as hangul (HK-212)."
+    },
+    {
+      "name": "hangul jamo is hangul",
+      "input": "Use 각 here",
+      "expected": "ko",
+      "reason": "U+1100..U+11FF counts as hangul (HK-212)."
+    },
+    {
+      "name": "the prolonged sound mark is kana",
+      "input": "Use ーー here",
+      "expected": "ja",
+      "reason": "U+30FC is in the katakana block (HK-212)."
+    },
+    {
+      "name": "object replacement characters are no letters",
+      "input": "\uFFFC \uFFFC",
+      "expected": null,
+      "reason": "The fence placeholder carries no letters (HK-214)."
+    },
+    {
+      "name": "a low-confidence answer is undecided",
+      "input": "Sonnet Opus Haiku Claude Model Effort Default",
+      "expected": null,
+      "reason": "39 letters pass the letter gate, but NLLanguageRecognizer is only 0.57 sure of English, not above 0.7 (HK-213)."
+    },
+    {
+      "name": "identifiers are undecided",
+      "input": "parseJSON fetchData renderView updateState",
+      "expected": null,
+      "reason": "Identifiers are no language: NLLanguageRecognizer says Indonesian at 0.20 (HK-213)."
+    },
+    {
+      "name": "a list of paths is undecided",
+      "input": "src/main.rs src/lib.rs tests/fixtures.rs Cargo.toml Cargo.lock",
+      "expected": null,
+      "reason": "File names are no language: NLLanguageRecognizer says Dutch at 0.31 (HK-213)."
+    },
+    {
+      "name": "Chinese under 20 percent among identifiers is undecided",
+      "input": "我把 src/parser/value.rs 里的 parse_json_value 改名为 parseJsonValue 了。",
+      "expected": null,
+      "reason": "8 Han letters of 52 are under 20%, and NLLanguageRecognizer is only 0.61 sure of English, so the reply falls back to English (HK-212, HK-213)."
+    },
+    {
+      "name": "an identifier-heavy English sentence is English",
+      "input": "I renamed parse_json_value to parseJsonValue in src/parser/value.rs and updated the callers.",
+      "expected": "en",
+      "reason": "Enough English prose around the identifiers decides en (HK-213)."
+    },
+    {
+      "name": "Russian is detected",
+      "input": "Сборка успешно завершена, и все тесты прошли без ошибок.",
+      "expected": "ru",
+      "reason": "A non-Latin, non-CJK language passes the same gates (HK-213)."
+    }
+  ]
+}

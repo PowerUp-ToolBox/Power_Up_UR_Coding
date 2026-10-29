@@ -1,0 +1,143 @@
+{
+  "description": "Whether a completed reply goes to the summarizer instead of being spoken in full (spec #100 slice 2.5, ticket #160): only with Spoken Summaries on (off by default, they cost tokens) and a reply of at least 350 Characters (extended grapheme clusters, counted on the reply as it is, untrimmed). The summarizer process, its timeout and the generation counter that drops a late summary stay with the platform.",
+  "function": "AppState.wantsSummary(of:speakSummaries:) — input {reply, speakSummaries} with reply a text descriptor, expected a bool",
+  "verifiedBy": "DESIGN.md v1.12, v2.14; Tests/PowerUpTests/SpeechFixtureTests.swift testSummaryThresholdTable plays it through AppState.wantsSummary(of:speakSummaries:).",
+  "capturedAgainst": "Swift 5.9.2 Foundation and NaturalLanguage (Xcode 15.2) on macOS 27.2, PowerUp at 67659a4",
+  "cases": [
+    {
+      "name": "summaries off never summarize",
+      "input": {
+        "reply": [
+          {
+            "repeat": "a",
+            "times": 1000
+          }
+        ],
+        "speakSummaries": false
+      },
+      "expected": false,
+      "reason": "Spoken Summaries are off by default because they cost tokens (HK-169)."
+    },
+    {
+      "name": "349 Characters is spoken in full",
+      "input": {
+        "reply": [
+          {
+            "repeat": "a",
+            "times": 349
+          }
+        ],
+        "speakSummaries": true
+      },
+      "expected": false,
+      "reason": "A reply under 350 Characters is faster to speak than to summarize (HK-169)."
+    },
+    {
+      "name": "350 Characters is summarized",
+      "input": {
+        "reply": [
+          {
+            "repeat": "a",
+            "times": 350
+          }
+        ],
+        "speakSummaries": true
+      },
+      "expected": true,
+      "reason": "The threshold is inclusive (HK-169)."
+    },
+    {
+      "name": "351 Characters is summarized",
+      "input": {
+        "reply": [
+          {
+            "repeat": "a",
+            "times": 351
+          }
+        ],
+        "speakSummaries": true
+      },
+      "expected": true,
+      "reason": "A reply over the threshold is summarized (HK-169)."
+    },
+    {
+      "name": "349 emoji Characters is spoken in full",
+      "input": {
+        "reply": [
+          {
+            "repeat": "👨\u200D👩\u200D👧\u200D👦",
+            "times": 349
+          }
+        ],
+        "speakSummaries": true
+      },
+      "expected": false,
+      "reason": "The threshold counts Characters, not scalars or UTF-16 units: 349 ZWJ families are far more than 350 scalars (HK-173)."
+    },
+    {
+      "name": "350 emoji Characters is summarized",
+      "input": {
+        "reply": [
+          {
+            "repeat": "👨\u200D👩\u200D👧\u200D👦",
+            "times": 350
+          }
+        ],
+        "speakSummaries": true
+      },
+      "expected": true,
+      "reason": "350 Characters reach the threshold whatever they are made of (HK-173)."
+    },
+    {
+      "name": "349 decomposed accents is spoken in full",
+      "input": {
+        "reply": [
+          {
+            "repeat": "e\u0301",
+            "times": 349
+          }
+        ],
+        "speakSummaries": true
+      },
+      "expected": false,
+      "reason": "A letter with its combining accent counts once (HK-173)."
+    },
+    {
+      "name": "349 CJK Characters is spoken in full",
+      "input": {
+        "reply": [
+          {
+            "repeat": "测",
+            "times": 349
+          }
+        ],
+        "speakSummaries": true
+      },
+      "expected": false,
+      "reason": "CJK text is counted in Characters, not bytes (HK-173)."
+    },
+    {
+      "name": "empty with summaries on",
+      "input": {
+        "reply": "",
+        "speakSummaries": true
+      },
+      "expected": false,
+      "reason": "An empty reply never reaches the summarizer (HK-169)."
+    },
+    {
+      "name": "whitespace counts toward the threshold",
+      "input": {
+        "reply": [
+          {
+            "repeat": " ",
+            "times": 350
+          }
+        ],
+        "speakSummaries": true
+      },
+      "expected": true,
+      "reason": "The reply is counted as it is, untrimmed (HK-169)."
+    }
+  ]
+}

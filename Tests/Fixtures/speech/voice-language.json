@@ -1,0 +1,89 @@
+{
+  "description": "The language a voice is routed for when text is spoken (spec #100 slice 2.5, ticket #160): a caller-supplied language wins as it is, never lowercased, validated or re-checked (spokenReply's decision, the English of app announcements, the Settings voice sample's own language), so an appended phrase or a too-short string cannot flip the voice; with none, the decision of language.json, and \"en\" when that is undecided. Which voice serves the language stays with the platform.",
+  "function": "TTSService.voiceLanguage(for:language:) — input {text, language} with language a string or null, expected the language",
+  "verifiedBy": "DESIGN.md v1.2 A, v2.14; Tests/PowerUpTests/SpeechFixtureTests.swift testVoiceLanguageTable plays it through TTSService.voiceLanguage(for:language:).",
+  "capturedAgainst": "Swift 5.9.2 Foundation and NaturalLanguage (Xcode 15.2) on macOS 27.2, PowerUp at 67659a4",
+  "cases": [
+    {
+      "name": "no override detects English",
+      "input": {
+        "text": "The build completed successfully and all of the tests passed without any failures.",
+        "language": null
+      },
+      "expected": "en",
+      "reason": "Without a caller language the text decides (HK-210)."
+    },
+    {
+      "name": "no override detects Chinese",
+      "input": {
+        "text": "我已经修改了这个函数，现在测试可以通过了。",
+        "language": null
+      },
+      "expected": "zh",
+      "reason": "Script evidence decides zh (HK-210, HK-212)."
+    },
+    {
+      "name": "no override and too short falls back to English",
+      "input": {
+        "text": "Model: Sonnet",
+        "language": null
+      },
+      "expected": "en",
+      "reason": "An undecided language is English (HK-210, HK-213)."
+    },
+    {
+      "name": "no override and empty falls back to English",
+      "input": {
+        "text": "",
+        "language": null
+      },
+      "expected": "en",
+      "reason": "Empty text is English (HK-210)."
+    },
+    {
+      "name": "an English override wins over Chinese text",
+      "input": {
+        "text": "我已经修改了这个函数，现在测试可以通过了。",
+        "language": "en"
+      },
+      "expected": "en",
+      "reason": "A caller-decided language is never re-checked (HK-210)."
+    },
+    {
+      "name": "a Chinese override wins over English text",
+      "input": {
+        "text": "The build completed successfully and all of the tests passed without any failures.",
+        "language": "zh"
+      },
+      "expected": "zh",
+      "reason": "spokenReply's decision pins the voice even when the output reads otherwise (HK-210, HK-211)."
+    },
+    {
+      "name": "a German override on a short phrase",
+      "input": {
+        "text": "OK",
+        "language": "de"
+      },
+      "expected": "de",
+      "reason": "The Settings voice sample passes its voice's language (HK-210)."
+    },
+    {
+      "name": "an override is taken as it is",
+      "input": {
+        "text": "Hello there, this is a test of the voice.",
+        "language": "EN"
+      },
+      "expected": "EN",
+      "reason": "The override is not lowercased or validated (HK-210)."
+    },
+    {
+      "name": "an empty override is kept",
+      "input": {
+        "text": "The build completed successfully and all of the tests passed without any failures.",
+        "language": ""
+      },
+      "expected": "",
+      "reason": "An empty string is a language given, not nil (HK-210)."
+    }
+  ]
+}
