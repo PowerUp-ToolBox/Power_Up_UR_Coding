@@ -1,5 +1,4 @@
 import Foundation
-import CryptoKit
 
 /// Persists the transcript per project as JSON Lines under
 /// `~/Library/Application Support/PowerUp/transcripts/`, so relaunching
@@ -10,6 +9,10 @@ import CryptoKit
 /// swallowed — a full disk or an unreadable file costs the user their
 /// scrollback, not their session. Corrupt or unknown lines are skipped on
 /// load, and an overgrown file is compacted down to its newest entries.
+///
+/// The line format, the load rules and the file name are the Rust core's
+/// (DESIGN v2.14, `CoreBridgeTranscript.swift`); this class keeps the
+/// folder, the append, the atomic rewrite and the standardized path.
 @MainActor
 final class TranscriptStore {
 
@@ -19,12 +22,12 @@ final class TranscriptStore {
     static var supportDirectoryOverride: URL?
 
     /// A file that has grown past this many entries is rewritten with only the
-    /// newest `maxStoredEntries` when it is next loaded.
-    static let maxStoredEntries = 2000
+    /// newest `maxStoredEntries` when it is next loaded (the core's limit).
+    static let maxStoredEntries = CoreBridge.transcriptLimits.maxStored
 
     /// How many entries a restore brings back by default — enough scrollback
     /// to re-read the recent conversation without flooding the window.
-    static let defaultRestoreCount = 200
+    static let defaultRestoreCount = CoreBridge.transcriptLimits.restoreCount
 
     /// The project the store currently appends for; nil = nothing persisted.
     private(set) var projectDir: String?
@@ -41,23 +44,14 @@ final class TranscriptStore {
 
     /// One stable file per project: a readable slug from the folder name plus
     /// a hash of the full standardized path, so `~/a/api` and `~/b/api` never
-    /// collide and renaming nothing keeps history attached.
-    static func fileURL(forProjectDir path: String) -> URL {
+    /// collide and renaming nothing keeps history attached. The core names
+    /// the file; standardizing the path is the platform's rule (on macOS it
+    /// also decomposes accents). Nil only when the core fails, and then
+    /// nothing is persisted.
+    static func fileURL(forProjectDir path: String) -> URL? {
         let standardized = URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL.path
-        let digest = SHA256.hash(data: Data(standardized.utf8))
-        let hash = digest.prefix(6).map { String(format: "%02x", $0) }.joined()
-
-        let basename = URL(fileURLWithPath: standardized, isDirectory: true).lastPathComponent
-        let slugCharacters = basename.lowercased().map { character -> Character in
-            (character.isLetter || character.isNumber) ? character : "-"
-        }
-        let slug = String(slugCharacters)
-            .split(separator: "-", omittingEmptySubsequences: true)
-            .joined(separator: "-")
-            .prefix(40)
-
-        let name = slug.isEmpty ? hash : "\(slug)-\(hash)"
-        return transcriptsDirectory.appendingPathComponent(name + ".jsonl")
+        guard let name = CoreBridge.transcriptFileName(standardizedPath: standardized) else { return nil }
+        return transcriptsDirectory.appendingPathComponent(name)
     }
 
     /// Switches which project's file `append` writes to. Passing nil (no
@@ -68,11 +62,9 @@ final class TranscriptStore {
 
     /// Appends one entry to the active project's file. No project → no-op.
     func append(_ entry: TranscriptEntry) {
-        guard let projectDir else { return }
-        guard var line = try? TranscriptStore.encoder.encode(entry) else { return }
-        line.append(0x0A)
-
-        let url = TranscriptStore.fileURL(forProjectDir: projectDir)
+        guard let projectDir,
+              let line = CoreBridge.transcriptLine(entry),
+              let url = TranscriptStore.fileURL(forProjectDir: projectDir) else { return }
         let fm = FileManager.default
         do {
             try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -92,49 +84,15 @@ final class TranscriptStore {
     /// The newest `maxEntries` entries of the active project's history, oldest
     /// first. Lines that don't decode (corrupt, or written by a future build)
     /// are skipped. Loading also compacts a file that outgrew
-    /// `maxStoredEntries`.
+    /// `maxStoredEntries`, writing the core's bytes atomically.
     func loadTail(maxEntries: Int = TranscriptStore.defaultRestoreCount) -> [TranscriptEntry] {
-        guard let projectDir, maxEntries > 0 else { return [] }
-        let url = TranscriptStore.fileURL(forProjectDir: projectDir)
-        guard let data = try? Data(contentsOf: url) else { return [] }
-
-        var entries: [TranscriptEntry] = []
-        for line in data.split(separator: 0x0A) {
-            guard let entry = try? TranscriptStore.decoder.decode(TranscriptEntry.self, from: Data(line)) else {
-                continue
-            }
-            entries.append(entry)
+        guard let projectDir, maxEntries > 0,
+              let url = TranscriptStore.fileURL(forProjectDir: projectDir),
+              let data = try? Data(contentsOf: url),
+              let load = CoreBridge.transcriptLoad(data, maxEntries: maxEntries) else { return [] }
+        if let rewrite = load.rewrite {
+            try? rewrite.write(to: url, options: .atomic)
         }
-
-        if entries.count > TranscriptStore.maxStoredEntries {
-            entries = Array(entries.suffix(TranscriptStore.maxStoredEntries))
-            rewrite(entries, to: url)
-        }
-
-        return Array(entries.suffix(maxEntries))
+        return load.entries
     }
-
-    private func rewrite(_ entries: [TranscriptEntry], to url: URL) {
-        var data = Data()
-        for entry in entries {
-            guard var line = try? TranscriptStore.encoder.encode(entry) else { continue }
-            line.append(0x0A)
-            data.append(line)
-        }
-        try? data.write(to: url, options: .atomic)
-    }
-
-    // Compact single-line JSON per entry; dates as epoch seconds so the format
-    // is trivially greppable and stable across builds.
-    private static let encoder: JSONEncoder = {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .secondsSince1970
-        return encoder
-    }()
-
-    private static let decoder: JSONDecoder = {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .secondsSince1970
-        return decoder
-    }()
 }

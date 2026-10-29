@@ -172,13 +172,29 @@ pub fn lowercase_scalars(text: &str) -> String {
 /// with a combining acute is a letter and a combining mark alone is
 /// neither. Every scalar Rust calls numeric has a numeric type, and the
 /// numeric-type scalars Rust does not (CJK ideographs used as numbers) are
-/// Alphabetic, so the union is the same.
+/// Alphabetic, so the union is the same. Every scalar was compared with
+/// Swift 5.9.2 on macOS 27.2; the only differences are 35 scalars of
+/// Apple's corporate private-use area that macOS calls letters
+/// ([`APPLE_PRIVATE_USE_LETTERS`]).
 pub fn is_letter_or_number(cluster: &str) -> bool {
-    cluster
-        .chars()
-        .next()
-        .is_some_and(|first| first.is_alphabetic() || first.is_numeric())
+    cluster.chars().next().is_some_and(|first| {
+        first.is_alphabetic()
+            || first.is_numeric()
+            || APPLE_PRIVATE_USE_LETTERS
+                .iter()
+                .any(|range| range.contains(&first))
+    })
 }
+
+/// Private-use scalars that `Character.isLetter` answers true for on macOS
+/// (measured on macOS 27.2), where Unicode gives them no properties.
+pub const APPLE_PRIVATE_USE_LETTERS: [std::ops::RangeInclusive<char>; 5] = [
+    '\u{F882}'..='\u{F882}',
+    '\u{F89A}'..='\u{F89E}',
+    '\u{F8A2}'..='\u{F8A7}',
+    '\u{F8B8}'..='\u{F8B8}',
+    '\u{F8C1}'..='\u{F8D6}',
+];
 
 /// `Character.uppercased()` on the first cluster, the rest untouched
 /// (`"sonnet"` becomes `"Sonnet"`; `"ß"` becomes `"SS"`).
@@ -325,7 +341,14 @@ mod tests {
         ] {
             assert!(is_letter_or_number(kept), "{kept:?}");
         }
-        for replaced in ["-", " ", "_", ".", "🚀", "\u{301}", "!", ""] {
+        for kept in [
+            "\u{F882}", "\u{F89A}", "\u{F8A7}", "\u{F8B8}", "\u{F8C1}", "\u{F8D6}",
+        ] {
+            assert!(is_letter_or_number(kept), "{kept:?}");
+        }
+        for replaced in [
+            "-", " ", "_", ".", "🚀", "\u{301}", "!", "", "\u{F881}", "\u{F8D7}", "\u{F8FF}",
+        ] {
             assert!(!is_letter_or_number(replaced), "{replaced:?}");
         }
     }

@@ -13,7 +13,8 @@
 //!   Rust's `str` order. This writer keeps the order it is given, so callers
 //!   pass sorted maps (`BTreeMap`) and declare struct fields sorted.
 //! - Integers are decimal. A `Float` or `Double` is written with the shortest
-//!   digits that read back as the same value (Swift's `description`), in
+//!   digits that read back as the same value (Swift's `description`; of two
+//!   equally close candidates, the one ending in an even digit), in
 //!   exponential form `d.ddde±XX` when the decimal exponent is below -4 or the
 //!   magnitude is above 2^24 (`Float`) or 2^53 (`Double`), and in plain
 //!   decimal otherwise, without a trailing `.0`; zero is `0` or `-0`.
@@ -64,15 +65,90 @@ const DOUBLE_PLAIN_LIMIT: f64 = 9_007_199_254_740_992.0;
 
 /// A `Float` as `JSONEncoder` writes it.
 pub(crate) fn swift_f32(value: f32) -> String {
-    swift_float(
-        &format!("{value:e}"),
-        f64::from(value).abs() > FLOAT_PLAIN_LIMIT,
-    )
+    // 120 places hold every Float's exact decimal value (at most 112
+    // significant digits).
+    let shortest = ties_to_even(&format!("{value:e}"), &format!("{value:.120e}"), |text| {
+        text.parse::<f32>().ok() == Some(value)
+    });
+    swift_float(&shortest, f64::from(value).abs() > FLOAT_PLAIN_LIMIT)
 }
 
 /// A `Double` as `JSONEncoder` writes it.
 pub(crate) fn swift_f64(value: f64) -> String {
-    swift_float(&format!("{value:e}"), value.abs() > DOUBLE_PLAIN_LIMIT)
+    // 770 places hold every Double's exact decimal value (at most 767
+    // significant digits).
+    let shortest = ties_to_even(&format!("{value:e}"), &format!("{value:.770e}"), |text| {
+        text.parse::<f64>().ok() == Some(value)
+    });
+    swift_float(&shortest, value.abs() > DOUBLE_PLAIN_LIMIT)
+}
+
+/// Rust's shortest digits (`shortest`, as `{:e}` writes them) with Swift's
+/// rule for a tie: when the value lies exactly halfway between two
+/// shortest candidates, Swift's `description` takes the one ending in an
+/// even digit, where Rust always takes the upper one (measured: the Double
+/// 5.9604644775390625e-07 is `5.960464477539062e-07` in Swift and
+/// `5.960464477539063e-7` in Rust; the Float 62117.3125 is `62117.312` and
+/// `62117.313`). `exact` is the value's exact decimal expansion in the same
+/// notation, and `round_trips` says whether a text reads back as the value.
+fn ties_to_even(shortest: &str, exact: &str, round_trips: impl Fn(&str) -> bool) -> String {
+    let parts = |text: &str| -> Option<(bool, String, i32)> {
+        let (negative, unsigned) = match text.strip_prefix('-') {
+            Some(rest) => (true, rest),
+            None => (false, text),
+        };
+        let (mantissa, exponent) = unsigned.split_once('e')?;
+        let digits: String = mantissa.chars().filter(char::is_ascii_digit).collect();
+        Some((negative, digits, exponent.parse().ok()?))
+    };
+    let Some((negative, digits, exponent)) = parts(shortest) else {
+        return shortest.to_owned();
+    };
+    let Some((_, exact_digits, exact_exponent)) = parts(exact) else {
+        return shortest.to_owned();
+    };
+    let exact_digits = exact_digits.trim_end_matches('0');
+    let is_odd = |text: &str| text.bytes().last().is_some_and(|digit| digit % 2 == 1);
+    // A tie: the exact value has one digit more than the shortest, a 5.
+    if exact_exponent != exponent
+        || exact_digits.len() != digits.len() + 1
+        || !exact_digits.ends_with('5')
+        || !is_odd(&digits)
+    {
+        return shortest.to_owned();
+    }
+    let lower = &exact_digits[..digits.len()];
+    let Some(upper) = increment(lower) else {
+        return shortest.to_owned();
+    };
+    let even = if is_odd(lower) {
+        upper
+    } else {
+        lower.to_owned()
+    };
+    let sign = if negative { "-" } else { "" };
+    let (first, rest) = even.split_at(1);
+    let candidate = format!("{sign}{first}.{rest}e{exponent}");
+    if round_trips(&candidate) {
+        candidate
+    } else {
+        shortest.to_owned()
+    }
+}
+
+/// `digits` plus one in its last place, or `None` when that carries into a
+/// new digit.
+fn increment(digits: &str) -> Option<String> {
+    let mut bytes = digits.as_bytes().to_vec();
+    for digit in bytes.iter_mut().rev() {
+        if *digit == b'9' {
+            *digit = b'0';
+        } else {
+            *digit += 1;
+            return String::from_utf8(bytes).ok();
+        }
+    }
+    None
 }
 
 /// Lays out Rust's shortest exponential text (`-1.5e-7`, `0e0`) the way
@@ -226,6 +302,9 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    // The tie literals spell each value's exact decimal expansion, which is
+    // the point: it lies halfway between two shortest candidates.
+    #[allow(clippy::excessive_precision)]
     #[test]
     fn floats_are_written_like_swift() {
         // Measured with JSONEncoder (Swift 5.9.2, macOS 27.2).
@@ -264,8 +343,27 @@ mod tests {
             (1_761_700_000.0, "1761700000"),
             (0.1, "0.1"),
             (1e-5, "1e-05"),
+            // Ties go to the even digit (measured with JSONEncoder).
+            (5.960_464_477_539_062_5e-7, "5.960464477539062e-07"),
+            (1.072_883_605_957_031_25e-6, "1.0728836059570312e-06"),
+            (720_754_498_756_515.25, "720754498756515.2"),
+            (684_608_025_860_066.75, "684608025860066.8"),
+            (18_911_388_747_162.312_5, "18911388747162.312"),
+            (31_961_892_360_027.937_5, "31961892360027.938"),
         ] {
             assert_eq!(swift_f64(value), text, "{value:e}");
+        }
+        for (value, text) in [
+            (1_786_739.25f32, "1786739.2"),
+            (2_214_299.75, "2214299.8"),
+            (430_698.375, "430698.38"),
+            (62_117.312_5, "62117.312"),
+            (248_215.625, "248215.62"),
+            (51_779.937_5, "51779.938"),
+            (1_055.593_75, "1055.5938"),
+            (-62_117.312_5, "-62117.312"),
+        ] {
+            assert_eq!(swift_f32(value), text, "{value:e}");
         }
     }
 

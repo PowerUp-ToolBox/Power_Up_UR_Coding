@@ -60,11 +60,11 @@ final class TranscriptStoreTests: XCTestCase {
 
     // MARK: Isolation and lifecycle
 
-    func testDistinctProjectsGetDistinctFiles() {
+    func testDistinctProjectsGetDistinctFiles() throws {
         let a = makeStore(project: "/tmp/work/api")
         let b = makeStore(project: "/tmp/personal/api")   // same basename, different path
-        XCTAssertNotEqual(TranscriptStore.fileURL(forProjectDir: "/tmp/work/api"),
-                          TranscriptStore.fileURL(forProjectDir: "/tmp/personal/api"))
+        XCTAssertNotEqual(try XCTUnwrap(TranscriptStore.fileURL(forProjectDir: "/tmp/work/api")),
+                          try XCTUnwrap(TranscriptStore.fileURL(forProjectDir: "/tmp/personal/api")))
 
         a.append(TranscriptEntry(kind: .user, text: "for a"))
         b.append(TranscriptEntry(kind: .user, text: "for b"))
@@ -72,9 +72,9 @@ final class TranscriptStoreTests: XCTestCase {
         XCTAssertEqual(b.loadTail().map(\.text), ["for b"])
     }
 
-    func testFileURLIsStableForAPath() {
-        XCTAssertEqual(TranscriptStore.fileURL(forProjectDir: "/tmp/work/api"),
-                       TranscriptStore.fileURL(forProjectDir: "/tmp/work/api"))
+    func testFileURLIsStableForAPath() throws {
+        XCTAssertEqual(try XCTUnwrap(TranscriptStore.fileURL(forProjectDir: "/tmp/work/api")),
+                       try XCTUnwrap(TranscriptStore.fileURL(forProjectDir: "/tmp/work/api")))
     }
 
     func testNoProjectMeansNoPersistence() {
@@ -93,7 +93,7 @@ final class TranscriptStoreTests: XCTestCase {
         let store = makeStore()
         store.append(TranscriptEntry(kind: .user, text: "first"))
 
-        let url = TranscriptStore.fileURL(forProjectDir: store.projectDir!)
+        let url = try XCTUnwrap(TranscriptStore.fileURL(forProjectDir: store.projectDir!))
         let handle = try FileHandle(forWritingTo: url)
         try handle.seekToEnd()
         try handle.write(contentsOf: Data("not json at all\n{\"future\":\"shape\"}\n".utf8))
@@ -125,20 +125,66 @@ final class TranscriptStoreTests: XCTestCase {
         XCTAssertEqual(tail.map(\.text),
                        ((TranscriptStore.maxStoredEntries + extra - 4)...(TranscriptStore.maxStoredEntries + extra)).map { "m\($0)" })
 
-        let url = TranscriptStore.fileURL(forProjectDir: store.projectDir!)
+        let url = try XCTUnwrap(TranscriptStore.fileURL(forProjectDir: store.projectDir!))
         let lines = try Data(contentsOf: url).split(separator: 0x0A)
         XCTAssertEqual(lines.count, TranscriptStore.maxStoredEntries,
                        "loading an overgrown file must rewrite it down to maxStoredEntries")
     }
 
+    func testLimitsAreTheCores() {
+        // The core answers these; the literals in CoreBridgeTranscript.swift
+        // are only the fallback for a failed call and must not drift.
+        XCTAssertEqual(TranscriptStore.maxStoredEntries, 2000)
+        XCTAssertEqual(TranscriptStore.defaultRestoreCount, 200)
+        XCTAssertEqual(CoreBridge.transcriptLimits.maxStored, 2000)
+        XCTAssertEqual(CoreBridge.transcriptLimits.restoreCount, 200)
+    }
+
     // MARK: Format
+
+    /// Lines Swift's JSONEncoder wrote before the core took the format over
+    /// (#157), captured from three launches: its member order was a hash
+    /// order that changed from one launch to the next. They must load
+    /// unchanged, and appending after them must leave their bytes alone.
+    func testPersistedLinesFromBeforeTheSwapLoad() throws {
+        let store = makeStore()
+        let old = """
+            {"date":1761700000.123456,"id":"6E8C0F0A-1B2C-4D3E-8F40-5A6B7C8D9E0F","text":"Run the tests","kind":"user"}
+            {"id":"6E8C0F0A-1B2C-4D3E-8F40-5A6B7C8D9E0F","date":1761700001.5,"text":"Bash — swift test \\/tmp","kind":"tool"}
+            {"kind":"assistant","id":"6E8C0F0A-1B2C-4D3E-8F40-5A6B7C8D9E0F","text":"All 66 tests pass.\\nDone ✅","date":1761700002.25}
+
+            """
+        let url = try XCTUnwrap(TranscriptStore.fileURL(forProjectDir: store.projectDir!))
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(old.utf8).write(to: url)
+
+        let id = try XCTUnwrap(UUID(uuidString: "6E8C0F0A-1B2C-4D3E-8F40-5A6B7C8D9E0F"))
+        let expected = [
+            TranscriptEntry(id: id, kind: .user, text: "Run the tests",
+                            date: Date(timeIntervalSince1970: 1761700000.123456)),
+            TranscriptEntry(id: id, kind: .tool, text: "Bash — swift test /tmp",
+                            date: Date(timeIntervalSince1970: 1761700001.5)),
+            TranscriptEntry(id: id, kind: .assistant, text: "All 66 tests pass.\nDone ✅",
+                            date: Date(timeIntervalSince1970: 1761700002.25)),
+        ]
+        XCTAssertEqual(store.loadTail(), expected)
+
+        let next = TranscriptEntry(kind: .user, text: "and again")
+        store.append(next)
+        let loaded = store.loadTail()
+        XCTAssertEqual(Array(loaded.prefix(3)), expected)
+        XCTAssertEqual(loaded.last?.id, next.id)
+        XCTAssertEqual(loaded.count, 4)
+        let bytes = try Data(contentsOf: url)
+        XCTAssertTrue(bytes.starts(with: Data(old.utf8)), "appending never rewrites the old lines")
+    }
 
     func testOnDiskFormatIsOneJSONObjectPerLine() throws {
         let store = makeStore()
         store.append(TranscriptEntry(kind: .user, text: "line one\nwith a newline inside"))
         store.append(TranscriptEntry(kind: .assistant, text: "reply"))
 
-        let url = TranscriptStore.fileURL(forProjectDir: store.projectDir!)
+        let url = try XCTUnwrap(TranscriptStore.fileURL(forProjectDir: store.projectDir!))
         let lines = try Data(contentsOf: url).split(separator: 0x0A)
         XCTAssertEqual(lines.count, 2, "embedded newlines must be escaped, one entry per line")
         for line in lines {

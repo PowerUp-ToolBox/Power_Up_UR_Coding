@@ -59,11 +59,7 @@ final class TranscriptFixtureTests: XCTestCase {
             let seconds = try XCTUnwrap(Self.seconds(fixtureCase.input["date"]))
             XCTAssertEqual(entry.date.timeIntervalSince1970, seconds,
                            "\(fileName) case \(fixtureCase.name): the date must be one a Date holds exactly")
-            let written = try appendedLine(entry)
-            // Swift's JSONEncoder wrote the members in hash order, so until the
-            // core writes the line the comparison is member by member.
-            let actual = Self.sortedMembers(written) == Self.sortedMembers(fixtureCase.expected)
-                ? fixtureCase.expected : written
+            let actual = try appendedLine(entry)
             if let failure = TextSafetyFixtures.mismatch(in: fileName, fixtureCase, actual: actual) {
                 XCTFail(failure)
             }
@@ -107,7 +103,7 @@ final class TranscriptFixtureTests: XCTestCase {
             let standardized = URL(fileURLWithPath: fixtureCase.input, isDirectory: true).standardizedFileURL.path
             XCTAssertEqual(Array(standardized.unicodeScalars), Array(fixtureCase.input.unicodeScalars),
                            "\(fileName) case \(fixtureCase.name): every input must already be standardized")
-            let actual = TranscriptStore.fileURL(forProjectDir: fixtureCase.input).lastPathComponent
+            let actual = try XCTUnwrap(TranscriptStore.fileURL(forProjectDir: fixtureCase.input)).lastPathComponent
             if let failure = TextSafetyFixtures.mismatch(in: fileName, fixtureCase, actual: actual) {
                 XCTFail(failure)
             }
@@ -119,7 +115,7 @@ final class TranscriptFixtureTests: XCTestCase {
     /// Writes `file` where the store reads the project's transcript, loads it,
     /// and says whether loading rewrote the bytes.
     private func load(file: Data, maxEntries: Int) throws -> (entries: [TranscriptEntry], rewritten: Bool) {
-        let url = TranscriptStore.fileURL(forProjectDir: Self.project)
+        let url = try XCTUnwrap(TranscriptStore.fileURL(forProjectDir: Self.project))
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
                                                 withIntermediateDirectories: true)
         try file.write(to: url)
@@ -132,7 +128,7 @@ final class TranscriptFixtureTests: XCTestCase {
 
     /// The line `append` writes for `entry` into an empty file, without its LF.
     private func appendedLine(_ entry: TranscriptEntry) throws -> String {
-        let url = TranscriptStore.fileURL(forProjectDir: Self.project)
+        let url = try XCTUnwrap(TranscriptStore.fileURL(forProjectDir: Self.project))
         try? FileManager.default.removeItem(at: url)
         defer { try? FileManager.default.removeItem(at: url) }
         let store = TranscriptStore()
@@ -178,34 +174,5 @@ final class TranscriptFixtureTests: XCTestCase {
         case .number(let seconds)?: return seconds
         default: return nil
         }
-    }
-
-    /// The top-level members of a compact JSON object's text, each exactly
-    /// as written, sorted; nil when the text is not `{…}`.
-    static func sortedMembers(_ text: String) -> [String]? {
-        guard text.hasPrefix("{"), text.hasSuffix("}") else { return nil }
-        var members: [String] = []
-        var current = ""
-        var inString = false
-        var escaped = false
-        var depth = 0
-        for scalar in text.unicodeScalars.dropFirst().dropLast() {
-            if inString {
-                if escaped { escaped = false } else if scalar == "\\" { escaped = true } else if scalar == "\"" { inString = false }
-            } else if scalar == "\"" {
-                inString = true
-            } else if scalar == "{" || scalar == "[" {
-                depth += 1
-            } else if scalar == "}" || scalar == "]" {
-                depth -= 1
-            } else if scalar == ",", depth == 0 {
-                members.append(current)
-                current = ""
-                continue
-            }
-            current.unicodeScalars.append(scalar)
-        }
-        members.append(current)
-        return members.sorted()
     }
 }

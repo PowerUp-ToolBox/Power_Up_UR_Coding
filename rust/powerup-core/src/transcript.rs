@@ -131,8 +131,12 @@ pub fn decode_line(line: &[u8]) -> Option<TranscriptEntry> {
 
 /// `UUID(uuidString:)` then `uuidString`: exactly 36 ASCII characters, hex
 /// digits of either case in groups of 8-4-4-4-12 split by hyphens; no
-/// braces, no compact form, no surrounding space. Uppercased.
+/// braces, no compact form, no surrounding space. Uppercased. Foundation
+/// hands the text to `uuid_parse` as a C string, so it ends at the first
+/// NUL: a valid id followed by `\u0000` and anything reads as that id
+/// (found by the differential against the old Swift reader).
 fn uuid_string(text: &str) -> Option<String> {
+    let text = text.split('\0').next().unwrap_or_default();
     let bytes = text.as_bytes();
     let shaped = bytes.len() == 36
         && bytes.iter().enumerate().all(|(at, byte)| match at {
@@ -197,7 +201,8 @@ fn as_a_date_holds(seconds: f64) -> f64 {
 /// core hashes its bytes as given.
 ///
 /// - hash: the first 6 bytes of SHA-256 of the path's UTF-8, lowercase hex.
-/// - slug: the last path component, lowercased scalar by scalar, each
+/// - slug: the last path component (less one leading U+FEFF, as
+///   `URL.lastPathComponent` returns it), lowercased scalar by scalar, each
 ///   Character kept when its first scalar is a letter or a number and
 ///   replaced by `-` otherwise, then split on Characters equal to `-` with
 ///   empty pieces dropped, joined with `-` and cut to 40 Characters. Each
@@ -210,7 +215,12 @@ pub fn file_name(standardized_path: &str) -> String {
         .map(|byte| format!("{byte:02x}"))
         .collect();
 
-    let lowered = text::lowercase_scalars(text::last_path_component(standardized_path));
+    let folder = text::last_path_component(standardized_path);
+    // URL.lastPathComponent drops one byte order mark at the start of the
+    // component (measured on macOS 27.2: "\u{FEFF}\u{FEFF}a" gives
+    // "\u{FEFF}a"), and Swift slugged what it returned.
+    let folder = folder.strip_prefix('\u{FEFF}').unwrap_or(folder);
+    let lowered = text::lowercase_scalars(folder);
     let mapped: String = lowered
         .graphemes(true)
         .map(|cluster| {
@@ -272,6 +282,7 @@ mod tests {
     #[test]
     fn uuid_strings_like_foundation() {
         assert_eq!(uuid_string(&ID.to_lowercase()).as_deref(), Some(ID));
+        assert_eq!(uuid_string(&format!("{ID}\0junk")).as_deref(), Some(ID));
         for refused in [
             "",
             "3F2504E04F8941D39A0C0305E82C3301",
@@ -282,6 +293,7 @@ mod tests {
             "3F2504E0+4F89-41D3-9A0C-0305E82C3301",
             "3F2504E0-4F89-41D3-9A0C-0305E82C330G",
             "３F2504E0-4F89-41D3-9A0C-0305E82C3301",
+            "3F2504E0\0-4F89-41D3-9A0C-0305E82C3301",
         ] {
             assert_eq!(uuid_string(refused), None, "{refused:?}");
         }
@@ -343,6 +355,24 @@ mod tests {
             assert_eq!(TranscriptKind::from_name(kind.name()), Some(kind));
         }
         assert_eq!(TranscriptKind::from_name("User"), None);
+    }
+
+    #[test]
+    fn one_leading_byte_order_mark_is_not_part_of_the_folder_name() {
+        let hash = |path: &str| {
+            file_name(path)
+                .rsplit('-')
+                .next()
+                .unwrap_or_default()
+                .to_owned()
+        };
+        assert_eq!(
+            file_name("/x/\u{FEFF}a"),
+            format!("a-{}", hash("/x/\u{FEFF}a"))
+        );
+        assert!(file_name("/x/\u{FEFF}\u{FEFF}a").starts_with("a-"));
+        assert!(file_name("/x/\u{FEFF}\u{E33}").starts_with("\u{E33}-"));
+        assert!(file_name("/x/a\u{FEFF}b").starts_with("a-b-"));
     }
 
     #[test]

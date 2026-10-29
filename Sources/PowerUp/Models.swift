@@ -459,8 +459,10 @@ enum AppStatus: Equatable {
 
 // MARK: - TranscriptEntry
 
-struct TranscriptEntry: Identifiable, Equatable, Codable {
-    enum Kind: String, Equatable, Codable { case user, assistant, tool, system, error }
+/// One transcript line. Stored as JSON Lines by `TranscriptStore`, whose
+/// line format the Rust core owns (DESIGN v2.14).
+struct TranscriptEntry: Identifiable, Equatable {
+    enum Kind: String, Equatable { case user, assistant, tool, system, error }
 
     let id: UUID
     let kind: Kind

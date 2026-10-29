@@ -2758,6 +2758,53 @@
       "reason": "The largest value that still rounds to Float.max."
     },
     {
+      "name": "ttsRate 62117.3125",
+      "input": "{\"ttsRate\":62117.3125,\"deviceMappings\":{}}",
+      "expected": {
+        "saved": [
+          "{",
+          "  \"acpAgent\" : \"opencode\",",
+          "  \"acpCustomCommand\" : \"\",",
+          "  \"controlMode\" : \"builtin\",",
+          "  \"deviceMappings\" : {",
+          "",
+          "  },",
+          "  \"effort\" : \"default\",",
+          "  \"hapticsEnabled\" : true,",
+          "  \"harnessKind\" : \"claude\",",
+          "  \"lightEnabled\" : true,",
+          "  \"listenerPort\" : 48738,",
+          "  \"listenerToken\" : \"\",",
+          "  \"localeID\" : \"en-US\",",
+          "  \"maxSpokenChars\" : 1500,",
+          "  \"model\" : \"default\",",
+          "  \"modelCycle\" : [",
+          "    \"sonnet\",",
+          "    \"opus\",",
+          "    \"haiku\",",
+          "    \"fable\"",
+          "  ],",
+          "  \"onDeviceRecognition\" : false,",
+          "  \"permissionMode\" : \"acceptEdits\",",
+          "  \"recentProjectDirs\" : [",
+          "",
+          "  ],",
+          "  \"remoteAutoSubmit\" : true,",
+          "  \"remoteTargetKind\" : \"cmux\",",
+          "  \"sessionIDsByProject\" : {",
+          "",
+          "  },",
+          "  \"speakSummaries\" : false,",
+          "  \"summaryModel\" : \"haiku\",",
+          "  \"ttsEnabled\" : true,",
+          "  \"ttsRate\" : 62117.312",
+          "}"
+        ],
+        "backupBeforeSave": false
+      },
+      "reason": "62117.3125 lies exactly between the shortest spellings 62117.312 and 62117.313; Swift's description takes the even digit (measured with JSONEncoder), where Rust's formatter rounds up."
+    },
+    {
       "name": "ttsRate 3.5e38",
       "input": "{\"ttsRate\":3.5e38,\"deviceMappings\":{}}",
       "expected": {

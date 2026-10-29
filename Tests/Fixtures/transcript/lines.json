@@ -111,6 +111,23 @@
       "reason": "Exactly 36 characters, 8-4-4-4-12."
     },
     {
+      "name": "an id with a NUL after it reads",
+      "input": "{\"id\":\"3f2504e0-4f89-41d3-9a0c-0305e82c3301\\u0000junk\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000.123456}",
+      "expected": {
+        "date": 1761700000.123456,
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "hi"
+      },
+      "reason": "UUID(uuidString:) hands the text to uuid_parse as a C string, which ends at the first NUL, so a valid id followed by \\u0000 and anything reads as that id (found by the differential)."
+    },
+    {
+      "name": "an id with a NUL inside is skipped",
+      "input": "{\"id\":\"3F2504E0\\u0000-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000.123456}",
+      "expected": null,
+      "reason": "The C string ends at the NUL, leaving 8 characters, which is not a UUID."
+    },
+    {
       "name": "an id with a space is skipped",
       "input": "{\"id\":\" 3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":1761700000.123456}",
       "expected": null,

@@ -161,6 +161,18 @@
       "reason": "The standardized path holds Hangul as conjoining jamo, one Character per syllable, kept because its leading consonant is a letter."
     },
     {
+      "name": "a leading byte order mark",
+      "input": "/x/﻿﻿Notes",
+      "expected": "notes-bd6894f2ed27.jsonl",
+      "reason": "URL.lastPathComponent drops one byte order mark at the start of the folder name, so only the second is replaced (found by the differential)."
+    },
+    {
+      "name": "Apple private-use letters",
+      "input": "/x/x",
+      "expected": "x-9268b441c07a.jsonl",
+      "reason": "macOS calls 35 scalars of Apple's corporate private-use area letters, so they stay in the slug (found by sweeping every scalar)."
+    },
+    {
       "name": "a deep path",
       "input": "/Users/someone/Library/Mobile Documents/com~apple~CloudDocs/Work",
       "expected": "work-abaf5267f61c.jsonl",

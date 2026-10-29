@@ -236,6 +236,17 @@
       "reason": "The exponent has a sign and at least two digits."
     },
     {
+      "name": "a date halfway between two shortest spellings",
+      "input": {
+        "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
+        "kind": "user",
+        "text": "hi",
+        "date": 5.960464477539062e-07
+      },
+      "expected": "{\"id\":\"3F2504E0-4F89-41D3-9A0C-0305E82C3301\",\"kind\":\"user\",\"text\":\"hi\",\"date\":5.960464477539062e-07}",
+      "reason": "5 x 2^-23 lies exactly between ...062 and ...063; Swift's description takes the even digit, where Rust's formatter rounds up (found by the differential)."
+    },
+    {
       "name": "a date below 1e-4",
       "input": {
         "id": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",

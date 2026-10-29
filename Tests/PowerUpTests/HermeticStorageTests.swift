@@ -33,7 +33,8 @@ final class HermeticStorageTests: XCTestCase {
         let resolved: [(String, URL)] = [
             ("config file", env.makeConfigStore().fileURL),
             ("transcripts directory", TranscriptStore.transcriptsDirectory),
-            ("transcript file", TranscriptStore.fileURL(forProjectDir: "/tmp/powerup-hermetic-project")),
+            ("transcript file", TranscriptStore.fileURL(forProjectDir: "/tmp/powerup-hermetic-project")
+                ?? URL(fileURLWithPath: "/core-failed-to-name-the-transcript")),
             ("support directory", HookInstaller.supportDirectory),
             ("hook script", HookInstaller.hookScriptURL()),
             ("Claude settings file", HookInstaller.defaultSettingsURL),
@@ -100,7 +101,7 @@ final class HermeticStorageTests: XCTestCase {
 
         controller.onLowBattery?(0.15)
 
-        let file = TranscriptStore.fileURL(forProjectDir: project)
+        let file = try XCTUnwrap(TranscriptStore.fileURL(forProjectDir: project))
         XCTAssertTrue(Self.isInside(file, env.directory))
         let persisted = try String(contentsOf: file, encoding: .utf8)
         XCTAssertTrue(persisted.contains("Controller battery is low (15%)"))
