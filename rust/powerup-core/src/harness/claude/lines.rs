@@ -4,6 +4,10 @@
 //! them here in order. Splitting per chunk would hand half a JSON object to
 //! the parser, so the bytes after the last newline wait for the next chunk
 //! and come out only when the stream ends.
+//!
+//! An ACP agent's stdout is split by the same buffer (HK-152), but its tail
+//! is never flushed at the end of the stream, so an unterminated last line
+//! is dropped, as the Swift ACP adapter always dropped it.
 
 /// 16 MiB: an unterminated line that grows past this is dropped instead of
 /// growing the buffer without bound (HK-053).

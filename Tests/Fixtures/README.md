@@ -222,7 +222,9 @@ object per line over stdio): it answers `initialize`, `session/new`,
 request, then the rest of the reply and the usage) and
 `session/set_model`, with no real harness and no network. Run it in place
 with Python 3; never copy it. Swift's `ACPAdapterIntegrationTests` drives
-the app's `ACPAdapter` against it. With `--record PATH` it appends one JSON
+the app's `ACPAdapter` against it, and `rust/powerup-core/tests/acp_mock_agent.rs`
+drives the core's `AcpAdapter` against it, carrying out the effects as
+`ACPAdapter` does. With `--record PATH` it appends one JSON
 object per line to `PATH`: `{"received": <a line it read, without the line
 break>}` and `{"sent": <a line it wrote, without the newline>}`.
 
@@ -258,10 +260,16 @@ check reaches `sessionReady(s1, m1)` first: start `{projectDir
 Cases named `mock agent: …` are the exchange with `acp-mock-agent.py`:
 their `line` steps are the mock's lines byte for byte, and their start
 uses the command the integration tests run (`python3 acp-mock-agent.py` in
-`/tmp`). `ACPAdapterIntegrationTests` runs the mock with `--record` and
-checks that what it sent equals those `line` steps and what it read equals
-the case's `writeStdin` lines, so the table's mock lines are the real
-mock's, answering the real adapter.
+`/tmp`). `ACPAdapterIntegrationTests` and `tests/acp_mock_agent.rs` run the
+mock with `--record` and check that what it sent equals those `line` steps
+and what it read equals the case's `writeStdin` lines, so the table's mock
+lines are the real mock's, answering the real adapter from either language.
+The Rust test also checks the emitted events against the case's, and runs
+the mock in a temporary project folder, which it maps onto the case's
+`/tmp` in `session/new`'s `cwd`. It finds Python as `POWERUP_PYTHON`, then
+`python3`, then `python`; without one it skips, except on CI. Python on
+Windows ends its lines with `\r\n`: the line buffer keeps the `\r`, which the
+JSON reader reads as whitespace.
 
 The expectations were checked against `ACPAdapter.swift` at `dddf9c6`
 (the last Swift-only version) with a scratch differential harness that
@@ -270,7 +278,10 @@ event, the state each event saw and the state after each step. The old
 adapter cancelled pending permission requests in dictionary order, so the
 harness compared a step's cancellations as a set; the tables pin arrival
 order. The Rust runner is `rust/powerup-core/tests/acp.rs` (its helpers are
-in `tests/support`).
+in `tests/support`); since #155 the Swift runner,
+`ACPFixtureTests.testAcpAdapterTable` and `testAcpAgentLinesTable`, plays
+both tables through `CoreBridge.ACPStateMachine`, the machine `ACPAdapter`
+drives.
 
 Three small tables hold the rules around the adapter, each captured by
 running the Swift suite on the Swift statics before anything else read it:
