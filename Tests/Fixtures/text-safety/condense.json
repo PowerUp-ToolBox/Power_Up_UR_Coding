@@ -1,7 +1,7 @@
 {
   "description": "Condensing cmux command output into one short line for the friendly failure message the person sees in the transcript and in Settings → Remote. CR, LF and tab become spaces, runs of spaces collapse to one and leading/trailing spaces go; then, if the result is longer than maxChars characters (Swift Characters: extended grapheme clusters, never bytes or UTF-16 units), it is cut to max(1, maxChars - 1) characters followed by U+2026 …. Display-only: this is not the injection line-break flattener.",
   "function": "RemoteControlService.condense(_:maxChars:) — input {text, maxChars} in, condensed string out",
-  "verifiedBy": "Characterization of the Swift implementation (spec #93, ticket #121); Tests/PowerUpTests/CmuxReportingFixtureTests.swift. Pure function, independent of any cmux version.",
+  "verifiedBy": "Characterization of the Swift implementation (spec #93, ticket #121); Tests/PowerUpTests/CmuxReportingFixtureTests.swift. Pure function, independent of any cmux version. Rust: rust/powerup-core/tests/text_safety.rs condense_cases runs text_safety::condense, and checks that a limit of 2 or more is never exceeded.",
   "capturedAgainst": "PowerUp macOS app, branch stage-1-text-views-spikes, 2026-10-23",
   "cases": [
     {

@@ -22,6 +22,7 @@ mod sha256;
 pub mod slots;
 pub mod status;
 pub mod text;
+pub mod text_safety;
 pub mod transcript;
 pub mod wire;
 

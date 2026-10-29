@@ -19,6 +19,26 @@ pub fn trim(text: &str) -> &str {
     text.trim_matches(|scalar: char| scalar.is_whitespace() || scalar == '\u{200B}')
 }
 
+/// Swift's `trimmingCharacters(in: .whitespaces)`: Foundation's narrower
+/// set, the [`trim`] set without the line and paragraph breaks (U+000A to
+/// U+000D, U+0085, U+2028, U+2029), so tab, the Zs spaces and U+200B
+/// (every scalar compared on macOS 27.2). Trimming works on scalars, not
+/// clusters.
+pub fn trim_whitespaces(text: &str) -> &str {
+    text.trim_matches(is_horizontal_whitespace)
+}
+
+/// A scalar of Foundation's `CharacterSet.whitespaces` (see
+/// [`trim_whitespaces`]).
+fn is_horizontal_whitespace(scalar: char) -> bool {
+    scalar == '\u{200B}'
+        || (scalar.is_whitespace()
+            && !matches!(
+                scalar,
+                '\n' | '\u{0B}' | '\u{0C}' | '\r' | '\u{85}' | '\u{2028}' | '\u{2029}'
+            ))
+}
+
 /// Swift's `String.count`: the number of extended grapheme clusters.
 pub fn grapheme_count(text: &str) -> usize {
     text.graphemes(true).count()
@@ -64,6 +84,44 @@ pub fn starts_with_clusters(text: &str, prefix: &str) -> bool {
     prefix
         .graphemes(true)
         .all(|wanted| clusters.next() == Some(wanted))
+}
+
+/// Swift's `String.hasSuffix(_:)`: whether `text`'s last clusters are
+/// `suffix`'s. A combining mark after the suffix's last character, or a
+/// prepended scalar (U+0600) that joins its first, makes a different
+/// character, so `"x[selected]\u{301}"` does not have the suffix
+/// `"[selected]"` (measured with Swift 5.9.2). The same
+/// canonical-equivalence caveat as [`contains_clusters`] applies.
+pub fn ends_with_clusters(text: &str, suffix: &str) -> bool {
+    let wanted: Vec<&str> = suffix.graphemes(true).collect();
+    let clusters: Vec<&str> = text.graphemes(true).collect();
+    clusters.len() >= wanted.len()
+        && clusters
+            .iter()
+            .rev()
+            .zip(wanted.iter().rev())
+            .all(|(cluster, wanted)| cluster == wanted)
+}
+
+/// Swift's `split(separator: " ", maxSplits: 1, omittingEmptySubsequences:
+/// true)`, as the first piece and the rest: clusters equal to `" "` before
+/// the first non-empty piece are skipped, the rest is everything after the
+/// separator that ends it (`""` when nothing follows), and `None` is no
+/// piece at all. Only a cluster equal to `" "` separates, as in
+/// [`split_on_spaces`].
+pub fn split_once_on_space(text: &str) -> Option<(&str, &str)> {
+    let mut start = 0;
+    for (at, cluster) in text.grapheme_indices(true) {
+        if cluster == " " {
+            if at > start {
+                return Some((text.get(start..at)?, text.get(at + cluster.len()..)?));
+            }
+            start = at + cluster.len();
+        }
+    }
+    text.get(start..)
+        .filter(|rest| !rest.is_empty())
+        .map(|rest| (rest, ""))
 }
 
 /// Swift's `split(separator: " ", omittingEmptySubsequences: true)`: the
@@ -241,6 +299,51 @@ mod tests {
         assert_eq!(trim("\u{FEFF}x"), "\u{FEFF}x");
         assert_eq!(trim("\u{2060}x"), "\u{2060}x");
         assert_eq!(trim(" \u{301}x"), "\u{301}x");
+    }
+
+    #[test]
+    fn trim_whitespaces_matches_foundations_narrow_set() {
+        // CharacterSet.whitespaces, every scalar listed on macOS 27.2.
+        let measured: Vec<u32> = [0x9, 0x20, 0xA0, 0x1680]
+            .into_iter()
+            .chain(0x2000..=0x200B)
+            .chain([0x202F, 0x205F, 0x3000])
+            .collect();
+        let actual: Vec<u32> = (0..=0x10FFFF)
+            .filter_map(char::from_u32)
+            .filter(|scalar| is_horizontal_whitespace(*scalar))
+            .map(u32::from)
+            .collect();
+        assert_eq!(actual, measured);
+        assert_eq!(trim_whitespaces("\t\u{A0}x\u{200B} "), "x");
+        assert_eq!(trim_whitespaces("\nx\u{2028}"), "\nx\u{2028}");
+        assert_eq!(trim_whitespaces(" \u{301}x"), "\u{301}x");
+    }
+
+    #[test]
+    fn ends_with_clusters_like_has_suffix() {
+        assert!(ends_with_clusters("Notes[selected]", "[selected]"));
+        assert!(ends_with_clusters("[selected]", "[selected]"));
+        assert!(!ends_with_clusters("x[selected]\u{301}", "[selected]"));
+        assert!(!ends_with_clusters("\u{600}[selected]", "[selected]"));
+        assert!(!ends_with_clusters("selected]", "[selected]"));
+        assert!(ends_with_clusters("anything", ""));
+        assert!(ends_with_clusters("", ""));
+    }
+
+    #[test]
+    fn split_once_on_space_like_swift() {
+        assert_eq!(
+            split_once_on_space("workspace:1  A  b"),
+            Some(("workspace:1", " A  b"))
+        );
+        assert_eq!(split_once_on_space("  a b"), Some(("a", "b")));
+        assert_eq!(split_once_on_space("a "), Some(("a", "")));
+        assert_eq!(split_once_on_space("a"), Some(("a", "")));
+        assert_eq!(split_once_on_space("a\tb"), Some(("a\tb", "")));
+        assert_eq!(split_once_on_space("a \u{301}b"), Some(("a \u{301}b", "")));
+        assert_eq!(split_once_on_space("   "), None);
+        assert_eq!(split_once_on_space(""), None);
     }
 
     #[test]
