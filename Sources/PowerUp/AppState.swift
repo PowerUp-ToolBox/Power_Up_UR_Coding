@@ -43,10 +43,11 @@ final class AppState: ObservableObject {
     let tts: TTSService
     let claude: ClaudeService
 
-    /// The session driver, seen strictly through the harness contract. All
-    /// session logic in this class goes through `harness` + `HarnessEvent`;
-    /// which adapter that is follows Settings → General → Harness. `claude`
-    /// stays exposed for the views until the UI fully generalizes.
+    /// The session driver, seen strictly through the harness contract; which
+    /// adapter that is follows Settings → General → Harness. The session
+    /// rules run in the core and reach the adapters through `HarnessEvent`
+    /// and the effects (`execute`). `claude` stays exposed for the views
+    /// until the UI fully generalizes.
     var harness: any HarnessAdapter {
         AppState.normalizedHarnessKind(configStore.config.harnessKind) == "acp"
             ? (injectedACPHarness ?? acpAdapterInstance())
@@ -97,7 +98,10 @@ final class AppState: ObservableObject {
         return adapter
     }
 
-    private static func normalizedHarnessKind(_ raw: String) -> String {
+    /// Which adapter a stored harness kind selects. A one-line wiring
+    /// check that must agree with the core's own reading
+    /// (`AppStateSeamTests.testRuntimeNormalizationAgreesWithTheCore`).
+    nonisolated static func normalizedHarnessKind(_ raw: String) -> String {
         raw == "acp" ? "acp" : "claude"
     }
 
@@ -127,8 +131,9 @@ final class AppState: ObservableObject {
 
     /// True while at least one remote session has a turn in flight — remote
     /// mode's stand-in for `claude.state == .working` (no process of ours is
-    /// running, so the light bar and status pill lean on this). Derived from
-    /// `remoteActiveTurns`; never write it directly.
+    /// running, so the light bar and status pill lean on this). A mirror of
+    /// the session's per-session turn table, kept by its effects; never write
+    /// it directly.
     @Published private(set) var remoteTurnActive: Bool = false
 
     /// Text of the main window's prompt box. It lives here rather than in the
@@ -154,10 +159,6 @@ final class AppState: ObservableObject {
     private var lastSpeechConfigKey: String?
     /// Port/token the listener was last started with, so it only rebinds on change.
     private var lastListenerKey: String?
-    /// Control mode we last reacted to, so switching modes (from the controller
-    /// button *or* from Settings) runs its side effects exactly once.
-    private var lastControlMode: String = "builtin"
-
     /// Which control on the active controller owns the running hold (its
     /// `owner`; nil when the pad owns no capture), and the v2.7 §C rules for
     /// what each press and release does. Wherever a capture ends other than
@@ -187,36 +188,6 @@ final class AppState: ObservableObject {
     private var draftBase: String = ""
     private var draftLastShown: String = ""
 
-    /// True while the currently running session was started with `--resume`.
-    private var startedWithResume = false
-    /// The resume-retry rule fires at most once per resumed session id.
-    private var hasRetriedWithoutResume = false
-    /// Terminations we caused ourselves (restart / quit) must not trigger recovery.
-    private var expectedTerminations = 0
-
-    /// Effort can only change by restarting the CLI, which would abandon a turn
-    /// in flight — so a mid-turn change waits here until the turn completes.
-    private var pendingEffortRestart = false
-
-    /// The model / permission mode the CLI last confirmed, so a rejected live
-    /// change can be rolled back instead of leaving the UI lying about state.
-    /// Seeded at session start (those values went in on the command line).
-    private var lastConfirmedModel: String = "default"
-    private var lastConfirmedPermissionMode: String = "acceptEdits"
-
-    /// "Session started" is logged once per launch: the CLI emits further
-    /// `system/init` events mid-session (e.g. after a live `set_model`), and
-    /// those must only refresh fields, not fake a new session start.
-    private var didLogSessionStart = false
-
-    /// Turn state per remote session (session id → when its turn last showed
-    /// life). Hooks fire for EVERY Claude session on this machine, several of
-    /// which can be mid-turn at once — one global Bool interleaved them into
-    /// nonsense, and a session that closed mid-turn (its Stop hook never
-    /// fires) pinned the light on amber forever. Entries leave on Stop, on
-    /// SessionEnd, or by expiring.
-    private var remoteActiveTurns: [String: Date] = [:]
-
     /// A remote turn with no hook activity for this long is presumed dead
     /// (missed Stop: killed terminal, crashed CLI, Escape pressed directly in
     /// the session). Long legitimate turns can exceed it — the tradeoff is a
@@ -225,37 +196,25 @@ final class AppState: ObservableObject {
     /// the 15 minutes their fixture rows assume.
     static let remoteTurnExpiry: TimeInterval = 15 * 60
 
-    /// Remote sessions seen via hooks recently (id → cwd + last activity),
-    /// so Cycle Session Focus has something to step through. In-memory only.
-    private var knownRemoteSessions: [String: (cwd: String?, lastSeen: Date)] = [:]
-    private static let remoteSessionMemory: TimeInterval = 30 * 60
-
     /// Read-back focus in remote mode: nil = everything (default), else only
     /// this session id is spoken/haptic'd and drives the working light; other
-    /// sessions still log (prefixed) into the transcript.
+    /// sessions still log (prefixed) into the transcript. A mirror of the
+    /// session's focus, kept by its effects.
     @Published private(set) var remoteFocusSessionID: String?
 
-    /// Display name for the focused session (cwd basename), for the chip.
-    var remoteFocusLabel: String? {
-        guard let focus = remoteFocusSessionID else { return nil }
-        guard let cwd = knownRemoteSessions[focus]?.cwd, !cwd.isEmpty else {
-            return String(focus.prefix(8))
-        }
-        return (cwd as NSString).lastPathComponent
-    }
+    /// Display name for the focused session (cwd basename, else the first
+    /// eight characters of its id), for the chip.
+    var remoteFocusLabel: String? { session.remoteFocusLabel }
 
     /// Bumped whenever the thing worth speaking changes (new turn, interrupt,
     /// PTT start) so a summary that arrives late speaks into the right moment
     /// or not at all.
     private var speechTurnGeneration = 0
 
-    /// Harness selection last acted on (kind|agent|custom command), so a
-    /// Settings change stops the old session exactly once.
-    private var lastHarnessKey = ""
-
     /// The permission request currently awaiting ✕ (allow) / ○ (deny),
     /// published so the main window can banner it. Built-in mode only —
     /// remote mode's Approve/Reject already mean Enter/Escape in the target.
+    /// A mirror of the session's, kept by its effects.
     struct PendingPermission: Equatable {
         let id: String
         let name: String
@@ -267,6 +226,13 @@ final class AppState: ObservableObject {
         var armed: Bool = false
     }
     @Published private(set) var pendingPermission: PendingPermission?
+
+    /// The session rules (DESIGN v2.12): resume retry, effort restart,
+    /// destructive confirmation, the setting cycles, project and mode
+    /// switches, remote read-back. They run in the Rust core; this class
+    /// hands them each call, event and hook with a fresh context and carries
+    /// out the effects (`execute`).
+    private let session: CoreBridge.Session
 
     private var willTerminateObserver: NSObjectProtocol?
 
@@ -352,10 +318,11 @@ final class AppState: ObservableObject {
         self.remoteTurnClock = clock ?? SystemRemoteTurnClock()
         self.sideEffects = sideEffects
 
-        // ConfigStore mints a token on first launch; adopt whatever mode the
-        // config already holds without running the mode-switch side effects.
-        lastControlMode = AppState.normalizedControlMode(store.config.controlMode)
-        lastHarnessKey = AppState.harnessKey(for: store.config)
+        // ConfigStore mints a token on first launch; the session adopts
+        // whatever mode and harness the config already holds without running
+        // the switch side effects (HK-166). The bookkeeping seeded below
+        // touches neither, so the session can be made first.
+        session = CoreBridge.Session(initial: store.config)
 
         self.transcriptStore.setProject(store.config.projectDir)
         restorePersistedTranscript()
@@ -381,7 +348,7 @@ final class AppState: ObservableObject {
         syncSpeechConfiguration()
         syncListener()
         RemoteControlService.updateCmuxPassword(configStore.config.remoteCmuxPassword)
-        if lastControlMode == "remote" {
+        if isRemoteMode {
             // Populate the cmux availability / workspace list for the UI. All of
             // these probes are read-only.
             refreshRemoteStatus()
@@ -469,8 +436,13 @@ final class AppState: ObservableObject {
     /// request, and a late exit must not be taken for the new session ending
     /// (it would even run the resume retry and restart the new harness).
     private func route(_ event: HarnessEvent, from adapter: any HarnessAdapter) {
-        guard adapter === harness else { return }
-        handleHarnessEvent(event)
+        let kind: CoreBridge.HarnessKind
+        if adapter === harness {
+            kind = activeHarnessKind
+        } else {
+            kind = adapter === claudeHarness ? .claude : .acp
+        }
+        execute(session.harnessEvent(context: sessionContext(), from: kind, event: event))
     }
 
     private func wireTTS() {
@@ -583,7 +555,8 @@ final class AppState: ObservableObject {
 
     private func wireListener() {
         listener.onEvent = { [weak self] event in
-            self?.handleRemoteEvent(event)
+            guard let self else { return }
+            self.execute(self.session.hookEvent(context: self.sessionContext(), hook: event))
         }
         listener.onIntent = { [weak self] intent in
             self?.handleProtocolIntent(intent)
@@ -778,11 +751,10 @@ final class AppState: ObservableObject {
     /// Allow/Deny buttons, so tool approvals don't require a controller.
     /// Routes through the same intents as ✕/○ (destructive arming included),
     /// but no-ops when nothing is pending: a click that races the request
-    /// being resolved elsewhere must not fall through to approve()'s
+    /// being resolved elsewhere must not fall through to Approve's
     /// "send Yes/No as text" branch.
     func answerPendingPermission(allow: Bool) {
-        guard pendingPermission != nil else { return }
-        handle(allow ? .approve : .reject)
+        execute(session.answerPendingPermission(context: sessionContext(), allow: allow))
     }
 
     // MARK: - Keyboard shortcuts (local event monitor)
@@ -877,13 +849,11 @@ final class AppState: ObservableObject {
     /// The single dispatcher every input source funnels into: controller
     /// buttons (via the mapping), and protocol clients (via the listener).
     func handle(_ intent: Intent) {
-        // A destructive confirmation is two Approves IN A ROW. Anything else in
-        // between disarms it (the request itself stays pending), so a stray
-        // Approve later can never complete a confirmation the person moved on
-        // from — it arms again instead.
-        if intent != .approve, pendingPermission?.armed == true {
-            pendingPermission?.armed = false
-        }
+        // The session runs its own intents and disarms an armed destructive
+        // confirmation on anything but Approve (the request stays pending),
+        // so a stray Approve later can never complete a confirmation the
+        // person moved on from. The rest are the platform's.
+        execute(session.handleIntent(context: sessionContext(), intent: intent))
         switch intent {
         case .beginVoiceCapture(let mode):
             startPushToTalk(mode: mode)
@@ -891,14 +861,6 @@ final class AppState: ObservableObject {
             stopPushToTalk()
         case .sendDraft:
             sendDraft()
-        case .sendPrompt(let prompt):
-            sendUserText(prompt)
-        case .approve:
-            approve()
-        case .reject:
-            reject()
-        case .interrupt:
-            interruptClaude()
         case .stopSpeaking:
             cancelPendingSummary()
             tts.stop()
@@ -912,79 +874,19 @@ final class AppState: ObservableObject {
             appendEntry(.system, enabled ? "Spoken replies on." : "Spoken replies off.")
             haptic(intensity: 0.5, duration: 0.05)
             updateStatus()
-        case .newSession:
-            newSession()
         case .showWindow:
             showWindow()
-        case .cycleModel:
-            cycleModel()
-        case .cycleEffort:
-            cycleEffort()
-        case .cyclePermissionMode:
-            cyclePermissionMode()
         case .cycleProject:
-            cycleProject()
-        case .cycleFocus:
-            cycleFocus()
-        case .toggleControlMode:
-            toggleControlMode()
-        }
-    }
-
-    /// "Yes" to Claude. A pending harness permission request takes priority:
-    /// ✕ answers it. In remote mode the target session is showing its own
-    /// prompt, where Enter is the accept key — typing "Yes" there would answer
-    /// a permission dialog with a word instead of a choice.
-    private func approve() {
-        if !isRemoteMode, let pending = pendingPermission {
-            // Destructive requests take TWO presses: the first arms, the
-            // second (still pending) confirms — a misheard word or stray
-            // press must never delete a branch (docs/protocol.md invariants).
-            if pending.isDestructive && !pending.armed {
-                pendingPermission?.armed = true
-                appendEntry(.system, "⚠️ Destructive action — press ✕ again to confirm, or ○ to deny.")
-                announce("Destructive. Press again to confirm")
-                errorHaptic()
-                updateStatus()
-                return
+            // Which recents still exist is the filesystem's answer; stepping
+            // through them is the session's.
+            let existing = configStore.config.recentProjectDirs.filter {
+                FileManager.default.fileExists(atPath: $0)
             }
-            pendingPermission = nil
-            harness.respondToPermission(id: pending.id, allow: true)
-            appendEntry(.system, "Approved.")
-            haptic(intensity: 0.5, duration: 0.05)
-            updateStatus()
-            return
+            execute(session.cycleProject(context: sessionContext(), existingRecents: existing))
+        case .sendPrompt, .approve, .reject, .interrupt, .newSession, .cycleModel, .cycleEffort,
+             .cyclePermissionMode, .cycleFocus, .toggleControlMode:
+            break
         }
-        guard isRemoteMode else {
-            sendUserText("Yes")
-            return
-        }
-        appendEntry(.system, "Approved (Enter).")
-        sendRemoteKey(.enter)
-    }
-
-    /// "No" to Claude — answers a pending permission request first; Escape in
-    /// remote mode, which both dismisses a prompt and stops a turn in flight.
-    private func reject() {
-        if !isRemoteMode, let pending = pendingPermission {
-            pendingPermission = nil
-            harness.respondToPermission(id: pending.id, allow: false)
-            appendEntry(.system, "Denied.")
-            haptic(intensity: 0.5, duration: 0.05)
-            updateStatus()
-            return
-        }
-        guard isRemoteMode else {
-            sendUserText("No")
-            return
-        }
-        // Escape also stops a turn in flight, and an Escape-interrupted turn
-        // never emits a Stop hook — without this the status pill and light bar
-        // would claim "Claude is working…" forever (interruptClaude does the same).
-        clearRemoteTurns()
-        appendEntry(.system, "Rejected (Esc).")
-        sendRemoteKey(.escape)
-        updateStatus()
     }
 
     private func showWindow() {
@@ -995,133 +897,7 @@ final class AppState: ObservableObject {
         window.makeKeyAndOrderFront(nil)
     }
 
-    // MARK: - Session-setting cycles
-
-    /// Steps `config.model` through the user's model cycle. The CLI accepts a
-    /// live `set_model`, so a running session switches without losing context.
-    private func cycleModel() {
-        var cycle = configStore.config.modelCycle
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        if cycle.isEmpty { cycle = AppConfig.defaultModelCycle }
-
-        let next = AppState.nextValue(after: configStore.config.model, in: cycle)
-        configStore.config.model = next
-        haptic(intensity: 0.5, duration: 0.05)
-        appendEntry(.system, "Model → \(next)")
-
-        if isRemoteMode {
-            // The remote session takes its orders as slash commands.
-            sendRemoteText("/model \(next)", submit: true)
-            announce("Model: \(AppState.spokenName(for: next))")
-            updateStatus()
-            return
-        }
-
-        switch harness.state {
-        case .ready, .working, .starting:
-            // `.starting` is fine too: the CLI buffers stdin while it boots and
-            // answers the request right after init, so writing the change now
-            // guarantees it lands *ahead* of any turn sent before the first
-            // `system/init` (queueing it until `.ready` did not — the turn got
-            // there first and ran on the old command-line model).
-            harness.setModel(next)
-        case .stopped:
-            // The next launch picks config.model up from the command line.
-            break
-        }
-
-        announce("Model: \(AppState.spokenName(for: next))")
-        updateStatus()
-    }
-
-    /// Steps `config.effort` through the fixed low → medium → high → xhigh cycle.
-    /// There is no live effort switch, so this restarts the CLI with `--resume`
-    /// (the conversation is preserved) — deferred if a turn is in flight.
-    private func cycleEffort() {
-        if !isRemoteMode, !harness.supportsEffort {
-            appendEntry(.system, "This harness doesn't have an effort setting.")
-            errorHaptic()
-            return
-        }
-        let next = AppState.nextValue(after: configStore.config.effort, in: AppConfig.effortCycle)
-        configStore.config.effort = next
-        haptic(intensity: 0.5, duration: 0.05)
-
-        if isRemoteMode {
-            // No process of ours to restart — hand the change to the session as a
-            // slash command. A CLI without /effort just prints an error there.
-            pendingEffortRestart = false
-            appendEntry(.system, "Effort → \(AppConfig.effortDisplayName(next))")
-            sendRemoteText("/effort \(next)", submit: true)
-            announce("Effort: \(AppConfig.effortDisplayName(next))")
-            updateStatus()
-            return
-        }
-
-        let display = AppConfig.effortDisplayName(next)
-        if harness.state == .working {
-            pendingEffortRestart = true
-            appendEntry(.system, "Effort → \(display) (applies when this turn finishes)")
-        } else if harness.state == .stopped {
-            pendingEffortRestart = false
-            appendEntry(.system, "Effort → \(display) (applies when the session starts)")
-        } else {
-            pendingEffortRestart = false
-            appendEntry(.system, "Effort → \(display)")
-            restartForEffort()
-        }
-
-        announce("Effort: \(display)")
-        updateStatus()
-    }
-
-    /// Steps `config.permissionMode` through the fixed cycle. `bypassPermissions`
-    /// is not in it on purpose — a stray press must never auto-approve everything.
-    private func cyclePermissionMode() {
-        if isRemoteMode {
-            // Interactive Claude Code cycles permission modes with Shift+Tab.
-            // Which mode that lands on depends on where the session already was,
-            // and nothing reports it back — so config.permissionMode is left
-            // alone rather than made to claim a mode we can't verify.
-            haptic(intensity: 0.5, duration: 0.05)
-            appendEntry(.system, "Permission mode cycled (see session)")
-            sendRemoteKey(.shiftTab)
-            announce("Permission mode cycled")
-            updateStatus()
-            return
-        }
-
-        let next = AppState.nextValue(after: configStore.config.permissionMode,
-                                      in: AppConfig.permissionModeCycle)
-        configStore.config.permissionMode = next
-        haptic(intensity: 0.5, duration: 0.05)
-        appendEntry(.system, "Permissions → \(next)")
-
-        switch harness.state {
-        case .ready, .working, .starting:
-            // Same as cycleModel: the CLI buffers stdin during `.starting`, so
-            // writing now puts the change ahead of any turn sent before init.
-            harness.setPermissionMode(next)
-        case .stopped:
-            // The next launch picks config.permissionMode up from the command line.
-            break
-        }
-
-        announce("Permissions: \(next)")
-        updateStatus()
-    }
-
-    /// Relaunches the CLI so the new `--effort` takes hold, resuming the session
-    /// so nothing said so far is lost.
-    private func restartForEffort() {
-        guard harness.state != .stopped else { return }
-        guard let dir = configStore.config.projectDir, !dir.isEmpty else { return }
-
-        let resumeID = harness.sessionID ?? configStore.config.lastSessionID
-        appendEntry(.system, "Resuming the session with effort \(configStore.config.effort)…")
-        startSession(resumeSessionID: resumeID)
-    }
+    // MARK: - Spoken confirmations
 
     /// Short spoken confirmation of a setting change. Deliberately NOT run
     /// through `speechText` — these phrases are already plain and short. The
@@ -1136,20 +912,6 @@ final class AppState: ObservableObject {
                   voiceID: configStore.config.ttsVoiceID,
                   rate: configStore.config.ttsRate,
                   language: "en")
-    }
-
-    /// Next entry after `current`, wrapping around; falls back to the first entry
-    /// when the current value isn't part of the cycle at all.
-    private static func nextValue(after current: String, in cycle: [String]) -> String {
-        guard let first = cycle.first else { return current }
-        guard let index = cycle.firstIndex(of: current) else { return first }
-        return cycle[(index + 1) % cycle.count]
-    }
-
-    /// "sonnet" → "Sonnet", so the announcement doesn't sound clipped.
-    private static func spokenName(for alias: String) -> String {
-        guard let initial = alias.first else { return alias }
-        return initial.uppercased() + alias.dropFirst()
     }
 
     // MARK: - Push to talk
@@ -1362,117 +1124,22 @@ final class AppState: ObservableObject {
 
     // MARK: - Session control
 
+    /// Starts the selected harness when nothing runs, resuming the folder's
+    /// own session. Remote mode never starts one of its own.
     func startSessionIfNeeded() {
-        // Remote mode drives a session somebody else is running; spawning ours
-        // would duplicate the work and echo its own hooks back at us.
-        guard !isRemoteMode else { return }
-        guard harness.state == .stopped else { return }
-        guard let dir = configStore.config.projectDir, !dir.isEmpty else { return }
-        startSession(resumeSessionID: savedSessionID(for: dir) ?? configStore.config.lastSessionID)
+        execute(session.startSessionIfNeeded(context: sessionContext()))
     }
 
     func newSession() {
-        cancelPendingSummary()
-        tts.stop()
-        // The old session's permission request dies with it.
-        pendingPermission = nil
-        liveAssistantText = ""
-
-        if isRemoteMode {
-            // We don't own the remote session, so "new session" means clearing
-            // the conversation it's holding.
-            clearRemoteTurns()
-            appendEntry(.system, "Clearing the remote session.")
-            sendRemoteText("/clear", submit: true)
-            updateStatus()
-            return
-        }
-
-        hasRetriedWithoutResume = false
-        startedWithResume = false
-        pendingEffortRestart = false
-        configStore.config.lastSessionID = nil
-        if let dir = configStore.config.projectDir, !dir.isEmpty {
-            configStore.config.sessionIDsByProject.removeValue(forKey: dir)
-        }
-        appendEntry(.system, "Starting a new Claude session.")
-
-        if let dir = configStore.config.projectDir, !dir.isEmpty {
-            startSession(resumeSessionID: nil)
-        } else {
-            stopClaude()
-            appendEntry(.system, "Choose a project folder to begin.")
-        }
-        updateStatus()
+        execute(session.newSession(context: sessionContext()))
     }
 
     func sendUserText(_ text: String) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-
-        appendEntry(.user, trimmed)
-        cancelPendingSummary()
-        liveAssistantText = ""
-
-        if isRemoteMode {
-            sendRemoteText(trimmed, submit: configStore.config.remoteAutoSubmit)
-            updateStatus()
-            return
-        }
-
-        startSessionIfNeeded()
-
-        guard harness.state != .stopped else {
-            appendEntry(.error, "No Claude session is running. Choose a project folder to start one.")
-            errorHaptic()
-            updateStatus()
-            return
-        }
-
-        harness.send(outgoingText(for: trimmed))
-        updateStatus()
-    }
-
-    /// In Ultra effort ("max") on the built-in Claude harness, outgoing
-    /// prompts opt into dynamic multi-agent workflows via Claude Code's
-    /// documented `ultracode` keyword. The transcript keeps the user's own
-    /// words; the wire-level prefix is recorded in DESIGN.md v2.1. Other
-    /// harnesses and remote mode are never prefixed.
-    private func outgoingText(for text: String) -> String {
-        guard configStore.config.effort == "max",
-              AppState.normalizedHarnessKind(configStore.config.harnessKind) == "claude" else {
-            return text
-        }
-        return "ultracode\n\n" + text
+        execute(session.sendUserText(context: sessionContext(), text: text))
     }
 
     func interruptClaude() {
-        if isRemoteMode {
-            // Escape is the interactive CLI's stop key.
-            clearRemoteTurns()
-            appendEntry(.system, "Interrupt sent (Esc).")
-            haptic(intensity: 0.6, duration: 0.08)
-            sendRemoteKey(.escape)
-            updateStatus()
-            return
-        }
-
-        // ClaudeService.interrupt() silently no-ops without a live process —
-        // don't confirm an interrupt that was never written.
-        guard harness.state != .stopped else {
-            appendEntry(.error, "No Claude session is running — nothing to interrupt.")
-            errorHaptic()
-            updateStatus()
-            return
-        }
-        harness.interrupt()
-        // The interrupt cancels the turn the request belongs to (the adapter
-        // cancels the agent's side), so the banner goes with it — unanswered.
-        // Left up, it would invite a press that answers nothing.
-        pendingPermission = nil
-        appendEntry(.system, "Interrupt sent.")
-        haptic(intensity: 0.6, duration: 0.08)
-        updateStatus()
+        execute(session.interrupt(context: sessionContext()))
     }
 
     func chooseProjectDirectory() {
@@ -1489,140 +1156,14 @@ final class AppState: ObservableObject {
 
         NSApp.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        adoptProject(url.path, movingToFrontOfRecents: true)
+        execute(session.adoptProject(context: sessionContext(), path: url.path, moveToFront: true))
     }
 
-    /// Switches the app onto a project folder: per-project session id (each
-    /// folder is its own conversation), per-project transcript history, and —
-    /// in built-in mode — a session restart resuming THAT project's
-    /// conversation. Shared by the folder picker, the Settings recents list,
-    /// and the Cycle Project action.
-    private func adoptProject(_ path: String, movingToFrontOfRecents: Bool) {
-        let changedProject = (path != configStore.config.projectDir)
-        configStore.config.projectDir = path
-        if changedProject {
-            // Each project keeps its own conversation: resume ITS session id
-            // (nil = this folder starts fresh), never another folder's.
-            configStore.config.lastSessionID = savedSessionID(for: path)
-        }
-        hasRetriedWithoutResume = false
-        addToRecents(path, front: movingToFrontOfRecents)
-
-        // Transcript history is per project: switch the store over and swap the
-        // window's scrollback for the new project's restored history.
-        transcriptStore.setProject(path)
-        if changedProject {
-            transcript = []
-            restorePersistedTranscript()
-        }
-
-        appendEntry(.system, "Project folder: \((path as NSString).lastPathComponent)")
-
-        // In remote mode PowerUp runs no session of its own — the folder then
-        // decides which sessions are heard (v2.8 A). The old folder's hooks
-        // are filtered out from here on, including the Stop that would end
-        // its turns, so those turns and that focus end with the switch.
-        if !isRemoteMode {
-            startSession(resumeSessionID: savedSessionID(for: path))
-        } else if changedProject {
-            clearRemoteTurns()
-            knownRemoteSessions.removeAll()
-            remoteFocusSessionID = nil
-        }
-        updateStatus()
-    }
-
-    /// Switch to a specific known project (Settings recents list).
+    /// Switch to a specific known project (Settings recents list): its own
+    /// session id, its own transcript history and, in built-in mode, a
+    /// session resuming that folder's conversation.
     func switchProject(to path: String) {
-        guard path != configStore.config.projectDir else { return }
-        cancelPendingSummary()
-        tts.stop()
-        liveAssistantText = ""
-        pendingPermission = nil
-        adoptProject(path, movingToFrontOfRecents: false)
-        announce("Project: \((path as NSString).lastPathComponent)")
-    }
-
-    /// The Cycle Project action: steps through the recents IN LIST ORDER
-    /// (cycling deliberately doesn't reorder the list — reordering on every
-    /// press would make the next press ping-pong back).
-    private func cycleProject() {
-        let recents = configStore.config.recentProjectDirs.filter {
-            FileManager.default.fileExists(atPath: $0)
-        }
-        guard recents.count > 1 else {
-            appendEntry(.system, "Only one project in the recent list — add more with the folder picker.")
-            errorHaptic()
-            return
-        }
-        let current = configStore.config.projectDir ?? ""
-        let index = recents.firstIndex(of: current) ?? -1
-        let next = recents[(index + 1) % recents.count]
-        haptic(intensity: 0.5, duration: 0.05)
-        switchProject(to: next)
-    }
-
-    /// Remote mode: steps read-back focus through All → each active session →
-    /// All. Sessions are ordered by folder name for a stable cycle.
-    private func cycleFocus() {
-        guard isRemoteMode else {
-            appendEntry(.system, "Session focus applies to Remote Control mode.")
-            errorHaptic()
-            return
-        }
-        let cutoff = remoteTurnClock.now.addingTimeInterval(-AppState.remoteSessionMemory)
-        knownRemoteSessions = knownRemoteSessions.filter { $0.value.lastSeen > cutoff }
-
-        let ordered = knownRemoteSessions
-            .sorted { lhs, rhs in
-                let l = ((lhs.value.cwd ?? lhs.key) as NSString).lastPathComponent
-                let r = ((rhs.value.cwd ?? rhs.key) as NSString).lastPathComponent
-                return l == r ? lhs.key < rhs.key : l < r
-            }
-            .map(\.key)
-
-        guard !ordered.isEmpty else {
-            appendEntry(.system, "No remote sessions seen yet — focus needs read-back activity first.")
-            errorHaptic()
-            return
-        }
-
-        haptic(intensity: 0.5, duration: 0.05)
-        let next: String?
-        if let current = remoteFocusSessionID, let index = ordered.firstIndex(of: current) {
-            next = index + 1 < ordered.count ? ordered[index + 1] : nil   // wrap to All
-        } else {
-            next = ordered.first
-        }
-        remoteFocusSessionID = next
-        refreshRemoteTurnActive()
-
-        if let label = remoteFocusLabel {
-            appendEntry(.system, "Focus → \(label) — only this session is spoken now.")
-            announce("Focus: \(label)")
-        } else {
-            appendEntry(.system, "Focus → all sessions.")
-            announce("Focus: everything")
-        }
-        updateStatus()
-    }
-
-    private func addToRecents(_ path: String, front: Bool) {
-        var recents = configStore.config.recentProjectDirs
-        if front {
-            recents.removeAll { $0 == path }
-            recents.insert(path, at: 0)
-        } else if !recents.contains(path) {
-            recents.insert(path, at: 0)
-        }
-        if recents.count > 8 { recents.removeLast(recents.count - 8) }
-        if recents != configStore.config.recentProjectDirs {
-            configStore.config.recentProjectDirs = recents
-        }
-    }
-
-    private func savedSessionID(for path: String) -> String? {
-        configStore.config.sessionIDsByProject[path]
+        execute(session.switchProject(context: sessionContext(), path: path))
     }
 
     /// Migrates pre-multi-project configs: the single lastSessionID becomes
@@ -1723,73 +1264,8 @@ final class AppState: ObservableObject {
         AppState.normalizedControlMode(configStore.config.controlMode) == "remote"
     }
 
-    private static func normalizedControlMode(_ raw: String) -> String {
+    nonisolated static func normalizedControlMode(_ raw: String) -> String {
         raw == "remote" ? "remote" : "builtin"
-    }
-
-    /// The `.toggleControlMode` action. It only flips the config value — the side
-    /// effects live in `syncControlMode()` so the Settings picker gets them too.
-    private func toggleControlMode() {
-        configStore.config.controlMode = isRemoteMode ? "builtin" : "remote"
-        haptic(intensity: 0.5, duration: 0.05)
-        syncControlMode()
-    }
-
-    private static func harnessKey(for config: AppConfig) -> String {
-        [normalizedHarnessKind(config.harnessKind), config.acpAgent, config.acpCustomCommand]
-            .joined(separator: "|")
-    }
-
-    /// Stops the outgoing session when the harness selection changes (kind,
-    /// agent, or custom command); the new harness starts lazily on next send.
-    private func syncHarnessSelection() {
-        let key = AppState.harnessKey(for: configStore.config)
-        guard key != lastHarnessKey else { return }
-        lastHarnessKey = key
-
-        pendingPermission = nil
-        cancelPendingSummary()
-        if let acp = injectedACPHarness ?? acpAdapter, acp.state != .stopped {
-            acp.stop()
-        }
-        if claudeHarness.state != .stopped {
-            expectedTerminations += 1
-            claudeHarness.stop()
-        }
-
-        let kind = AppState.normalizedHarnessKind(configStore.config.harnessKind)
-        appendEntry(.system, kind == "acp"
-            ? "Harness → \(AppConfig.acpAgentDisplayName(configStore.config.acpAgent)) (ACP). The session starts with your next message."
-            : "Harness → built-in Claude Code. The session starts with your next message.")
-        updateStatus()
-    }
-
-    /// Runs the switch-over work once per actual mode change, whoever caused it.
-    private func syncControlMode() {
-        let mode = AppState.normalizedControlMode(configStore.config.controlMode)
-        guard mode != lastControlMode else { return }
-        lastControlMode = mode
-
-        clearRemoteTurns()
-        remoteFocusSessionID = nil
-        // A pending harness permission request belongs to the mode being left —
-        // in remote mode the same buttons mean Enter/Escape, so a wedged banner
-        // would have the user injecting keys into their real session.
-        pendingPermission = nil
-        liveAssistantText = ""
-
-        if mode == "remote" {
-            // Our own session would otherwise sit there burning a subscription
-            // seat and echoing hook events back at us.
-            stopClaude()
-            refreshRemoteStatus()
-            appendEntry(.system, "Remote control mode — buttons and voice now drive your existing Claude session.")
-            announce("Remote control")
-        } else {
-            appendEntry(.system, "Built-in session mode — PowerUp runs its own Claude session again.")
-            announce("Built-in session")
-        }
-        updateStatus()
     }
 
     /// Types text into the remote target, reporting a failure in the transcript
@@ -1890,110 +1366,6 @@ final class AppState: ObservableObject {
         return nil
     }
 
-    /// A hook fired somewhere on this machine. Only remote mode cares, and events
-    /// from the session we spawned ourselves are always dropped — otherwise the
-    /// built-in session's own replies would come back around as remote read-back.
-    private func handleRemoteEvent(_ event: RemoteHookEvent) {
-        guard isRemoteMode else { return }
-        if let sessionID = event.sessionID, let ours = harness.sessionID, sessionID == ours { return }
-        // Hooks fire for every Claude session on the machine; only the ones
-        // working in the chosen project folder are PowerUp's (v2.8 A).
-        guard isInProjectFolder(event.cwd) else { return }
-
-        let turnKey = event.sessionID ?? "unknown-session"
-
-        // Every hook is a sighting: keep the session registry fresh so Cycle
-        // Session Focus knows what exists (SessionEnd removes instead).
-        if event.kind != .sessionEnd {
-            knownRemoteSessions[turnKey] = (cwd: event.cwd ?? knownRemoteSessions[turnKey]?.cwd,
-                                            lastSeen: remoteTurnClock.now)
-        }
-        // Focus gating: when a focus is set, only the focused session speaks,
-        // buzzes, and drives the working light; everything still logs.
-        let isFocused = remoteFocusSessionID == nil || remoteFocusSessionID == turnKey
-
-        switch event.kind {
-        case .userPromptSubmit:
-            beginRemoteTurn(key: turnKey)
-
-        case .postToolUse:
-            // Heartbeat: a tool call proves the turn is alive — refresh (or
-            // start) its entry so long working turns never expire mid-flight.
-            // Through beginRemoteTurn, so every heartbeat RE-ARMS the expiry
-            // sweep: a turn kept alive by heartbeats that then dies silently
-            // must still go idle 15 minutes after its last sign of life.
-            beginRemoteTurn(key: turnKey)
-
-        case .sessionEnd:
-            // The only signal a session that dies mid-turn ever sends. Only a
-            // session we believed was working is worth a note — sessions end
-            // on this machine all the time.
-            knownRemoteSessions.removeValue(forKey: turnKey)
-            if remoteFocusSessionID == turnKey {
-                remoteFocusSessionID = nil
-                appendEntry(.system, "Focused session ended — back to hearing everything.")
-            }
-            if remoteActiveTurns.removeValue(forKey: turnKey) != nil {
-                appendEntry(.system, remoteCwdPrefix(event.cwd) + "Claude session ended before replying.")
-            }
-            refreshRemoteTurnActive()
-
-        case .stop:
-            remoteActiveTurns.removeValue(forKey: turnKey)
-            refreshRemoteTurnActive()
-            let reply = (event.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !reply.isEmpty else { break }
-            appendEntry(.assistant, remoteCwdPrefix(event.cwd) + reply)
-            guard isFocused else { break }      // logged, not spoken
-            // Unprefixed, so Replay Last Reply speaks the reply and not the label.
-            lastAssistantReply = reply
-            haptic(intensity: 0.8, duration: 0.1)
-            speakReply(reply)
-
-        case .notification:
-            // Sign of life from a turn that's waiting on the user — keep its
-            // expiry clock fresh, but a notification alone doesn't start one.
-            // Through beginRemoteTurn, so the notification RE-ARMS the expiry
-            // sweep like a heartbeat: a turn whose last sign of life was a
-            // notification (then Escape pressed in the terminal, no Stop)
-            // must still go idle 15 minutes later, not stay amber forever.
-            if remoteActiveTurns[turnKey] != nil {
-                beginRemoteTurn(key: turnKey)
-            }
-            let message = (event.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            appendEntry(.system, message.isEmpty ? "Claude needs your attention." : message)
-            if isFocused {
-                announce("Claude needs your attention")
-            }
-        }
-
-        updateStatus()
-    }
-
-    /// Records a remote turn starting and schedules the expiry check that
-    /// clears it if every ending signal (Stop, SessionEnd) is missed.
-    private func beginRemoteTurn(key: String) {
-        remoteActiveTurns[key] = remoteTurnClock.now
-        refreshRemoteTurnActive()
-
-        remoteTurnClock.schedule(after: AppState.remoteTurnExpiry + 1) { [weak self] in
-            guard let self else { return }
-            self.refreshRemoteTurnActive()
-            self.updateStatus()
-        }
-    }
-
-    /// Recomputes `remoteTurnActive` from the per-session table, dropping
-    /// entries whose sessions have gone silent past the expiry.
-    private func refreshRemoteTurnActive() {
-        remoteActiveTurns = AppState.liveRemoteTurns(remoteActiveTurns, now: remoteTurnClock.now,
-                                                     expiry: AppState.remoteTurnExpiry)
-        let active = AppState.remoteTurnIsActive(remoteActiveTurns, focus: remoteFocusSessionID)
-        if remoteTurnActive != active {
-            remoteTurnActive = active
-        }
-    }
-
     /// The turn table with expired entries dropped: an entry survives only
     /// while its last sign of life is strictly newer than `now - expiry`.
     /// Pure; pinned by Tests/Fixtures/status/remote-turns.json.
@@ -2014,274 +1386,148 @@ final class AppState: ObservableObject {
         return !turns.isEmpty
     }
 
-    /// Hard reset of remote turn state — the user's escape hatch (Interrupt /
-    /// Reject / New Session) and every mode switch land here.
-    private func clearRemoteTurns() {
-        remoteActiveTurns.removeAll()
-        if remoteTurnActive { remoteTurnActive = false }
+    // MARK: - Carrying out the session's effects
+
+    private var activeHarnessKind: CoreBridge.HarnessKind {
+        AppState.normalizedHarnessKind(configStore.config.harnessKind) == "acp" ? .acp : .claude
     }
 
-    /// Whether a hook from a session working in `cwd` belongs to the chosen
-    /// project folder: the folder itself or any folder below it. With no
-    /// folder chosen every session counts; a hook without a `cwd` then counts
-    /// too, and otherwise it cannot be placed, so it does not.
-    private func isInProjectFolder(_ cwd: String?) -> Bool {
-        guard let project = configStore.config.projectDir, !project.isEmpty else { return true }
-        guard let cwd, !cwd.isEmpty else { return false }
-        // Whole path components, so "/work/app-old" is not inside "/work/app".
-        let components = { (path: String) in
-            URL(fileURLWithPath: path, isDirectory: true)
-                .standardizedFileURL.resolvingSymlinksInPath().pathComponents
+    private func adapter(for kind: CoreBridge.HarnessKind) -> any HarnessAdapter {
+        switch kind {
+        case .claude: return claudeHarness
+        case .acp: return injectedACPHarness ?? acpAdapterInstance()
         }
-        return components(cwd).starts(with: components(project))
     }
 
-    /// Labels read-back that came from a different folder than the configured
-    /// project, so replies from several sessions stay tellable apart.
-    private func remoteCwdPrefix(_ cwd: String?) -> String {
-        guard let cwd, !cwd.isEmpty else { return "" }
-        let eventPath = URL(fileURLWithPath: cwd, isDirectory: true).standardizedFileURL.path
-        let project = configStore.config.projectDir ?? ""
-        if !project.isEmpty {
-            let projectPath = URL(fileURLWithPath: project, isDirectory: true).standardizedFileURL.path
-            if eventPath == projectPath { return "" }
-        }
-        let name = URL(fileURLWithPath: eventPath, isDirectory: true).lastPathComponent
-        return name.isEmpty ? "" : "[\(name)] "
-    }
-
-    // MARK: - Session plumbing
-
-    private func startSession(resumeSessionID: String?) {
-        guard let dir = configStore.config.projectDir, !dir.isEmpty else { return }
-
-        // ClaudeService.start() retires any running process by bumping its launch
-        // generation, so a replaced process never delivers `.terminated`. Any
-        // still-pending expected termination can therefore never arrive — clear
-        // the counter so it can't swallow a future real crash (and so the
-        // resume-retry-once rule still fires when `--resume` fails).
-        expectedTerminations = 0
-
-        // ACP sessions always start fresh (no resume id is passed), so an ACP
-        // launch is never a resume: the resume retry must not fire for it, or
-        // an agent's crash would wipe the stored Claude session id.
-        startedWithResume = resumeSessionID != nil
-            && AppState.normalizedHarnessKind(configStore.config.harnessKind) == "claude"
-        liveAssistantText = ""
-        // A queued effort change is satisfied by this launch.
-        pendingEffortRestart = false
-        // The next `system/init` belongs to a fresh launch again.
-        didLogSessionStart = false
-
+    /// What one session call reads: the config as it is now, each adapter
+    /// as it is now, and the injected clock's time. The ACP adapter is
+    /// created lazily, so it is reported only once it exists (or is
+    /// selected). A test that injects one adapter for both slots shows it
+    /// as the ACP adapter only while ACP is selected.
+    private func sessionContext() -> CoreBridge.SessionContext {
         let config = configStore.config
-        // These go in on the command line, so the CLI is running them by definition.
-        lastConfirmedModel = config.model
-        lastConfirmedPermissionMode = config.permissionMode
-
-        let isACP = AppState.normalizedHarnessKind(config.harnessKind) == "acp"
-        var agentCommand: [String]?
-        if isACP {
-            guard let command = ACPAdapter.agentCommand(for: config) else {
-                appendEntry(.error, "Couldn't find the \(AppConfig.acpAgentDisplayName(config.acpAgent)) command — install it, or pick another harness in Settings → General.")
-                updateStatus()
-                return
-            }
-            agentCommand = command
+        let acpSelected = activeHarnessKind == .acp
+        let acpInstance: (any HarnessAdapter)? = injectedACPHarness ?? (acpSelected ? acpAdapterInstance() : acpAdapter)
+        var acpSnapshot: CoreBridge.HarnessSnapshot?
+        if let acpInstance, acpInstance !== claudeHarness || acpSelected {
+            acpSnapshot = CoreBridge.HarnessSnapshot(of: acpInstance)
         }
-
-        harness.start(HarnessConfiguration(
-            projectDir: URL(fileURLWithPath: dir, isDirectory: true),
-            model: config.model,
-            permissionMode: config.permissionMode,
-            effort: config.effort,
-            resumeSessionID: isACP ? nil : resumeSessionID,   // ACP sessions start fresh
-            binaryPathOverride: config.claudePath,
-            agentCommand: agentCommand
-        ))
-        updateStatus()
+        return CoreBridge.SessionContext(config: config,
+                                         claude: CoreBridge.HarnessSnapshot(of: claudeHarness),
+                                         acp: acpSnapshot,
+                                         acpAgentCommand: acpSelected ? ACPAdapter.agentCommand(for: config) : nil,
+                                         now: remoteTurnClock.now)
     }
 
-    private func stopClaude() {
-        guard harness.state != .stopped else { return }
-        expectedTerminations += 1
-        harness.stop()
+    /// Carries out the session's effects in order (DESIGN v2.12). A harness
+    /// call can make its adapter report an event at once; that event
+    /// re-enters the session, and its effects run here before the rest.
+    private func execute(_ effects: [CoreBridge.SessionEffect]) {
+        for effect in effects {
+            switch effect {
+            case .startHarness(let kind, let configuration):
+                adapter(for: kind).start(configuration)
+            case .sendToHarness(let kind, let text):
+                // Checked again now: an adapter whose start failed at once
+                // has nothing to send to.
+                let target = adapter(for: kind)
+                if target.state == .stopped {
+                    execute(session.sendRefused(context: sessionContext()))
+                } else {
+                    target.send(text)
+                }
+            case .interruptHarness(let kind):
+                adapter(for: kind).interrupt()
+            case .setHarnessModel(let kind, let model):
+                adapter(for: kind).setModel(model)
+            case .setHarnessPermissionMode(let kind, let mode):
+                adapter(for: kind).setPermissionMode(mode)
+            case .answerPermission(let kind, let id, let allow):
+                adapter(for: kind).respondToPermission(id: id, allow: allow)
+            case .stopHarness(let kind):
+                adapter(for: kind).stop()
+            case .changeConfig(let change):
+                applyConfigChange(change)
+            case .appendTranscript(let kind, let text):
+                appendEntry(kind, text)
+            case .showProjectTranscript(let projectDir, let restoreHistory):
+                // Transcript history is per project: switch the store over and
+                // swap the window's scrollback for the new project's history.
+                transcriptStore.setProject(projectDir)
+                if restoreHistory {
+                    transcript = []
+                    restorePersistedTranscript()
+                }
+            case .appendLiveReply(let text):
+                liveAssistantText += text
+            case .clearLiveReply:
+                liveAssistantText = ""
+            case .setLastReply(let text):
+                lastAssistantReply = text
+            case .pendingPermissionChanged(let pending):
+                pendingPermission = pending
+            case .remoteTurnActiveChanged(let active):
+                remoteTurnActive = active
+            case .remoteFocusChanged(let sessionID):
+                remoteFocusSessionID = sessionID
+            case .haptic(let intensity, let duration):
+                haptic(intensity: intensity, duration: duration)
+            case .errorHaptic:
+                errorHaptic()
+            case .announce(let phrase):
+                announce(phrase)
+            case .speakReply(let text):
+                speakReply(text)
+            case .cancelSummary:
+                cancelPendingSummary()
+            case .stopSpeaking:
+                tts.stop()
+            case .injectText(let text, let submit):
+                sendRemoteText(text, submit: submit)
+            case .injectKey(let key):
+                sendRemoteKey(key)
+            case .refreshRemoteStatus:
+                refreshRemoteStatus()
+            case .scheduleRemoteTurnCheck(let delay):
+                remoteTurnClock.schedule(after: delay) { [weak self] in
+                    guard let self else { return }
+                    self.execute(self.session.remoteTurnCheck(context: self.sessionContext()))
+                }
+            case .deferEffortRestart:
+                // Off this event delivery before the process is torn down, so
+                // the rest of the batch still reaches the session that made it.
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.execute(self.session.deferredEffortRestart(context: self.sessionContext()))
+                }
+            case .updateStatus:
+                updateStatus()
+            }
+        }
+    }
+
+    private func applyConfigChange(_ change: CoreBridge.ConfigChange) {
+        switch change {
+        case .model(let value): configStore.config.model = value
+        case .effort(let value): configStore.config.effort = value
+        case .permissionMode(let value): configStore.config.permissionMode = value
+        case .controlMode(let value): configStore.config.controlMode = value
+        case .projectDir(let path): configStore.config.projectDir = path
+        case .lastSessionID(let sessionID): configStore.config.lastSessionID = sessionID
+        case .projectSessionID(let projectDir, let sessionID):
+            if let sessionID {
+                configStore.config.sessionIDsByProject[projectDir] = sessionID
+            } else {
+                configStore.config.sessionIDsByProject.removeValue(forKey: projectDir)
+            }
+        case .recentProjectDirs(let paths): configStore.config.recentProjectDirs = paths
+        }
     }
 
     private func shutdown() {
         tts.stop()
         listener.stop()
-        stopClaude()
-    }
-
-    // MARK: - Harness events
-
-    private func handleHarnessEvent(_ event: HarnessEvent) {
-        switch event {
-        case .sessionReady(let sessionID, let model):
-            // Only the built-in Claude adapter's ids are resumable with --resume;
-            // an ACP session id must never overwrite the stored one.
-            if AppState.normalizedHarnessKind(configStore.config.harnessKind) == "claude" {
-                configStore.config.lastSessionID = sessionID
-                if let dir = configStore.config.projectDir, !dir.isEmpty {
-                    configStore.config.sessionIDsByProject[dir] = sessionID
-                }
-            }
-            if !didLogSessionStart {
-                didLogSessionStart = true
-                // Resuming worked (or we started clean): later exits aren't the id's fault.
-                startedWithResume = false
-                hasRetriedWithoutResume = false
-                appendEntry(.system, "Session started (\(model))")
-            }
-
-        case .replyDelta(let chunk):
-            liveAssistantText += chunk
-
-        case .reply(let message):
-            let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
-            liveAssistantText = ""
-            guard !trimmed.isEmpty else { break }
-            appendEntry(.assistant, trimmed)
-
-        case .toolUse(let name, let detail):
-            let trimmedDetail = detail.trimmingCharacters(in: .whitespacesAndNewlines)
-            appendEntry(.tool, trimmedDetail.isEmpty ? name : "\(name) — \(trimmedDetail)")
-
-        case .turnCompleted(let resultText, _, let isError, let subtype):
-            pendingPermission = nil
-            liveAssistantText = ""
-            let result = (resultText ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            if isError {
-                let detail = result.isEmpty ? "" : "\n\(result)"
-                appendEntry(.error, "Claude ended the turn with an error (\(subtype)).\(detail)")
-                errorHaptic()
-            } else {
-                if !result.isEmpty {
-                    lastAssistantReply = result
-                }
-                haptic(intensity: 0.8, duration: 0.1)
-                speakReply(result)
-            }
-            if pendingEffortRestart {
-                // The effort button was pressed mid-turn; the turn is over now.
-                // Hop off this event delivery before tearing the process down so
-                // the rest of the batch still reaches the session that produced it.
-                pendingEffortRestart = false
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    guard self.harness.state != .working else {
-                        // A queued turn started already — wait for that one too.
-                        self.pendingEffortRestart = true
-                        return
-                    }
-                    self.restartForEffort()
-                }
-            }
-
-        case .controlResult(let action, let ok, let detail, let value):
-            handleControlResult(action: action, ok: ok, detail: detail, value: value)
-
-        case .permissionRequest(let id, let name, let kind, let detail):
-            let destructive = DestructiveActionClassifier.isDestructive(kind: kind, title: name, detail: detail)
-            pendingPermission = PendingPermission(id: id, name: name, detail: detail,
-                                                 isDestructive: destructive)
-            let what = detail.isEmpty ? name : "\(name) — \(detail)"
-            appendEntry(.system, destructive
-                ? "⚠️ The agent wants to: \(what). Destructive — ✕ twice to allow, ○ to deny."
-                : "The agent wants to: \(what). Press ✕ to allow or ○ to deny.")
-            haptic(intensity: 0.8, duration: 0.1)
-            announce(destructive ? "Destructive approval needed" : "Approval needed")
-
-        case .notification(let message):
-            let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
-            appendEntry(.system, trimmed.isEmpty ? "Claude needs your attention." : trimmed)
-            announce("Claude needs your attention")
-
-        case .runtimeError(let message):
-            appendEntry(.error, message)
-
-        case .ended(let exitCode):
-            pendingPermission = nil
-            handleTermination(exitCode: exitCode)
-        }
-
-        updateStatus()
-    }
-
-    /// Answer to one of our control requests. A success needs no announcement —
-    /// the optimistic transcript entry already told the user. A failure has to be
-    /// rolled back, or the app would keep showing a setting the CLI never took.
-    ///
-    /// `value` is what the acknowledged request asked for — the confirmed
-    /// snapshot must come from it, not from the current config, because with two
-    /// requests in flight the config already holds the *newer* value when the
-    /// older ack arrives. Likewise a failure only rolls back when the rejected
-    /// value is still the one showing; otherwise a newer request owns the field
-    /// and its own ack will settle it.
-    private func handleControlResult(action: String, ok: Bool, detail: String, value: String?) {
-        guard !ok else {
-            switch action {
-            case "set_model":
-                lastConfirmedModel = value ?? configStore.config.model
-            case "set_permission_mode":
-                lastConfirmedPermissionMode = value ?? configStore.config.permissionMode
-            default:
-                break
-            }
-            return
-        }
-
-        let reason = detail.trimmingCharacters(in: .whitespacesAndNewlines)
-        appendEntry(.error, reason.isEmpty ? "Couldn't apply \(action)." : "Couldn't apply \(action): \(reason)")
-        errorHaptic()
-
-        switch action {
-        case "set_model":
-            let rejected = value ?? configStore.config.model
-            if configStore.config.model == rejected, configStore.config.model != lastConfirmedModel {
-                configStore.config.model = lastConfirmedModel
-                appendEntry(.system, "Model stays \(lastConfirmedModel).")
-            }
-        case "set_permission_mode":
-            let rejected = value ?? configStore.config.permissionMode
-            if configStore.config.permissionMode == rejected,
-               configStore.config.permissionMode != lastConfirmedPermissionMode {
-                configStore.config.permissionMode = lastConfirmedPermissionMode
-                appendEntry(.system, "Permissions stay \(lastConfirmedPermissionMode).")
-            }
-        default:
-            break
-        }
-    }
-
-    private func handleTermination(exitCode: Int32) {
-        if expectedTerminations > 0 {
-            expectedTerminations -= 1
-            return
-        }
-
-        // A stale session id makes `--resume` fail before we ever see an init
-        // message. Retry exactly once with a fresh session.
-        if startedWithResume && !hasRetriedWithoutResume {
-            startedWithResume = false
-            hasRetriedWithoutResume = true
-            // Forget the stale id everywhere it is kept — the folder's own
-            // entry too, or the next start would resume it again with the
-            // one retry already spent.
-            configStore.config.lastSessionID = nil
-            if let dir = configStore.config.projectDir, !dir.isEmpty {
-                configStore.config.sessionIDsByProject.removeValue(forKey: dir)
-            }
-            appendEntry(.system, "Couldn't resume the previous session — starting a fresh one.")
-            startSession(resumeSessionID: nil)
-            return
-        }
-
-        if exitCode == 0 {
-            appendEntry(.system, "Claude session ended.")
-        } else {
-            appendEntry(.error, "Claude session ended unexpectedly (exit code \(exitCode)).")
-        }
+        execute(session.shutdown(context: sessionContext()))
     }
 
     // MARK: - Transcript
@@ -2327,10 +1573,10 @@ final class AppState: ObservableObject {
             self.syncControllerSlot()
             self.syncSpeechConfiguration()
             self.syncAudioAvailabilityBaseline()
-            // Both are no-ops unless the config actually changed, so Settings
-            // edits are picked up without the views having to tell us.
-            self.syncControlMode()
-            self.syncHarnessSelection()
+            // The control mode, then the harness selection: each a no-op
+            // unless the config actually changed, so Settings edits are
+            // picked up without the views having to tell us.
+            self.execute(self.session.syncSettings(context: self.sessionContext()))
             self.syncListener()
             RemoteControlService.updateCmuxPassword(self.configStore.config.remoteCmuxPassword)
             self.updateStatus()

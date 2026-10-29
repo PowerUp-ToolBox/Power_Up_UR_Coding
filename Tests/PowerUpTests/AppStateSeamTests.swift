@@ -162,4 +162,23 @@ final class AppStateSeamTests: XCTestCase {
         XCTAssertEqual(app.transcript.map(\.text),
                        ["hello from before", "Earlier conversation restored — New Session starts clean."])
     }
+
+    // MARK: Wiring checks that must agree with the core
+
+    /// AppState still reads two settings itself: the control mode (views and
+    /// capture ask `isRemoteMode`) and the harness kind (which adapter an
+    /// effect goes to). The session rules read the same settings in the core,
+    /// so the two readings must never drift apart.
+    func testRuntimeNormalizationAgreesWithTheCore() {
+        for raw in ["acp", "claude", "ACP", "", "remote", "builtin", "x"] {
+            XCTAssertEqual(AppState.normalizedControlMode(raw) == "remote",
+                           CoreBridge.isRemoteMode(controlMode: raw), "control mode \(raw)")
+            let core: String
+            switch CoreBridge.harnessKind(fromSetting: raw) {
+            case .claude: core = "claude"
+            case .acp: core = "acp"
+            }
+            XCTAssertEqual(AppState.normalizedHarnessKind(raw), core, "harness kind \(raw)")
+        }
+    }
 }
