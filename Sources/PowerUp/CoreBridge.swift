@@ -117,6 +117,44 @@ enum CoreBridge {
         }
     }
 
+    // MARK: - The device layer (slice 2.2)
+
+    /// The controller that fills the Controller slot
+    /// (`powerup-core` `slots::select_active_controller`); nil when the slot
+    /// is empty or when the core fails.
+    static func activeController(mostRecentlyConnectedFirst: [ConnectedController],
+                                 pinnedID: String?) -> ConnectedController? {
+        call("selectActiveController", fallback: nil) {
+            try PowerUpCore.selectActiveController(
+                mostRecentlyConnectedFirst: mostRecentlyConnectedFirst.map(\.core),
+                pinnedId: pinnedID
+            ).map(ConnectedController.init)
+        }
+    }
+
+    /// One input through the hold rule (`powerup-core` `hold::HoldState::step`):
+    /// the owner to keep and the effect to apply. When the core fails the
+    /// owner is kept and the input is ignored.
+    static func holdStep(owner: String?, action: Action, control: String, phase: ControlPhase,
+                         toggleCaptureActive: Bool) -> (owner: String?, effect: HoldEffect) {
+        call("holdTrackerStep", fallback: (owner, HoldEffect.ignore)) {
+            let step = try PowerUpCore.holdTrackerStep(state: CoreHoldState(owner: owner),
+                                                       action: action.core, controlId: control,
+                                                       phase: phase.core,
+                                                       toggleCaptureActive: toggleCaptureActive)
+            return (step.state.owner, HoldEffect(step.effect))
+        }
+    }
+
+    /// Ends a hold the active controller owns (`hold::HoldState::release_all`).
+    /// When the core fails the owner is kept and nothing happens.
+    static func holdReleaseAll(owner: String?) -> (owner: String?, effect: HoldEffect) {
+        call("holdTrackerReleaseAll", fallback: (owner, HoldEffect.ignore)) {
+            let step = try PowerUpCore.holdTrackerReleaseAll(state: CoreHoldState(owner: owner))
+            return (step.state.owner, HoldEffect(step.effect))
+        }
+    }
+
     /// Runs one bridge call; a failure is logged and answered with `fallback`.
     private static func call<T>(_ name: String, fallback: T, _ body: () throws -> T) -> T {
         do {
@@ -296,6 +334,28 @@ fileprivate extension DeviceProfile {
             ControlDescriptor(id: $0.id, kind: ControlDescriptor.Kind($0.kind),
                               displayName: $0.displayName, symbolName: $0.symbolName)
         })
+    }
+}
+
+fileprivate extension HoldEffect {
+    init(_ core: CoreHoldEffect) {
+        switch core {
+        case .beginCapture(let mode): self = .beginCapture(VoiceCaptureMode(mode))
+        case .endCapture: self = .endCapture
+        case .cancelCapture: self = .cancelCapture
+        case .deliver(let intent): self = .deliver(Intent(intent))
+        case .ignore: self = .ignore
+        }
+    }
+}
+
+fileprivate extension ConnectedController {
+    init(_ core: CoreConnectedController) {
+        self.init(id: core.id, profileID: core.profileId, displayName: core.displayName)
+    }
+
+    var core: CoreConnectedController {
+        CoreConnectedController(id: id, profileId: profileID, displayName: displayName)
     }
 }
 

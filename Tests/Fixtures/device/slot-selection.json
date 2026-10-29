@@ -1,7 +1,7 @@
 {
   "description": "Which connected controller fills the Controller slot (ADR 0013, DESIGN v2.7 B). The input lists the connected controllers, most recently connected first, in the caller's own order, and the pinned Controller device id, or null for Automatic. Automatic takes the head of the list. A pin takes the first controller whose id equals it exactly; when none does, the slot is empty, and it never falls back to Automatic. Input is {mostRecentlyConnectedFirst: [<controller descriptor>], pinnedID}; a controller descriptor is {id, profileID, displayName}. Expected is the controller descriptor in the slot, or null when the slot is empty.",
   "function": "ControllerSlotSelector.active — input {mostRecentlyConnectedFirst, pinnedID}, expected a controller descriptor or null",
-  "verifiedBy": "DESIGN.md v2.7 B, ADR 0013; Tests/PowerUpTests/DeviceFixtureTests.swift testSlotSelectionTable builds a ControllerSlotSelector from the input and compares its active controller. Rust: rust/powerup-core/tests/device.rs slot_selection_cases runs slots::select_active_controller.",
+  "verifiedBy": "DESIGN.md v2.7 B, ADR 0013; Tests/PowerUpTests/DeviceFixtureTests.swift testSlotSelectionTable builds a ControllerSlotSelector from the input and compares its active controller (which the core picks through the bridge since slice 2.2). Rust: rust/powerup-core/tests/device.rs slot_selection_cases runs slots::select_active_controller.",
   "capturedAgainst": "Swift 5.9.2 (Xcode 15.2), PowerUp at 6255e60",
   "cases": [
     {

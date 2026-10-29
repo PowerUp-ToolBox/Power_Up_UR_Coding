@@ -58,7 +58,7 @@ jobs:
           # nm writes to a file: piped into grep -q it dies of SIGPIPE, which
           # the runner's pipefail would report as a missing symbol.
           nm build/PowerUp.app/Contents/MacOS/PowerUp > "$RUNNER_TEMP/powerup-symbols.txt"
-          for symbol in probe_echo resolve_action; do
+          for symbol in probe_echo resolve_action hold_tracker_step; do
             grep -q "uniffi_powerup_core_ffi_fn_func_$symbol" "$RUNNER_TEMP/powerup-symbols.txt" \
               || { echo "::error::the app bundle does not link the Rust core ($symbol)"; exit 1; }
           done
