@@ -2938,8 +2938,9 @@ the effort restart are Claude-only, and the restart is deferred anyway).
 
 ## D. What moved and what stayed
 
-Moved into `powerup-core`, unchanged in behaviour (every message byte for
-byte): the handshake, the JSON-RPC ids and pending requests, the dispatch of
+Moved into `powerup-core`, unchanged in behaviour (every message the same
+JSON as before; only the key order, which JSONSerialization never kept
+stable, is now fixed, see E and HK-404): the handshake, the JSON-RPC ids and pending requests, the dispatch of
 every agent line, session updates and tool details, the permission requests,
 their answers and their cancels, the prompt queue and the reply buffer, the
 usage total, stop and exit bookkeeping, the watchdog's decision, the lines
@@ -2955,8 +2956,10 @@ stderr ring and its 500-character tail (HK-287), the install-path probe for
 opencode and npx (HK-286), the PATH augmentation (HK-128, re-owned: it is
 environment construction on macOS paths), and applying the scrub list to
 `ProcessInfo`. `ACPAdapter` still never ignores SIGPIPE (only
-`ClaudeService` does): a pre-existing gap, left unchanged here and to be
-filed as its own issue.
+`ClaudeService.spawn` does), so a run that only ever spawns an ACP agent
+keeps SIGPIPE's default action: a pre-existing gap, left unchanged here
+because this slice changes no behaviour. Ledger row HK-411 tracks it until
+a maintainer files and fixes it as its own issue.
 
 ## E. Recorded rules
 
@@ -2989,4 +2992,14 @@ filed as its own issue.
   runs it through the app, and `rust/powerup-core/tests/acp_mock_agent.rs`
   runs it through the core (Python 3 required; skipped locally without it,
   required on CI). Both check its record against the "mock agent:" cases of
-  `acp-adapter.json`.
+  `acp-adapter.json`. Only the Swift test runs the real executor: the Rust
+  one carries out spawn, write, close and emit in order, but only notes
+  publish, the kill grace and the watchdog, and fails on a write after
+  stdin closed rather than skipping it (HK-410).
+
+## F. Left for the maintainer
+
+Ticket #155's manual check, that opencode and Codex sessions behave as
+before, needs a run with the real agents. Agents working on the slice may
+not start real ACP agents or npx bridges (CLAUDE.md), so it is not recorded
+here and stays open until a maintainer runs it before #155 closes.

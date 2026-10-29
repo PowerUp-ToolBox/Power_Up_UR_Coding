@@ -186,7 +186,10 @@ final class ACPAdapter: ObservableObject, HarnessAdapter {
     }
 
     /// Spawns the agent with three pipes. The core hears `spawned` or
-    /// `spawnFailed` before anything else happens.
+    /// `spawnFailed` before anything else happens. Unlike
+    /// `ClaudeService.spawn` it does not ignore SIGPIPE, so a run that only
+    /// spawns ACP agents keeps the default action (HK-411, a gap kept as it
+    /// was before slice 2.4).
     private func spawn(generation: UInt64, executable: String, arguments: [String], projectDir: URL) {
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: executable)

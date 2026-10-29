@@ -39,6 +39,18 @@ final class ACPAdapterUnitTests: XCTestCase {
         XCTAssertTrue(env["PATH"]!.hasPrefix("/usr/bin"))
     }
 
+    func testAgentEnvironmentAugmentsPathOnceWithADefault() {
+        // HK-128: a GUI app gets a minimal PATH, so the install locations
+        // are appended, each only when missing, after a default when unset.
+        let local = NSHomeDirectory() + "/.local/bin"
+        XCTAssertEqual(ACPAdapter.agentEnvironment(from: [:])["PATH"],
+                       "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin:\(local)")
+        XCTAssertEqual(ACPAdapter.agentEnvironment(from: ["PATH": "/usr/local/bin:/x"])["PATH"],
+                       "/usr/local/bin:/x:/opt/homebrew/bin:\(local)")
+        let full = "\(local):/opt/homebrew/bin:/usr/local/bin"
+        XCTAssertEqual(ACPAdapter.agentEnvironment(from: ["PATH": full])["PATH"], full)
+    }
+
     func testPermissionChoicePrefersOnceVariants() {
         let options: [(id: String, kind: String)] = [
             ("aa", "allow_always"), ("ao", "allow_once"),

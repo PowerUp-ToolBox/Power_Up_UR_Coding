@@ -2,8 +2,11 @@
 //! `Tests/Fixtures/harness/acp-mock-agent.py`, across a real process
 //! boundary (spec #99, slice 2.4): the twin of Swift's
 //! `ACPAdapterIntegrationTests`. The test carries out the adapter's effects
-//! the way `ACPAdapter.swift` does (spawn, write a line, close stdin, emit);
-//! the timers are only noted, and the agent is shut down at the end.
+//! in order, the way `ACPAdapter.swift` does (spawn, write a line, close
+//! stdin, emit). Publish, the kill grace and the watchdog are only noted,
+//! and a write after stdin closed fails the test where Swift would skip it
+//! (no case writes one), so those parts of the executor contract (DESIGN
+//! v2.13 C) rest on the Swift test alone. The agent is shut down at the end.
 //!
 //! The mock records every line it reads and writes, and each test checks
 //! that record against the matching "mock agent:" case of

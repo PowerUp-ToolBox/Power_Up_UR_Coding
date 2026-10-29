@@ -237,13 +237,12 @@ pub(crate) fn write(value: &JsonValue) -> Result<String, CoreError> {
                 JsonValue::Object(members) => {
                     out.push('{');
                     stack.push(Write::Text("}"));
+                    // One pass with a set of keys seen, so an object of many
+                    // members (an agent's id is echoed as read) stays linear.
+                    let mut seen = std::collections::HashSet::new();
                     let kept: Vec<&(String, JsonValue)> = members
                         .iter()
-                        .enumerate()
-                        .filter(|(index, (key, _))| {
-                            members.iter().position(|(other, _)| other == key) == Some(*index)
-                        })
-                        .map(|(_, member)| member)
+                        .filter(|(key, _)| seen.insert(key.as_str()))
                         .collect();
                     for (index, (key, item)) in kept.into_iter().enumerate().rev() {
                         stack.push(Write::Value(item));
@@ -866,6 +865,20 @@ mod tests {
     fn write_keeps_the_first_of_two_equal_keys() {
         let value = read_str(r#"{"a":1,"b":2,"a":3}"#).unwrap();
         assert_eq!(write(&value).unwrap(), r#"{"a":1,"b":2}"#);
+    }
+
+    #[test]
+    fn a_wide_object_is_written_in_one_pass() {
+        // An agent's id is echoed as read, so its width is the agent's to
+        // choose; a check per member against every other one took minutes
+        // at a few hundred thousand keys.
+        let members: Vec<String> = (0..200_000)
+            .map(|index| format!(r#""k{index}":0"#))
+            .collect();
+        let line = format!("{{{},\"k0\":1}}", members.join(","));
+        let value = read_str(&line).unwrap();
+        let expected = format!("{{{}}}", members.join(","));
+        assert_eq!(write(&value).unwrap(), expected);
     }
 
     #[test]

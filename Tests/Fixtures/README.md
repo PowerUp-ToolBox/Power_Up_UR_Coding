@@ -271,13 +271,15 @@ the mock in a temporary project folder, which it maps onto the case's
 Windows ends its lines with `\r\n`: the line buffer keeps the `\r`, which the
 JSON reader reads as whitespace.
 
-The expectations were checked against `ACPAdapter.swift` at `dddf9c6`
-(the last Swift-only version) with a scratch differential harness that
-stubs the process and the timers and compares every written line, every
-event, the state each event saw and the state after each step. The old
-adapter cancelled pending permission requests in dictionary order, so the
-harness compared a step's cancellations as a set; the tables pin arrival
-order. The Rust runner is `rust/powerup-core/tests/acp.rs` (its helpers are
+The expectations were checked once, while the slice was written, against
+`ACPAdapter.swift` at `dddf9c6` (the last Swift-only version) with a
+throwaway differential harness that stubbed the process and the timers and
+compared every written line, every event, the state each event saw and the
+state after each step. That harness is not kept in the tree, so it is
+provenance only, never evidence: what it checked is now carried by these
+tables and their two runners. The old adapter cancelled pending permission
+requests in dictionary order, so the harness compared a step's
+cancellations as a set; the tables pin arrival order. The Rust runner is `rust/powerup-core/tests/acp.rs` (its helpers are
 in `tests/support`); since #155 the Swift runner,
 `ACPFixtureTests.testAcpAdapterTable` and `testAcpAgentLinesTable`, plays
 both tables through `CoreBridge.ACPStateMachine`, the machine `ACPAdapter`
