@@ -17,9 +17,11 @@ pub mod mapping;
 pub mod probe;
 pub mod profile;
 pub mod session;
+mod sha256;
 pub mod slots;
 pub mod status;
 pub mod text;
+pub mod transcript;
 pub mod wire;
 
 use std::fmt;

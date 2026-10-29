@@ -158,6 +158,28 @@ pub fn last_path_component(path: &str) -> &str {
     }
 }
 
+/// Swift's `String.lowercased()`: each scalar's full lowercase mapping on
+/// its own, with no context, so a final capital sigma becomes `σ`, not `ς`
+/// (`"ΟΔΟΣ"` → `"οδοσ"`), and `İ` becomes `i` and a combining dot above
+/// (measured on macOS 27.2). Rust's `str::to_lowercase` applies the
+/// final-sigma rule, so it is not used.
+pub fn lowercase_scalars(text: &str) -> String {
+    text.chars().flat_map(char::to_lowercase).collect()
+}
+
+/// Swift's `Character.isLetter || Character.isNumber` for one cluster: both
+/// look at its first scalar only (Alphabetic, or a numeric type), so `e`
+/// with a combining acute is a letter and a combining mark alone is
+/// neither. Every scalar Rust calls numeric has a numeric type, and the
+/// numeric-type scalars Rust does not (CJK ideographs used as numbers) are
+/// Alphabetic, so the union is the same.
+pub fn is_letter_or_number(cluster: &str) -> bool {
+    cluster
+        .chars()
+        .next()
+        .is_some_and(|first| first.is_alphabetic() || first.is_numeric())
+}
+
 /// `Character.uppercased()` on the first cluster, the rest untouched
 /// (`"sonnet"` becomes `"Sonnet"`; `"ß"` becomes `"SS"`).
 pub fn capitalize_first(text: &str) -> String {
@@ -277,6 +299,35 @@ mod tests {
         assert_eq!(last_path_component("/work/app"), "app");
         assert_eq!(last_path_component("app"), "app");
         assert_eq!(last_path_component(""), "");
+    }
+
+    #[test]
+    fn lowercase_maps_each_scalar_alone() {
+        assert_eq!(lowercase_scalars("ΟΔΟΣ"), "οδοσ");
+        assert_eq!(lowercase_scalars("İx"), "i\u{307}x");
+        assert_eq!(lowercase_scalars("STRASSE-ß"), "strasse-ß");
+        assert_eq!(lowercase_scalars("Ⅻ"), "ⅻ");
+    }
+
+    #[test]
+    fn letters_and_numbers_by_first_scalar() {
+        for kept in [
+            "a",
+            "é",
+            "e\u{301}",
+            "项",
+            "½",
+            "٣",
+            "²",
+            "Ⅻ",
+            "一",
+            "a\u{20DD}",
+        ] {
+            assert!(is_letter_or_number(kept), "{kept:?}");
+        }
+        for replaced in ["-", " ", "_", ".", "🚀", "\u{301}", "!", ""] {
+            assert!(!is_letter_or_number(replaced), "{replaced:?}");
+        }
     }
 
     #[test]

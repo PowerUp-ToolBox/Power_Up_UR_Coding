@@ -1,7 +1,7 @@
 {
   "description": "How a transcript entry is written as one JSON line, without its newline: a compact object with the members id, kind, text, date in that order (Swift's JSONEncoder wrote them in hash order, which changed from launch to launch, HK-416), strings escaped as JSONEncoder escapes them (\\\", \\\\, \\/, \\b \\f \\n \\r \\t, other C0 controls as lowercase \\u00xx, everything else raw), and the date as Swift writes a Double: its shortest round-trip digits, exponential (d.ddde±XX) below 1e-4 or above 2^53, otherwise plain without a trailing .0. The id is written as the app passes it, uppercase (uuidString). Every date in the table is one a Date holds exactly, so the seconds the app passes are the seconds written.",
   "function": "TranscriptStore line encoding — input a transcript entry {id, kind, text, date}, expected the line's exact text",
-  "verifiedBy": "DESIGN.md v1.6, v2.14; Tests/PowerUpTests/TranscriptFixtureTests.swift testTranscriptEncodeTable appends the entry through TranscriptStore.append in a temporary directory and compares the line it wrote.",
+  "verifiedBy": "DESIGN.md v1.6, v2.14; Tests/PowerUpTests/TranscriptFixtureTests.swift testTranscriptEncodeTable appends the entry through TranscriptStore.append in a temporary directory and compares the line it wrote. Rust: rust/powerup-core/tests/transcript.rs transcript_encode_cases runs transcript::entry_line.",
   "capturedAgainst": "Swift 5.9.2 JSONDecoder, JSONEncoder and CryptoKit (Xcode 15.2) on macOS 27.2, PowerUp at 0bc961f",
   "cases": [
     {

@@ -1,7 +1,7 @@
 {
   "description": "How a transcript file loads: its bytes split on LF (0x0A) with empty pieces dropped, each piece read as transcript/lines.json pins and skipped when it does not decode; past 2000 decoded entries the file is rewritten with the newest 2000 (not reachable in this table: rust/powerup-core/src/transcript.rs load_tail_compacts_past_2000 and TranscriptStoreTests.testOvergrownFileIsCompactedOnLoad pin it); the newest maxEntries entries are returned, oldest first. maxEntries is at least 1 here: the app returns nothing for 0 without reading the file.",
   "function": "TranscriptStore.loadTail(maxEntries:) — input {file, maxEntries}: file the file's bytes (a string, or {\"hex\": <bytes>}), expected {texts, rewrite}: the texts of the entries returned, oldest first, and whether the file was rewritten",
-  "verifiedBy": "DESIGN.md v1.6, v2.14; Tests/PowerUpTests/TranscriptFixtureTests.swift testTranscriptLoadTable writes the file to a temporary transcripts directory, loads it through TranscriptStore.loadTail and checks whether the bytes changed.",
+  "verifiedBy": "DESIGN.md v1.6, v2.14; Tests/PowerUpTests/TranscriptFixtureTests.swift testTranscriptLoadTable writes the file to a temporary transcripts directory, loads it through TranscriptStore.loadTail and checks whether the bytes changed. Rust: rust/powerup-core/tests/transcript.rs transcript_load_cases runs transcript::load_tail.",
   "capturedAgainst": "Swift 5.9.2 JSONDecoder, JSONEncoder and CryptoKit (Xcode 15.2) on macOS 27.2, PowerUp at 0bc961f",
   "cases": [
     {

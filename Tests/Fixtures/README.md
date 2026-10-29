@@ -5,7 +5,8 @@ checked against (PLAN-any-device-any-os.md, ADR 0012): the Swift app's XCTest
 suites play every file, and the Rust core's `cargo test` plays the areas whose
 rules it owns so far (`mapping/` and `device/`, since slice 2.2,
 `harness/`, `status/` and `session/`, since slice 2.3, the ACP tables
-of `harness/`, since slice 2.4, and `config/`, since slice 2.5) and checks the
+of `harness/`, since slice 2.4, and `config/` and `transcript/`, since
+slice 2.5) and checks the
 format of the rest, picking up
 more as later slices port them. Each implementation loads these files from
 its own source location. Swift resolves
@@ -359,7 +360,7 @@ file name.
 
 The Swift runner is `Tests/PowerUpTests/TranscriptFixtureTests.swift`,
 which plays every table through `TranscriptStore` in a temporary support
-directory.
+directory, and the Rust runner is `rust/powerup-core/tests/transcript.rs`.
 
 ## `session/`: session scenarios (format 1)
 

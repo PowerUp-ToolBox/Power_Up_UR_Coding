@@ -1,5 +1,6 @@
 //! JSON text byte for byte as Swift's `JSONEncoder` writes it (HK-414):
-//! config.json with `[.prettyPrinted, .sortedKeys]`.
+//! config.json with `[.prettyPrinted, .sortedKeys]`, and a transcript line
+//! with the default formatting (compact, no space around `:` or `,`).
 //!
 //! - Pretty printing indents by two spaces, writes `"key" : value` with a
 //!   space on each side of the colon, `,\n` between members, an empty
@@ -28,6 +29,13 @@ use crate::CoreError;
 /// `JSONEncoder` with `.prettyPrinted` (the caller supplies sorted keys).
 pub(crate) fn to_swift_pretty<T: Serialize + ?Sized>(value: &T) -> Result<String, CoreError> {
     write(value, true)
+}
+
+/// `JSONEncoder` with its default formatting: compact, members in the order
+/// given. (Without `.sortedKeys` Swift's order was a hash order that changed
+/// from one launch to the next, so a caller fixes one, HK-416.)
+pub(crate) fn to_swift_compact<T: Serialize + ?Sized>(value: &T) -> Result<String, CoreError> {
+    write(value, false)
 }
 
 fn write<T: Serialize + ?Sized>(value: &T, pretty: bool) -> Result<String, CoreError> {
@@ -269,5 +277,14 @@ mod tests {
             "{\n  \"a\" : {\n\n  },\n  \"b\" : [\n\n  ],\n  \"c\" : [\n    1,\n    \"x\\/y\"\n  ],\n  \"d\" : {\n    \"e\" : {\n      \"f\" : {\n\n      }\n    }\n  }\n}"
         );
         assert_eq!(to_swift_pretty(&json!({})).unwrap(), "{\n\n}");
+    }
+
+    #[test]
+    fn compact_output_matches_jsonencoder() {
+        let value = json!({"a": {}, "b": [], "c": [1, "x/y", 0.5], "d": {"e": true}});
+        assert_eq!(
+            to_swift_compact(&value).unwrap(),
+            r#"{"a":{},"b":[],"c":[1,"x\/y",0.5],"d":{"e":true}}"#
+        );
     }
 }

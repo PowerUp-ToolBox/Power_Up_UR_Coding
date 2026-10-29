@@ -1,7 +1,7 @@
 {
   "description": "The per-project transcript file name: '<slug>-<hash>.jsonl', or '<hash>.jsonl' when the slug is empty. hash is the first 6 bytes of SHA-256 of the standardized path's UTF-8, as lowercase hex. slug is the path's last component, lowercased scalar by scalar (no final-sigma rule), with each Character (extended grapheme cluster) kept when its first scalar is alphabetic or numeric and replaced by '-' otherwise, then split on Characters equal to '-' with empty pieces dropped, joined with '-', and cut to its first 40 Characters. Every input is already a standardized path, byte for byte: the app standardizes with URL.standardizedFileURL first, which on macOS also decomposes accented letters, kana with voicing marks and Hangul syllables (that rule stays with the platform, and the core hashes the bytes it is given).",
   "function": "TranscriptStore.fileURL(forProjectDir:) — input a standardized absolute path, expected the file name (the URL's lastPathComponent)",
-  "verifiedBy": "DESIGN.md v1.6, v2.14; Tests/PowerUpTests/TranscriptFixtureTests.swift testTranscriptFileNameTable checks each input is already standardized and compares TranscriptStore.fileURL(forProjectDir:).lastPathComponent.",
+  "verifiedBy": "DESIGN.md v1.6, v2.14; Tests/PowerUpTests/TranscriptFixtureTests.swift testTranscriptFileNameTable checks each input is already standardized and compares TranscriptStore.fileURL(forProjectDir:).lastPathComponent. Rust: rust/powerup-core/tests/transcript.rs transcript_file_name_cases runs transcript::file_name, whose SHA-256 the expected names cross-check against CryptoKit's.",
   "capturedAgainst": "Swift 5.9.2 JSONDecoder, JSONEncoder and CryptoKit (Xcode 15.2) on macOS 27.2, PowerUp at 0bc961f",
   "cases": [
     {
