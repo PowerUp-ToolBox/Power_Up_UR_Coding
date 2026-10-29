@@ -1,7 +1,7 @@
 {
   "description": "Whether a harness permission request is destructive and needs a second Approve (HK-093..097). The kind, lowercased, equal to \"delete\" is always destructive. Otherwise the haystack is title + \" \" + detail + \" \", lowercased, and the request is destructive when it contains any of 32 substring patterns, each lowercased (\"git branch -D\" lowercases to a duplicate of \"git branch -d\" and stays in the list as written). Patterns keep their own trailing spaces (\"rm -r \", \"push -f \", \"git checkout -- \", \"killall \", \"chown -r \", \"delete from \"); the haystack's trailing space lets them match a command that ends there. Matching is pure substring: a false positive costs one extra press, a false negative a branch.",
   "function": "DestructiveActionClassifier.isDestructive(kind:title:detail:) ↔ powerup_core::harness::destructive::is_destructive — input {kind, title, detail}; expected: Bool",
-  "verifiedBy": "DESIGN.md v2.1 (destructive confirmation, issue #47) and docs/protocol.md invariants; Tests/PowerUpTests/DestructiveActionClassifierTests.swift testDestructiveTable plays it through DestructiveActionClassifier.isDestructive.",
+  "verifiedBy": "DESIGN.md v2.1 (destructive confirmation, issue #47) and docs/protocol.md invariants; Tests/PowerUpTests/DestructiveActionClassifierTests.swift testDestructiveTable plays it through DestructiveActionClassifier.isDestructive. Rust: rust/powerup-core/tests/harness.rs destructive_action_cases runs harness::destructive::is_destructive.",
   "capturedAgainst": "The Swift app (DestructiveActionClassifier) of PowerUp at cb85a5b, built with Swift 5.9.2 (Xcode 15.2) and run on macOS 27.2.",
   "cases": [
     {

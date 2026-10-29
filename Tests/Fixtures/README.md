@@ -5,7 +5,8 @@ checked against (PLAN-any-device-any-os.md, ADR 0012): the Swift app's XCTest
 suites play every file (`harness/claude-adapter.json` from slice 2.3's #152
 on), and the Rust core's `cargo test` plays the areas whose
 rules it owns so far (`mapping/` and `device/`, since slice 2.2, and
-`harness/`, since slice 2.3) and checks the format of the rest, picking up
+`harness/` and `status/`, since slice 2.3) and checks the format of the
+rest, picking up
 more as later slices port them. Each implementation loads these files from
 its own source location. Swift resolves
 them relative to `#filePath`, because SwiftPM accepts no resources outside a
@@ -48,6 +49,8 @@ remote mode does to text before it is typed or shown (`text-safety/`, epic
 #94). The Swift loader is `TextSafetyFixtures` in
 `Tests/PowerUpTests/TextSafetyFixtureTests.swift`; `TextSafetyFixtureTests`,
 `CmuxReportingFixtureTests` and `StatusDerivationTests` run the files.
+The Rust core plays `status/` in `rust/powerup-core/tests/status.rs`
+(slice 2.3); `text-safety/` waits for slice 2.5.
 
 ```json
 {

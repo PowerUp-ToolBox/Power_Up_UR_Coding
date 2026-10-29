@@ -1,7 +1,7 @@
 {
   "description": "The isWorking input of the status derivation (DESIGN v2.6 §B, v1.4 'Status derivation'): the agent counts as working when the harness itself is working, or when PowerUp is in remote mode and a remote turn is active (hooks bracket the turn: UserPromptSubmit to Stop). A remote turn flag left over in built-in mode is ignored. Every combination of harness state (stopped, starting, ready, working), mode and remote turn flag (16 rows).",
   "function": "AppState.derivedIsWorking(harnessState:isRemoteMode:remoteTurnActive:) — input {harnessState, isRemoteMode, remoteTurnActive} in, Bool out",
-  "verifiedBy": "DESIGN.md v1.4 addendum (status derivation in remote mode) and v2.6 addendum §B, plus characterization of the Swift implementation (spec #94, ticket #125); Tests/PowerUpTests/StatusDerivationTests.swift.",
+  "verifiedBy": "DESIGN.md v1.4 addendum (status derivation in remote mode) and v2.6 addendum §B, plus characterization of the Swift implementation (spec #94, ticket #125); Tests/PowerUpTests/StatusDerivationTests.swift. Rust: rust/powerup-core/tests/status.rs working_cases runs status::derived_is_working.",
   "capturedAgainst": "PowerUp macOS app, branch stage-1-text-views-spikes, 2026-10-23",
   "cases": [
     {

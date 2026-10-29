@@ -1,7 +1,7 @@
 {
   "description": "Whether a remote turn is active, the remote-mode input to the working light (DESIGN v1.10 per-session remote turn tracking, v2.2 §B remote session focus). The turn table maps a session id (or \"unknown-session\" when a hook carried none) to the last sign of life; it is given here as ages in seconds before now. First the table is pruned: an entry survives only while it is strictly younger than the expiry (an entry exactly expirySeconds old is dropped). Then the turn is active when any surviving entry exists, or, with a focus set, only when the focused session has a surviving entry. Expected gives the surviving session ids sorted, and the active flag.",
   "function": "AppState.liveRemoteTurns(_:now:expiry:) then AppState.remoteTurnIsActive(_:focus:) — input {turnAgesSeconds, focus, expirySeconds} in, {kept, active} out",
-  "verifiedBy": "DESIGN.md v1.10 addendum (per-session turns, 15 minute expiry) and v2.2 §B (with a focus set, 'only its turn drives remoteTurnActive'), plus characterization of the Swift implementation (spec #94, ticket #125); Tests/PowerUpTests/StatusDerivationTests.swift.",
+  "verifiedBy": "DESIGN.md v1.10 addendum (per-session turns, 15 minute expiry) and v2.2 §B (with a focus set, 'only its turn drives remoteTurnActive'), plus characterization of the Swift implementation (spec #94, ticket #125); Tests/PowerUpTests/StatusDerivationTests.swift. Rust: rust/powerup-core/tests/status.rs remote_turn_cases runs status::live_remote_turns then status::remote_turn_is_active, with ages as seconds before a fixed now.",
   "capturedAgainst": "PowerUp macOS app, branch stage-1-text-views-spikes, 2026-10-23",
   "cases": [
     {

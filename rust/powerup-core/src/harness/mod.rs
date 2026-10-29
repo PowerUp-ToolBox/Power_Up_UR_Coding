@@ -3,6 +3,37 @@
 //! module, and the platform owns the process and its pipes.
 
 pub mod claude;
+pub mod destructive;
+
+/// Which adapter runs the built-in session (Settings → General → Harness).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HarnessKind {
+    /// The built-in Claude Code adapter.
+    Claude,
+    /// An Agent Client Protocol agent.
+    Acp,
+}
+
+impl HarnessKind {
+    /// The stored setting read at runtime: any value other than "acp" is
+    /// the built-in Claude harness, so a hand-edited or unknown kind can
+    /// never leave PowerUp with no harness at all (HK-156).
+    pub fn from_setting(raw: &str) -> HarnessKind {
+        if raw == "acp" {
+            HarnessKind::Acp
+        } else {
+            HarnessKind::Claude
+        }
+    }
+
+    /// The stored spelling ("claude", "acp").
+    pub fn name(self) -> &'static str {
+        match self {
+            HarnessKind::Claude => "claude",
+            HarnessKind::Acp => "acp",
+        }
+    }
+}
 
 /// Lifecycle of a harness session (Swift's `HarnessState`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,14 +100,20 @@ pub enum HarnessEvent {
         value: Option<String>,
     },
     /// The harness asks the user to approve something; `kind` is its own
-    /// tool category and feeds the destructive-action classifier.
+    /// tool category and feeds the destructive-action classifier (an empty
+    /// or wrong kind only skips its "delete" rule, HK-091). Reserved for
+    /// adapters that surface permission prompts (HK-092): ACP agents emit
+    /// it, the Claude adapter never does, because Claude asks in its reply
+    /// and Approve answers with the word Yes. Nothing on the Claude path may
+    /// wait for one.
     PermissionRequest {
         id: String,
         name: String,
         kind: String,
         detail: String,
     },
-    /// The harness wants attention outside a turn.
+    /// The harness wants attention outside a turn. Reserved like
+    /// `PermissionRequest`: the Claude adapter never emits it.
     Notification(String),
     RuntimeError(String),
     Ended {

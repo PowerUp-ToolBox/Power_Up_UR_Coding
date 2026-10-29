@@ -9,6 +9,7 @@ use powerup_core::harness::claude::launch::launch_arguments;
 use powerup_core::harness::claude::lines::LineBuffer;
 use powerup_core::harness::claude::parse::events_from_line;
 use powerup_core::harness::claude::stdin::{control_request_line, user_turn_line, ControlRequest};
+use powerup_core::harness::destructive::{is_destructive, PATTERNS};
 use powerup_core::harness::HarnessConfiguration;
 use serde_json::Value;
 use support::{
@@ -300,6 +301,45 @@ fn claude_adapter_cases() {
             "effects": effects,
             "snapshot": claude_snapshot_fields(&adapter.snapshot()),
         });
+        if actual != case.expected {
+            failures.push(fail(
+                file,
+                &case.name,
+                &case.reason,
+                &case.expected,
+                &actual,
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn destructive_action_cases() {
+    let file = "destructive-actions.json";
+    let table = case_table("harness", file);
+    let pattern_cases = table
+        .cases
+        .iter()
+        .filter(|case| case.name.starts_with("pattern "))
+        .count();
+    assert_eq!(
+        pattern_cases,
+        PATTERNS.len(),
+        "{file}: one case per pattern"
+    );
+    let mut failures = Vec::new();
+    for case in &table.cases {
+        let field = |key: &str| {
+            case.input[key]
+                .as_str()
+                .unwrap_or_else(|| panic!("{file} case {:?}: {key} must be a string", case.name))
+        };
+        let actual = Value::Bool(is_destructive(
+            field("kind"),
+            field("title"),
+            field("detail"),
+        ));
         if actual != case.expected {
             failures.push(fail(
                 file,

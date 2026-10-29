@@ -15,6 +15,7 @@ pub mod mapping;
 pub mod probe;
 pub mod profile;
 pub mod slots;
+pub mod status;
 pub mod text;
 pub mod wire;
 
