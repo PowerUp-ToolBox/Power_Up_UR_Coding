@@ -386,7 +386,9 @@ fileprivate extension ConnectedController {
     }
 }
 
-fileprivate extension Dictionary where Key == String, Value == DeviceMapping {
+/// Internal rather than fileprivate: the config record carries mappings too
+/// (CoreBridgeConfig.swift).
+extension Dictionary where Key == String, Value == DeviceMapping {
     init(core: [String: [String: CoreAction]]) {
         self = core.mapValues { $0.mapValues(Action.init) }
     }

@@ -324,7 +324,7 @@ impl From<MappingLoad> for CoreMappingLoad {
     }
 }
 
-fn to_bridge_mappings(mappings: DeviceMappings) -> CoreDeviceMappings {
+pub(crate) fn to_bridge_mappings(mappings: DeviceMappings) -> CoreDeviceMappings {
     mappings
         .into_iter()
         .map(|(profile, controls)| {
@@ -337,7 +337,7 @@ fn to_bridge_mappings(mappings: DeviceMappings) -> CoreDeviceMappings {
         .collect()
 }
 
-fn to_core_mappings(mappings: CoreDeviceMappings) -> DeviceMappings {
+pub(crate) fn to_core_mappings(mappings: CoreDeviceMappings) -> DeviceMappings {
     mappings
         .into_iter()
         .map(|(profile, controls)| {
