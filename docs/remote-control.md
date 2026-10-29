@@ -67,10 +67,10 @@ etc.) all work the same way.
    Remote**. This will:
    - Create a numbered backup of your `settings.json` (e.g.
      `settings.json.powerup-backup-1`) in case you need to undo it.
-   - Add hook definitions for the `Stop`, `UserPromptSubmit`, and
-     `Notification` events — these fire for **every Claude Code session** you
-     run (including sessions in cmux, Terminal, VS Code, or anything else),
-     not just PowerUp. PowerUp only listens to the sessions working in your
+   - Add hook definitions for the `Stop`, `UserPromptSubmit`,
+     `Notification`, `SessionEnd` and `PostToolUse` events — these fire for
+     **every Claude Code session** you run (including sessions in cmux,
+     Terminal, VS Code, or anything else), not just PowerUp. PowerUp only listens to the sessions working in your
      chosen project folder (or a folder inside it) and ignores the rest; with
      no folder chosen it hears every session.
    - **Automatically start a local listener** on your machine (port 48738 by
@@ -82,6 +82,9 @@ etc.) all work the same way.
    - You can **uninstall the hooks** from the same tab at any time — it will
      remove only entries it added and preserve your other hook definitions
      verbatim.
+   - A `settings.json` PowerUp can't read as UTF-8 JSON (a syntax error, or
+     a file saved as UTF-16) is never touched: install and uninstall stop
+     with a message instead.
 
 3. **Toggle mode**: Use the **Control Mode** picker in **Settings → Remote**
    (Built-in / Remote), or map the **Toggle Built-in / Remote** action to a

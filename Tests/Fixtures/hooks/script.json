@@ -1,7 +1,7 @@
 {
   "description": "The hook script for a listener port and token: bash that reads the event payload from stdin first, posts it in the background to the loopback listener with curl (the token in a double-quoted header, escaped per Character: backslash, double quote, dollar and backtick, and anything canonically equal to them, get a backslash; a Character equal to LF or CR is dropped, so CR LF is kept), and exits 0. The port is clamped to 1...65535.",
   "function": "HookInstaller.hookScriptBody(port:token:) — input {port, token}, expected the script's file lines (joined with \"\\n\"; the final \"\" means it ends with a newline)",
-  "verifiedBy": "DESIGN.md v1.6, v2.14; Tests/PowerUpTests/HookFixtureTests.swift testHookScriptTable compares HookInstaller.hookScriptBody byte for byte. Rust: rust/powerup-core/tests/hooks.rs hook_script_cases runs hooks::hook_script_body.",
+  "verifiedBy": "DESIGN.md v1.4, v1.10, v2.14; Tests/PowerUpTests/HookFixtureTests.swift testHookScriptTable compares HookInstaller.hookScriptBody byte for byte. Rust: rust/powerup-core/tests/hooks.rs hook_script_cases runs hooks::hook_script_body.",
   "capturedAgainst": "Swift 5.9.2 Foundation (Xcode 15.2) on macOS 27.2, PowerUp at 2dd77aa",
   "cases": [
     {

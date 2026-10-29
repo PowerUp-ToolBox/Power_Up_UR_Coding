@@ -3008,7 +3008,8 @@ here and stays open until a maintainer runs it before #155 closes.
 
 Recorded 2026-10-29 for spec #100 (tickets #156–#160, ADR 0011, ADR 0012,
 plan stage 2 step 5), built up ticket by ticket; this text covers #156,
-the configuration schema, and #157, the transcript's JSON Lines. It supersedes v2.11 C's "`Action`'s synthesized
+the configuration schema, #157, the transcript's JSON Lines, and #158,
+the hooks merge. It supersedes v2.11 C's "`Action`'s synthesized
 `Encodable` and the config writer (until slice 2.5)": the core reads and
 writes config.json since this slice and `Action` is a plain value. The
 on-disk format, every default and every tolerance rule of the config
@@ -3021,6 +3022,12 @@ names each project's file, `TranscriptEntry` is a plain value with an
 `URL?`. The transcripts folder, the file names and the line format of v1.6
 are unchanged, except that a line's members now come in a fixed order
 (HK-416).
+For #158 the `HookInstaller` API of v1.4, v1.10 and v2.2 keeps its shape:
+`hookCommand()` and `hookScriptBody(port:token:)` now return an optional
+(nil only when the core fails), `hookEvents` is a computed property, and
+`settingsBytes(fromCoreJSON:path:)` is new. What install and uninstall do
+to `~/.claude/settings.json`, the hook script and the install state are
+unchanged, apart from the recorded differences of D (HK-417).
 
 The core gains `config` (`AppConfig`, `load_config`, `encode_config`,
 `seed_project_bookkeeping`, the defaults and the fixed vocabularies) and,
@@ -3032,6 +3039,13 @@ which the session machine now shares, `entry_line`, `decode_line`,
 `load_tail`, `file_name` and the two limits), a private `sha256`, the text
 helpers `lowercase_scalars` and `is_letter_or_number`, and the compact
 writer `json::encoder::to_swift_compact`.
+With #158 it gains `hooks` (`HOOK_EVENTS`, `hook_command`,
+`hook_script_body`, `is_installed`, `install_state`, `install_edit`,
+`uninstall_edit`, `InstallState`, `SettingsEdit`, `SettingsRefusal`); the
+slice 2.3 reader's numbers keep their literal beside their value
+(`json::JsonNumber`), `json::write_verbatim` writes a value back for
+Foundation to read, and `text::replace_unless_extended` is Foundation's
+`replacingOccurrences` for one character.
 
 ## A. Bridge surface
 
@@ -3067,6 +3081,23 @@ Functions: `transcriptLine(entry:) -> Data` (one line, LF included),
 `transcriptLoad(bytes: Data, maxEntries: UInt32) -> CoreTranscriptLoad`,
 `transcriptFileName(standardizedPath:) -> String` (`<slug>-<hash>.jsonl`)
 and `transcriptLimits() -> CoreTranscriptLimits`.
+
+From `rust/powerup-core-ffi/src/hooks.rs` (#158):
+
+| Generated Swift | Shape |
+| --- | --- |
+| `enum CoreHookInstallState` | `notInstalled`, `installed`, `outOfDate` |
+| `enum CoreSettingsRefusal` | `invalidJson`, `hooksNotAnObject`, `eventNotAnArray(event: String)` |
+| `enum CoreSettingsEdit` | `unchanged`, `write(json: Data)` (the whole new file as compact UTF-8 JSON, every number spelled as the file spelled it), `refused(refusal: CoreSettingsRefusal)` |
+
+Functions: `hookEvents() -> [String]`, `hookCommand(scriptPath:) -> String`,
+`hookScriptBody(port: Int64, token:) -> String`,
+`hooksInstalled(settings: Data?, scriptPath:) -> Bool`,
+`hookInstallState(settings: Data?, scriptPath:, scriptOnDisk: Data?,
+port: Int64, token:) -> CoreHookInstallState`,
+`hookInstallEdit(settings: Data?, scriptPath:) -> CoreSettingsEdit` and
+`hookUninstallEdit(settings: Data?, scriptPath:) -> CoreSettingsEdit`. A nil
+`settings` or `scriptOnDisk` means there is no such file.
 
 ## B. Swift wrappers and the failure policy
 
@@ -3123,6 +3154,37 @@ file is never rewritten. A failed `transcriptLimits` falls back to 2000 and
 200, which `TranscriptStoreTests.testLimitsAreTheCores` pins equal to the
 core's.
 
+`Sources/PowerUp/CoreBridgeHooks.swift` (#158) speaks
+`HookInstaller.InstallState` and two value types of its own:
+
+```swift
+enum SettingsRefusal: Equatable { case invalidJSON, hooksNotAnObject, eventNotAnArray(String) }
+enum SettingsEdit: Equatable { case unchanged, write(Data), refused(SettingsRefusal) }
+static var hookEvents: [String]
+static func hookCommand(scriptPath: String) -> String?
+static func hookScriptBody(port: Int, token: String) -> String?
+static func hooksInstalled(settings: Data?, scriptPath: String) -> Bool
+static func hookInstallState(settings: Data?, scriptPath: String, scriptOnDisk: Data?,
+                             port: Int, token: String) -> HookInstaller.InstallState
+static func hookInstallEdit(settings: Data?, scriptPath: String) -> SettingsEdit?
+static func hookUninstallEdit(settings: Data?, scriptPath: String) -> SettingsEdit?
+```
+
+`HookInstaller` passes `hookScriptURL().path` as the script path, reads the
+settings (nil for no file; a read failure still throws `fileError`) and
+the script, and carries out the edit: `.unchanged` writes nothing and takes
+no backup, `.write` goes through `settingsBytes(fromCoreJSON:path:)` (the
+formatting half of the writer, no I/O) and the numbered backup and atomic
+write, and each refusal throws the error text the installer always threw.
+
+Failure policy for the hooks: a failed call never touches a file the
+person owns. No edit throws "couldn't rewrite … safely" and leaves
+settings.json alone; no script body throws `fileError` before anything is
+written, so an empty script is never installed; a failed state reads as
+`notInstalled` and a failed `hooksInstalled` as false, so Settings offers
+an install; a failed `hookEvents` is empty and a failed `hookCommand` nil
+(only tests read them: the app registers through the edits).
+
 ## C. What moved and what stayed
 
 Moved into `powerup-core`, unchanged in behaviour: the schema and its
@@ -3149,6 +3211,25 @@ Stayed in Swift: the transcripts folder and the support-directory seam
 hashes the bytes it is given), the append handle, the atomic rewrite with
 the core's bytes, swallowing every I/O failure (HK-178), and AppState's
 800-entry window with the restore marker that is never persisted (HK-177).
+
+Hooks (#158). Moved, unchanged in behaviour: the five events and their
+order (HK-180), the quoted command (HK-181), the legacy upgrade
+(HK-182), what counts as ours (HK-183), the script's text, the token's
+escaping and the port clamp (HK-184 to HK-186), the install state
+(HK-187 to HK-189), the merge with its skip-write, pass-through and
+refusals (HK-190 to HK-192) and the uninstall with its pruning (HK-195).
+Stayed in Swift: the settings path and the support directory with their
+test seams (HK-196), reading both files, the numbered backup (HK-193),
+the settings writer (HK-194, HK-417: Foundation's `JSONSerialization`
+with sorted keys, whose collation and number spelling the core would need
+ICU to reproduce; it formats the core's JSON, whose number literals are
+the person's, so the bytes are the ones it wrote before), and the atomic
+0755 script write (HK-197). Ticket #158 asks that an install missing an
+event report not installed; today such an install reads `outOfDate`,
+which is what Settings turns into its reinstall prompt, and behaviour must
+not change, so the core keeps `outOfDate` and the tables prove that a
+missing event never reads `installed` (without Stop, `notInstalled`;
+HK-188).
 
 ## D. Recorded rules
 
@@ -3208,6 +3289,37 @@ the core's bytes, swallowing every I/O failure (HK-178), and AppState's
   700,000 dates and rates chosen to land on rounding ties. It found the
   NUL-terminated id, the dropped U+FEFF, the private-use letters and the
   float ties; after the fixes, no disagreement.
+- The hooks merge (#158, HK-417): settings.json is read with the slice 2.3
+  `JSONSerialization` reader, and the edit comes back as compact JSON that
+  keeps every number's literal, writes only the first of two equal keys
+  (an edit never uncovers a later duplicate it removed) and doubles a
+  leading U+FEFF, because Foundation drops one when it reads the text
+  back. Recorded differences: a UTF-16 or UTF-32 settings.json is refused
+  as invalid JSON where Foundation read it (Claude Code reads UTF-8 only;
+  `hooks/install.json` "a UTF-16 file is refused", synthetic); a number
+  Foundation cannot read (more than 17 digits with an exponent Decimal
+  cannot hold) no longer fails the whole file in the core, so such a file
+  can read as installed or need no change, while any write still goes
+  through Foundation, which refuses it as invalid JSON as before; and
+  canonically equivalent keys spelled differently are both kept, where
+  Swift's dictionary merged them.
+- The command and the script are compared byte for byte (HK-418), where
+  Swift compared Strings by canonical equivalence; the app's own path and
+  token never tell the two apart.
+- Foundation's `replacingOccurrences` skips a single quote only when a
+  Grapheme_Cluster_Break=Extend scalar follows it; a spacing mark or ZWJ
+  after it, or a prepended scalar before it, does not stop the match,
+  though each joins the quote's Character (measured against every scalar;
+  HK-181). The token is escaped per Character as Swift walked it, so a
+  joined backslash, dollar or backtick stays as it is, and U+1FEF counts as
+  a backtick (HK-185).
+- Before the Swift installer code was deleted, a scratch differential
+  compared it, copied pure, with the core and the new writer over 90,000
+  generated settings files (nine seeds) for install, uninstall,
+  isInstalled and the state against random ports, tokens and scripts, and
+  over 60,000 random paths and tokens for the command and the script. It
+  found the quote rule above, which the core first had as a cluster rule;
+  after the fix only the three recorded classes remained, each counted.
 
 ## E. Left for the maintainer
 
@@ -3223,3 +3335,11 @@ old encoder wrote) and
 `transcript/lines.json`; opening a project with a real history from an
 earlier build and seeing it restored is the manual check, and no agent
 runs it.
+
+Ticket #158's acceptance criteria are met by the tables and suites above:
+the installer tests run through the bridge against temporary files and
+never touch the real settings file (`HermeticStorageTests`), and a missing
+event never reads as installed. Installing and removing the hooks from
+Settings on a real machine, and seeing a real Claude Code session read
+back, is the manual check; agents may not touch `~/.claude/settings.json`
+(CLAUDE.md), so no agent runs it.

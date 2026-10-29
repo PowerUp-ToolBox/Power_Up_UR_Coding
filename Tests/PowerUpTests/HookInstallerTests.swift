@@ -270,6 +270,17 @@ final class HookInstallerTests: XCTestCase {
         XCTAssertTrue(body.contains("exit 0"))
     }
 
+    func testTheHookScriptIsWrittenExecutable() throws {
+        // A script that is not executable silently kills every hook (HK-197).
+        try HookInstaller.writeHookScript(port: 48738, token: "tok")
+
+        let url = HookInstaller.hookScriptURL()
+        let mode = try XCTUnwrap(FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? NSNumber)
+        XCTAssertEqual(mode.intValue & 0o777, 0o755)
+        XCTAssertEqual(try Data(contentsOf: url),
+                       Data(try XCTUnwrap(HookInstaller.hookScriptBody(port: 48738, token: "tok")).utf8))
+    }
+
     func testHookScriptClampsPortIntoValidRange() throws {
         XCTAssertTrue(try XCTUnwrap(HookInstaller.hookScriptBody(port: 999999, token: "t")).contains("127.0.0.1:65535"))
         XCTAssertTrue(try XCTUnwrap(HookInstaller.hookScriptBody(port: -5, token: "t")).contains("127.0.0.1:1/"))

@@ -101,7 +101,15 @@ clearly without them. CI runs the cargo job on macOS, Windows and Linux.
   how a file's bytes load and compact, and each project's file name),
   played against `Tests/Fixtures/transcript/` and reached through
   `CoreBridgeTranscript.swift`; TranscriptStore keeps the folder, the
-  append, the atomic rewrite and the standardized project path.
+  append, the atomic rewrite and the standardized project path. It also
+  holds the Claude Code hooks merge (`hooks`: what installing or removing
+  the hooks does to `~/.claude/settings.json`, the command, the hook
+  script's text and the install state), played against
+  `Tests/Fixtures/hooks/` and reached through `CoreBridgeHooks.swift`;
+  HookInstaller keeps the paths and their test seams, reading both files,
+  the numbered backup, the settings writer and the script's 0755 write.
+  Core tests never read or write a real settings file: they play fixture
+  text.
 - **Panic rule.** Every public core function is total: it returns its
   value, or a `Result` when it can fail, and never panics. Library code
   never calls `unwrap`, `expect` or `panic!` (clippy denies the first two).
@@ -164,7 +172,7 @@ contract change.
 | `ViewLogic.swift` | Pure view rules extracted from MainView/ComponentViews (#126; DESIGN v2.7 §F) |
 | `RemoteControlService.swift` | Routes text/keys to cmux or keyboard injection |
 | `RemoteListener.swift` | Localhost HTTP listener for Claude Code hook events |
-| `HookInstaller.swift` | Installs/manages hooks in `~/.claude/settings.json` |
+| `HookInstaller.swift` | Installs/manages hooks in `~/.claude/settings.json`: paths and test seams, file reads, backup, the settings writer, the script file; the merge, command, script text and install state are the core's |
 | `PowerUpProtocol.swift` | WebSocket upgrade + JSON-RPC message handling |
 | `WebSocketFraming.swift` | Pure RFC 6455 frame codec |
 | `ConfigStore.swift` | Persistent config file: path, debounced atomic save, corrupt and pre-profiles backups; the schema and bytes are the core's |
@@ -176,6 +184,7 @@ contract change.
 | `CoreBridgeACP.swift` | Bridge wrappers for the ACP harness: the `ACPStateMachine` object and its effects, the permission choice, the agent presets, the environment scrub list (DESIGN v2.13) |
 | `CoreBridgeConfig.swift` | Bridge wrappers for the configuration schema: defaults, load, encode, the project bookkeeping migration, the fixed vocabularies (DESIGN v2.14) |
 | `CoreBridgeTranscript.swift` | Bridge wrappers for the transcript: the line an entry is written as, loading a file, the file name, the limits (DESIGN v2.14) |
+| `CoreBridgeHooks.swift` | Bridge wrappers for the Claude Code hooks: the install and uninstall edits, the command, the script text, the install state (DESIGN v2.14) |
 
 The Rust core lives in `rust/` (see "The Rust core" above); its bridge tests
 are in `Tests/PowerUpCoreTests/`.

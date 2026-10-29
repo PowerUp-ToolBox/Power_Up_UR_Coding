@@ -1,8 +1,8 @@
 //! The Claude Code hooks PowerUp registers in `~/.claude/settings.json`, so
 //! replies from any claude session on the machine can be read back
-//! (DESIGN v1.6, v2.14): the command registered, the hook script's text,
-//! installing and removing the hooks, and whether they are installed as the
-//! app runs now.
+//! (DESIGN v1.4, v1.10, v2.14): the command registered, the hook script's
+//! text, installing and removing the hooks, and whether they are installed
+//! as the app runs now.
 //!
 //! settings.json belongs to the person and other tools write to it too, so
 //! every edit is conservative: unknown keys and foreign hooks are copied

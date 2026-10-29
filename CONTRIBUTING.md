@@ -100,7 +100,15 @@ The rules for core work:
   how a file's bytes load and compact, and each project's file name),
   played against `Tests/Fixtures/transcript/` and reached through
   `CoreBridgeTranscript.swift`; TranscriptStore keeps the folder, the
-  append, the atomic rewrite and the standardized project path.
+  append, the atomic rewrite and the standardized project path. It also
+  holds the Claude Code hooks merge (`hooks`: what installing or removing
+  the hooks does to `~/.claude/settings.json`, the command, the hook
+  script's text and the install state), played against
+  `Tests/Fixtures/hooks/` and reached through `CoreBridgeHooks.swift`;
+  HookInstaller keeps the paths and their test seams, reading both files,
+  the numbered backup, the settings writer and the script's 0755 write.
+  Core tests never read or write a real settings file: they play fixture
+  text.
 - **Panic rule.** Every public core function is total: it returns its
   value, or a `Result` when it can fail, and never panics. Library code
   never calls `unwrap`, `expect` or `panic!` (clippy denies the first two).
