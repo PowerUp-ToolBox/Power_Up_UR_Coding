@@ -3,6 +3,7 @@
 //! reads its stdout lines and builds its stdin lines; the platform spawns
 //! the process and moves the bytes.
 
+pub mod adapter;
 pub mod event;
 mod json;
 pub mod launch;

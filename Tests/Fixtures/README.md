@@ -2,7 +2,8 @@
 
 Language-neutral test data that every implementation of PowerUp's rules is
 checked against (PLAN-any-device-any-os.md, ADR 0012): the Swift app's XCTest
-suites play every file, and the Rust core's `cargo test` plays the areas whose
+suites play every file (`harness/claude-adapter.json` from slice 2.3's #152
+on), and the Rust core's `cargo test` plays the areas whose
 rules it owns so far (`mapping/` and `device/`, since slice 2.2, and
 `harness/`, since slice 2.3) and checks the format of the rest, picking up
 more as later slices port them. Each implementation loads these files from
@@ -126,14 +127,18 @@ are in `tests/support`).
 The built-in Claude harness's wire rules (spec #98, slice 2.3):
 `claude-lines.json` holds how the `claude` CLI's stdout bytes become lines,
 `claude-stream.json` what one line of its stream-json output parses into,
-`claude-stdin.json` what each call writes on its stdin, and
-`claude-launch.json` the argv a launch passes. All are ordinary case
-tables, with these descriptors:
+`claude-stdin.json` what each call writes on its stdin,
+`claude-launch.json` the argv a launch passes, and `claude-adapter.json`
+the adapter's process rules: what each call, stdout event and exit does,
+as the effects the platform carries out. All are ordinary case tables, with
+these descriptors:
 
 | Descriptor | Shape |
 | --- | --- |
 | line input | a string (the line as UTF-8, without its newline), or `{"hex": "<bytes>"}` for bytes that are not text, such as invalid UTF-8 |
 | claude event | `{"event": <ClaudeEvent case name>}` plus Swift's field names: `ready {sessionID, model}`, `textDelta {text}`, `assistantMessage {text}`, `toolUse {name, detail}`, `turnCompleted {resultText, costUSD, isError, subtype}` (`resultText` and `costUSD` may be `null`), `controlResult {action, ok, detail, value}` (`value` may be `null`), `processError {message}`, `terminated {exitCode}` |
+| harness event | the `harnessEvent` shape of [`session/`](#script-an-ordered-list-of-steps) scenarios, tagged by `type` (`sessionReady {sessionID, model}` … `ended {exitCode}`), with every optional field written (`null` when absent) |
+| adapter effect | `{"effect": "publish", "state", "sessionID", "modelName", "totalCostUSD"}` (state is `stopped`, `starting`, `ready` or `working`), `{"effect": "resolveBinary", "generation", "binaryPathOverride"}`, `{"effect": "spawn", "generation", "executable", "arguments", "projectDir"}`, `{"effect": "writeStdin", "line": <the JSON object of the line>}`, `{"effect": "closeStdin"}`, `{"effect": "terminateAfterGrace", "seconds"}`, `{"effect": "emit", "event": <harness event>}` |
 
 `claude-stream.json` takes a line input and expects a list of claude
 events, in order; an empty list means the line is ignored. Numbers are
@@ -159,6 +164,35 @@ large for a case and is a unit test on each side.
 `claude-launch.json` takes `{model, permissionMode, effort,
 resumeSessionID}` (`resumeSessionID` may be `null`) and expects the
 argument list, in order.
+
+`claude-adapter.json` takes `{steps}` and plays them in order on a fresh
+adapter whose request ids are `R-1`, `R-2`, …; it expects `{effects,
+snapshot}`: one list of adapter effects per step, and the published state
+after the last step (`{state, sessionID, modelName, totalCostUSD}`). Each
+step is an object with exactly one of these shapes, every field required:
+
+- `{"start": {projectDir, model, permissionMode, effort, resumeSessionID, binaryPathOverride}}`
+  (the last two may be `null`)
+- `{"binaryResolved": <path or null>}`, `{"spawned": true}`,
+  `{"spawnFailed": {executable, description}}`, all for the current launch
+- `{"send": <text>, "processRunning": <bool>}`,
+  `{"interrupt": true, "processRunning": <bool>}`,
+  `{"setModel": <model>, "processRunning": <bool>}`,
+  `{"setPermissionMode": <mode>, "processRunning": <bool>}`, where
+  `processRunning` is the platform's answer for the current process
+- `{"stop": true}`
+- `{"line": <line input>}`: parsed as in `claude-stream.json`, then fed
+  event by event to the current launch; the step's effects are the
+  concatenation. `{"retiredLine": <line input>}` comes from the launch
+  before it
+- `{"terminated": {exitCode, clean, stderrTail}}` for the current launch and
+  `{"retiredTerminated": {…}}` for the one before it
+- `{"writeFailed": <description>}`
+
+Until the Swift app runs on the core's adapter (slice 2.3, #152), only the
+Rust runner plays `claude-adapter.json`: `ClaudeService` drives a real
+process, so its expectations were written from `ClaudeService.swift` rather
+than captured.
 
 The Swift runner is `Tests/PowerUpTests/HarnessFixtureTests.swift` (its
 descriptor helpers are in `FixtureValues.swift`), and the Rust runner is

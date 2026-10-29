@@ -4,12 +4,17 @@
 
 mod support;
 
+use powerup_core::harness::claude::adapter::{ClaudeAdapter, ClaudeAdapterEffect};
 use powerup_core::harness::claude::launch::launch_arguments;
 use powerup_core::harness::claude::lines::LineBuffer;
 use powerup_core::harness::claude::parse::events_from_line;
 use powerup_core::harness::claude::stdin::{control_request_line, user_turn_line, ControlRequest};
+use powerup_core::harness::HarnessConfiguration;
 use serde_json::Value;
-use support::{case_table, claude_event_descriptor, line_input_bytes};
+use support::{
+    adapter_effect_descriptor, case_table, claude_event_descriptor, claude_snapshot_fields,
+    line_input_bytes,
+};
 
 fn fail(file: &str, name: &str, reason: &str, expected: &Value, actual: &Value) -> String {
     format!("{file} case {name:?} failed (guards: {reason})\n  expected: {expected}\n  actual:   {actual}")
@@ -159,6 +164,142 @@ fn claude_launch_cases() {
             field("effort"),
             resume.as_str(),
         ));
+        if actual != case.expected {
+            failures.push(fail(
+                file,
+                &case.name,
+                &case.reason,
+                &case.expected,
+                &actual,
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// Runs one step of `claude-adapter.json` and returns its effects. Every
+/// step key is required and nothing else is allowed, so a typo fails loudly.
+fn adapter_step(adapter: &mut ClaudeAdapter, step: &Value) -> Vec<ClaudeAdapterEffect> {
+    let fields = step
+        .as_object()
+        .unwrap_or_else(|| panic!("a step is not an object: {step}"));
+    let keys: Vec<&str> = fields.keys().map(String::as_str).collect();
+    let string = |value: &Value, what: &str| -> String {
+        value
+            .as_str()
+            .unwrap_or_else(|| panic!("{what} must be a string: {step}"))
+            .to_owned()
+    };
+    let optional_string = |value: &Value, what: &str| -> Option<String> {
+        if value.is_null() {
+            None
+        } else {
+            Some(string(value, what))
+        }
+    };
+    let running = || {
+        fields["processRunning"]
+            .as_bool()
+            .unwrap_or_else(|| panic!("processRunning must be a bool: {step}"))
+    };
+    let exit = |value: &Value| -> (i32, bool, String) {
+        let code = value["exitCode"]
+            .as_i64()
+            .and_then(|code| i32::try_from(code).ok())
+            .unwrap_or_else(|| panic!("exitCode must be an Int32: {step}"));
+        let clean = value["clean"]
+            .as_bool()
+            .unwrap_or_else(|| panic!("clean must be a bool: {step}"));
+        (code, clean, string(&value["stderrTail"], "stderrTail"))
+    };
+    let current = adapter.generation();
+    let retired = current.wrapping_sub(1);
+    let feed = |adapter: &mut ClaudeAdapter, generation: u64, line: &Value| {
+        events_from_line(&line_input_bytes(line))
+            .into_iter()
+            .flat_map(|event| adapter.stdout_event(generation, event))
+            .collect::<Vec<_>>()
+    };
+    match keys.as_slice() {
+        ["start"] => {
+            let config = &fields["start"];
+            adapter.start(&HarnessConfiguration {
+                project_dir: string(&config["projectDir"], "projectDir"),
+                model: string(&config["model"], "model"),
+                permission_mode: string(&config["permissionMode"], "permissionMode"),
+                effort: string(&config["effort"], "effort"),
+                resume_session_id: optional_string(&config["resumeSessionID"], "resumeSessionID"),
+                binary_path_override: optional_string(
+                    &config["binaryPathOverride"],
+                    "binaryPathOverride",
+                ),
+                agent_command: None,
+            })
+        }
+        ["binaryResolved"] => adapter.binary_resolved(
+            current,
+            optional_string(&fields["binaryResolved"], "binaryResolved"),
+        ),
+        ["spawned"] => adapter.spawned(current),
+        ["spawnFailed"] => {
+            let failure = &fields["spawnFailed"];
+            adapter.spawn_failed(
+                current,
+                &string(&failure["executable"], "executable"),
+                &string(&failure["description"], "description"),
+            )
+        }
+        ["processRunning", "send"] => adapter.send(&string(&fields["send"], "send"), running()),
+        ["interrupt", "processRunning"] => adapter.interrupt(running()),
+        ["processRunning", "setModel"] => {
+            adapter.set_model(&string(&fields["setModel"], "setModel"), running())
+        }
+        ["processRunning", "setPermissionMode"] => adapter.set_permission_mode(
+            &string(&fields["setPermissionMode"], "setPermissionMode"),
+            running(),
+        ),
+        ["stop"] => adapter.stop(),
+        ["line"] => feed(adapter, current, &fields["line"]),
+        ["retiredLine"] => feed(adapter, retired, &fields["retiredLine"]),
+        ["terminated"] => {
+            let (code, clean, tail) = exit(&fields["terminated"]);
+            adapter.terminated(current, code, clean, &tail)
+        }
+        ["retiredTerminated"] => {
+            let (code, clean, tail) = exit(&fields["retiredTerminated"]);
+            adapter.terminated(retired, code, clean, &tail)
+        }
+        ["writeFailed"] => {
+            adapter.stdin_write_failed(&string(&fields["writeFailed"], "writeFailed"))
+        }
+        _ => panic!("unknown adapter step: {step}"),
+    }
+}
+
+#[test]
+fn claude_adapter_cases() {
+    let file = "claude-adapter.json";
+    let mut failures = Vec::new();
+    for case in case_table("harness", file).cases {
+        let steps = case.input["steps"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{file} case {:?}: no steps", case.name));
+        let mut adapter = ClaudeAdapter::new("R".into());
+        let effects: Vec<Value> = steps
+            .iter()
+            .map(|step| {
+                Value::Array(
+                    adapter_step(&mut adapter, step)
+                        .iter()
+                        .map(adapter_effect_descriptor)
+                        .collect(),
+                )
+            })
+            .collect();
+        let actual = serde_json::json!({
+            "effects": effects,
+            "snapshot": claude_snapshot_fields(&adapter.snapshot()),
+        });
         if actual != case.expected {
             failures.push(fail(
                 file,

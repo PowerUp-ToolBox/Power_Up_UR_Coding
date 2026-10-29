@@ -1,0 +1,4404 @@
+{
+  "description": "The Claude adapter's process rules: what ClaudeService does with each call, each stdout event and each exit, as the effects the platform carries out in order. publish assigns the adapter's published state (state, sessionID, modelName, totalCostUSD) at the points ClaudeService assigned it; resolveBinary and spawn launch the process, tagged with the launch generation; writeStdin writes one line (compared as JSON); closeStdin and terminateAfterGrace stop it; emit hands a harness event to the session. A line step is parsed, then fed event by event to the current generation, and its effects are the concatenation; retiredLine and retiredTerminated come from the previous generation. Request ids are the prefix \"R\", a dash and a count from 1.",
+  "function": "ClaudeService's process rules ↔ powerup_core::harness::claude::adapter::ClaudeAdapter (request id prefix \"R\") — input {steps: [step]}; expected {effects: [[adapter effect]] (one list per step), snapshot: {state, sessionID, modelName, totalCostUSD} after the last step}",
+  "verifiedBy": "Rust: rust/powerup-core/tests/harness.rs claude_adapter_cases runs ClaudeAdapter. ClaudeService still runs these rules in the app; the Swift suite plays this file once ClaudeService executes the core's effects (slice 2.3, #152).",
+  "capturedAgainst": "Written from ClaudeService.swift of PowerUp at ae3de75 (start, finishStart, send, sendControlRequest, stop, apply and the termination handler), built with Swift 5.9.2 (Xcode 15.2); the Swift app cannot run these steps without a real process until #152",
+  "cases": [
+    {
+      "name": "a send before the spawn is queued and flushed on spawn",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "send": "Hello",
+            "processRunning": true
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "working",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "type": "user",
+                "message": {
+                  "role": "user",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Hello"
+                    }
+                  ]
+                },
+                "parent_tool_use_id": null
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "working",
+          "sessionID": null,
+          "modelName": null,
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "The binary is resolved off the main thread; a turn sent meanwhile is queued, marks the turn working, and is written the moment the process is up, never dropped (HK-079)."
+    },
+    {
+      "name": "a resumed start owns its session id at once",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": "  abc-123 ",
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": "  abc-123 ",
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits",
+                "--resume",
+                "abc-123"
+              ],
+              "projectDir": "/work/app"
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "starting",
+          "sessionID": "  abc-123 ",
+          "modelName": null,
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "The hook echo guard and the protocol snapshot see the resumed id while the CLI is still starting; the id is published as given and only the argv trims it (HK-075)."
+    },
+    {
+      "name": "an override path is handed to the resolver",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": "~/bin/claude"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": "~/bin/claude"
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "starting",
+          "sessionID": null,
+          "modelName": null,
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "The platform resolves the binary (tilde, login shell, install spots); the core only passes the Settings path on."
+    },
+    {
+      "name": "a missing binary stops with an error",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": "abc",
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "send": "hi",
+            "processRunning": true
+          },
+          {
+            "binaryResolved": null
+          },
+          {
+            "send": "again",
+            "processRunning": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": "abc",
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "working",
+              "sessionID": "abc",
+              "modelName": null,
+              "totalCostUSD": 0
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "runtimeError",
+                "message": "claude CLI not found — set the path in Settings"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "runtimeError",
+                "message": "Can't send that — the Claude session isn't running."
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "stopped",
+          "sessionID": null,
+          "modelName": null,
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "A launch that cannot find claude says so in words docs/troubleshooting.md quotes, drops the queued turn and the session id, and later sends are refused rather than queued."
+    },
+    {
+      "name": "a failed spawn stops with an error",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "interrupt": true,
+            "processRunning": false
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawnFailed": {
+              "executable": "/usr/local/bin/claude",
+              "description": "The file is not executable."
+            }
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "runtimeError",
+                "message": "Couldn't start the claude CLI at /usr/local/bin/claude: The file is not executable."
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "stopped",
+          "sessionID": null,
+          "modelName": null,
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "Process.run() throwing ends the launch with the path and the reason; the queued requests go with it."
+    },
+    {
+      "name": "a stop during resolution abandons the spawn",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": "abc",
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "send": "hi",
+            "processRunning": true
+          },
+          {
+            "stop": true
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": "abc",
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "working",
+              "sessionID": "abc",
+              "modelName": null,
+              "totalCostUSD": 0
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": "abc",
+              "modelName": null,
+              "totalCostUSD": 0
+            }
+          ],
+          []
+        ],
+        "snapshot": {
+          "state": "stopped",
+          "sessionID": "abc",
+          "modelName": null,
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "Stopping before the process exists marks it stopped, so the resolved binary is never spawned and the queued turn is dropped. A stop does not clear the session id; only an exit does."
+    },
+    {
+      "name": "init gives sessionReady",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-sonnet-5\"}"
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": "claude-sonnet-5"
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "ready",
+          "sessionID": "s-1",
+          "modelName": "claude-sonnet-5",
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "system/init carries the live session id and model; the first one makes the session ready (HK-055, HK-073)."
+    },
+    {
+      "name": "an init after a send stays working",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          },
+          {
+            "send": "hi",
+            "processRunning": true
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-sonnet-5\"}"
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "working",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "writeStdin",
+              "line": {
+                "type": "user",
+                "message": {
+                  "role": "user",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "hi"
+                    }
+                  ]
+                },
+                "parent_tool_use_id": null
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "working",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": "claude-sonnet-5"
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "working",
+          "sessionID": "s-1",
+          "modelName": "claude-sonnet-5",
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "The CLI queues stdin while it boots, so a turn sent before init is already in flight; init must not downgrade it to ready (HK-073)."
+    },
+    {
+      "name": "a later init refreshes the model and keeps a working turn",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-sonnet-5\"}"
+          },
+          {
+            "send": "hi",
+            "processRunning": true
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-opus-5\"}"
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"\"}"
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": "claude-sonnet-5"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "working",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "writeStdin",
+              "line": {
+                "type": "user",
+                "message": {
+                  "role": "user",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "hi"
+                    }
+                  ]
+                },
+                "parent_tool_use_id": null
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "working",
+              "sessionID": "s-1",
+              "modelName": "claude-opus-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": "claude-opus-5"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "working",
+              "sessionID": "s-1",
+              "modelName": "claude-opus-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": ""
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "working",
+          "sessionID": "s-1",
+          "modelName": "claude-opus-5",
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "The CLI re-emits init after a live set_model; every init refreshes the model (an empty one keeps it) and a repeated init never ends a working turn (HK-073)."
+    },
+    {
+      "name": "a later init after a stop reports ready again",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-sonnet-5\"}"
+          },
+          {
+            "stop": true
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-sonnet-5\"}"
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": "claude-sonnet-5"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "closeStdin"
+            },
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "terminateAfterGrace",
+              "seconds": 2
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": "claude-sonnet-5"
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "ready",
+          "sessionID": "s-1",
+          "modelName": "claude-sonnet-5",
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "A repeated init lifts a stopped or starting session to ready, even while the stopped process is still shutting down; ClaudeService always did, and the port keeps it (HK-073)."
+    },
+    {
+      "name": "a repeated assistant message is suppressed",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-sonnet-5\"}"
+          },
+          {
+            "line": "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Hello\"}]}}"
+          },
+          {
+            "line": "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Hello\"}]}}"
+          },
+          {
+            "line": "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"World\"}]}}"
+          },
+          {
+            "line": "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Hello\"}]}}"
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": "claude-sonnet-5"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "reply",
+                "text": "Hello"
+              }
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "reply",
+                "text": "World"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "reply",
+                "text": "Hello"
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "ready",
+          "sessionID": "s-1",
+          "modelName": "claude-sonnet-5",
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "The CLI repeats the assistant message once per content block, so an identical message right after itself is dropped; only the last one is remembered (HK-074)."
+    },
+    {
+      "name": "the de-dupe resets on turn end, send and init",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-sonnet-5\"}"
+          },
+          {
+            "line": "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Hi\"}]}}"
+          },
+          {
+            "line": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"Done.\"}"
+          },
+          {
+            "line": "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Hi\"}]}}"
+          },
+          {
+            "line": "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Hi\"}]}}"
+          },
+          {
+            "send": "again",
+            "processRunning": true
+          },
+          {
+            "line": "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Hi\"}]}}"
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-sonnet-5\"}"
+          },
+          {
+            "line": "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Hi\"}]}}"
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": "claude-sonnet-5"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "reply",
+                "text": "Hi"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "turnCompleted",
+                "resultText": "Done.",
+                "costUSD": null,
+                "isError": false,
+                "detail": "success"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "reply",
+                "text": "Hi"
+              }
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "working",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "writeStdin",
+              "line": {
+                "type": "user",
+                "message": {
+                  "role": "user",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "again"
+                    }
+                  ]
+                },
+                "parent_tool_use_id": null
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "reply",
+                "text": "Hi"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "working",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": "claude-sonnet-5"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "reply",
+                "text": "Hi"
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "working",
+          "sessionID": "s-1",
+          "modelName": "claude-sonnet-5",
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "A new turn may legitimately say the same thing again, so the memory is forgotten at each turn end, send and init (HK-074)."
+    },
+    {
+      "name": "costs accumulate across turns",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-sonnet-5\"}"
+          },
+          {
+            "line": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"Done.\",\"total_cost_usd\":0.5}"
+          },
+          {
+            "line": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"Done.\",\"total_cost_usd\":0.25}"
+          },
+          {
+            "line": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"Done.\",\"total_cost_usd\":0}"
+          },
+          {
+            "line": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"Done.\",\"total_cost_usd\":-1}"
+          },
+          {
+            "line": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"Done.\"}"
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": "claude-sonnet-5"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0.5
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "turnCompleted",
+                "resultText": "Done.",
+                "costUSD": 0.5,
+                "isError": false,
+                "detail": "success"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0.75
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "turnCompleted",
+                "resultText": "Done.",
+                "costUSD": 0.25,
+                "isError": false,
+                "detail": "success"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0.75
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "turnCompleted",
+                "resultText": "Done.",
+                "costUSD": 0,
+                "isError": false,
+                "detail": "success"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0.75
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "turnCompleted",
+                "resultText": "Done.",
+                "costUSD": -1,
+                "isError": false,
+                "detail": "success"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0.75
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "turnCompleted",
+                "resultText": "Done.",
+                "costUSD": null,
+                "isError": false,
+                "detail": "success"
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "ready",
+          "sessionID": "s-1",
+          "modelName": "claude-sonnet-5",
+          "totalCostUSD": 0.75
+        }
+      },
+      "reason": "The cost chip shows the session's total: each turn's total_cost_usd is added when it is finite and above zero, and zero, negative or missing costs never move it (HK-066). The test fake replaces the total instead, so only this table pins the sum."
+    },
+    {
+      "name": "an error turn returns to ready",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-sonnet-5\"}"
+          },
+          {
+            "send": "go",
+            "processRunning": true
+          },
+          {
+            "line": "{\"type\":\"result\",\"subtype\":\"error_during_execution\",\"is_error\":true,\"result\":\"\"}"
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": "claude-sonnet-5"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "working",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "writeStdin",
+              "line": {
+                "type": "user",
+                "message": {
+                  "role": "user",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "go"
+                    }
+                  ]
+                },
+                "parent_tool_use_id": null
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "turnCompleted",
+                "resultText": null,
+                "costUSD": null,
+                "isError": true,
+                "detail": "error_during_execution"
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "ready",
+          "sessionID": "s-1",
+          "modelName": "claude-sonnet-5",
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "Every result ends the turn, an error one included, so the pad never stays busy (HK-064)."
+    },
+    {
+      "name": "text deltas and tool use pass through",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-sonnet-5\"}"
+          },
+          {
+            "line": "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hel\"}}}"
+          },
+          {
+            "line": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"Reading.\"},{\"type\":\"tool_use\",\"name\":\"Read\",\"input\":{\"file_path\":\"/a/b.swift\"}}]}}"
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": "claude-sonnet-5"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "replyDelta",
+                "text": "Hel"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "reply",
+                "text": "Reading."
+              }
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "toolUse",
+                "name": "Read",
+                "detail": "/a/b.swift"
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "ready",
+          "sessionID": "s-1",
+          "modelName": "claude-sonnet-5",
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "Deltas and tool use change no adapter state; they reach the session in the order the line gave them (HK-060)."
+    },
+    {
+      "name": "a set_model ack refreshes the model at once",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-sonnet-5\"}"
+          },
+          {
+            "setModel": " opus ",
+            "processRunning": true
+          },
+          {
+            "line": "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"R-1\"}}"
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": "claude-sonnet-5"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "type": "control_request",
+                "request_id": "R-1",
+                "request": {
+                  "subtype": "set_model",
+                  "model": "opus"
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "opus",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "controlResult",
+                "action": "set_model",
+                "ok": true,
+                "detail": "",
+                "value": "opus"
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "ready",
+          "sessionID": "s-1",
+          "modelName": "opus",
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "Waiting for the next init would leave the model chip a turn behind; the ack reports the trimmed value the request asked for (HK-071, HK-070)."
+    },
+    {
+      "name": "a failed set_model ack keeps the model",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-sonnet-5\"}"
+          },
+          {
+            "setModel": "opus",
+            "processRunning": true
+          },
+          {
+            "line": "{\"type\":\"control_response\",\"response\":{\"subtype\":\"error\",\"request_id\":\"R-1\",\"error\":\"Unknown model\"}}"
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": "claude-sonnet-5"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "type": "control_request",
+                "request_id": "R-1",
+                "request": {
+                  "subtype": "set_model",
+                  "model": "opus"
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "controlResult",
+                "action": "set_model",
+                "ok": false,
+                "detail": "Unknown model",
+                "value": "opus"
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "ready",
+          "sessionID": "s-1",
+          "modelName": "claude-sonnet-5",
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "Only a successful ack changes the model; the failure reaches the session with its detail so it can roll the setting back (HK-071, HK-072)."
+    },
+    {
+      "name": "a permission mode ack reports its value",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-sonnet-5\"}"
+          },
+          {
+            "setPermissionMode": "plan",
+            "processRunning": true
+          },
+          {
+            "line": "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"R-1\"}}"
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": "claude-sonnet-5"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "type": "control_request",
+                "request_id": "R-1",
+                "request": {
+                  "subtype": "set_permission_mode",
+                  "mode": "plan"
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "controlResult",
+                "action": "set_permission_mode",
+                "ok": true,
+                "detail": "",
+                "value": "plan"
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "ready",
+          "sessionID": "s-1",
+          "modelName": "claude-sonnet-5",
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "The ack names the subtype and the value recorded when the request went out, not the raw request id (HK-070)."
+    },
+    {
+      "name": "the interrupt ack has no value",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-sonnet-5\"}"
+          },
+          {
+            "interrupt": true,
+            "processRunning": true
+          },
+          {
+            "line": "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"R-1\"}}"
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": "claude-sonnet-5"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "type": "control_request",
+                "request_id": "R-1",
+                "request": {
+                  "subtype": "interrupt"
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "controlResult",
+                "action": "interrupt",
+                "ok": true,
+                "detail": "",
+                "value": null
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "ready",
+          "sessionID": "s-1",
+          "modelName": "claude-sonnet-5",
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "An interrupt asks for no value, so its ack carries none (HK-070)."
+    },
+    {
+      "name": "an ack for an unknown or answered request is dropped",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-sonnet-5\"}"
+          },
+          {
+            "line": "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"R-9\"}}"
+          },
+          {
+            "setModel": "haiku",
+            "processRunning": true
+          },
+          {
+            "line": "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"R-1\"}}"
+          },
+          {
+            "line": "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"R-1\"}}"
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": "claude-sonnet-5"
+              }
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "type": "control_request",
+                "request_id": "R-1",
+                "request": {
+                  "subtype": "set_model",
+                  "model": "haiku"
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "haiku",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "controlResult",
+                "action": "set_model",
+                "ok": true,
+                "detail": "",
+                "value": "haiku"
+              }
+            }
+          ],
+          []
+        ],
+        "snapshot": {
+          "state": "ready",
+          "sessionID": "s-1",
+          "modelName": "haiku",
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "Only a request this launch made and has not seen answered is reported; anything else (a stale process, a request the CLI invented) is dropped (HK-070)."
+    },
+    {
+      "name": "request ids count the requests made",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-sonnet-5\"}"
+          },
+          {
+            "setModel": "  ",
+            "processRunning": true
+          },
+          {
+            "setPermissionMode": "",
+            "processRunning": true
+          },
+          {
+            "interrupt": true,
+            "processRunning": true
+          },
+          {
+            "setModel": "opus",
+            "processRunning": true
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": "claude-sonnet-5"
+              }
+            }
+          ],
+          [],
+          [],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "type": "control_request",
+                "request_id": "R-1",
+                "request": {
+                  "subtype": "interrupt"
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "type": "control_request",
+                "request_id": "R-2",
+                "request": {
+                  "subtype": "set_model",
+                  "model": "opus"
+                }
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "ready",
+          "sessionID": "s-1",
+          "modelName": "claude-sonnet-5",
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "An empty model or mode sends nothing and takes no id (HK-068). Ids are the adapter's prefix and a count from 1; any unique string works (DESIGN.md v1.1 A, HK-396)."
+    },
+    {
+      "name": "control requests while starting are queued and recorded",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "setModel": "opus",
+            "processRunning": false
+          },
+          {
+            "interrupt": true,
+            "processRunning": false
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"R-1\"}}"
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [],
+          [],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "type": "control_request",
+                "request_id": "R-1",
+                "request": {
+                  "subtype": "set_model",
+                  "model": "opus"
+                }
+              }
+            },
+            {
+              "effect": "writeStdin",
+              "line": {
+                "type": "control_request",
+                "request_id": "R-2",
+                "request": {
+                  "subtype": "interrupt"
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": "opus",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "controlResult",
+                "action": "set_model",
+                "ok": true,
+                "detail": "",
+                "value": "opus"
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "starting",
+          "sessionID": null,
+          "modelName": "opus",
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "A request made while the binary resolves is queued with the turns, in order, and its ack is still recognised (HK-068, HK-079)."
+    },
+    {
+      "name": "a control request without a session is dropped silently",
+      "input": {
+        "steps": [
+          {
+            "interrupt": true,
+            "processRunning": false
+          },
+          {
+            "setModel": "opus",
+            "processRunning": false
+          },
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          },
+          {
+            "setPermissionMode": "plan",
+            "processRunning": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [],
+          []
+        ],
+        "snapshot": {
+          "state": "starting",
+          "sessionID": null,
+          "modelName": null,
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "Unlike a turn, a control request with no running process is dropped without an error: there is nothing to interrupt or switch."
+    },
+    {
+      "name": "a send with no process is refused",
+      "input": {
+        "steps": [
+          {
+            "send": "hi",
+            "processRunning": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "runtimeError",
+                "message": "Can't send that — the Claude session isn't running."
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "stopped",
+          "sessionID": null,
+          "modelName": null,
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "A turn is never silently dropped: with no session it is refused with a message (HK-079)."
+    },
+    {
+      "name": "a send to a dead process is refused",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-sonnet-5\"}"
+          },
+          {
+            "send": "hi",
+            "processRunning": false
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": "claude-sonnet-5"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "runtimeError",
+                "message": "Can't send that — the Claude session isn't running."
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "ready",
+          "sessionID": "s-1",
+          "modelName": "claude-sonnet-5",
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "The platform reports whether the process still runs; a dead one cannot take a turn (HK-079)."
+    },
+    {
+      "name": "an empty send writes nothing",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-sonnet-5\"}"
+          },
+          {
+            "send": " \n ",
+            "processRunning": true
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": "claude-sonnet-5"
+              }
+            }
+          ],
+          []
+        ],
+        "snapshot": {
+          "state": "ready",
+          "sessionID": "s-1",
+          "modelName": "claude-sonnet-5",
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "A turn that trims to nothing is not sent and changes no state (HK-069)."
+    },
+    {
+      "name": "stop closes stdin, then a 2 s grace",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-sonnet-5\"}"
+          },
+          {
+            "stop": true
+          },
+          {
+            "send": "hi",
+            "processRunning": true
+          },
+          {
+            "stop": true
+          },
+          {
+            "terminated": {
+              "exitCode": 0,
+              "clean": true,
+              "stderrTail": ""
+            }
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": "claude-sonnet-5"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "closeStdin"
+            },
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "terminateAfterGrace",
+              "seconds": 2
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "runtimeError",
+                "message": "Can't send that — the Claude session isn't running."
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "terminateAfterGrace",
+              "seconds": 2
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": null,
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "ended",
+                "exitCode": 0
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "stopped",
+          "sessionID": null,
+          "modelName": "claude-sonnet-5",
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "Closing stdin lets the CLI finish cleanly; the process is force-terminated only if it still runs after 2 s (HK-078). Stdin is closed once, so a second stop only arms another grace, and a send in between is refused."
+    },
+    {
+      "name": "stop without a process",
+      "input": {
+        "steps": [
+          {
+            "stop": true
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          []
+        ],
+        "snapshot": {
+          "state": "stopped",
+          "sessionID": null,
+          "modelName": null,
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "Nothing runs and nothing changes, so nothing is published."
+    },
+    {
+      "name": "an unclean exit reports stderr",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-sonnet-5\"}"
+          },
+          {
+            "line": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"Done.\",\"total_cost_usd\":0.5}"
+          },
+          {
+            "terminated": {
+              "exitCode": 1,
+              "clean": false,
+              "stderrTail": "Error: boom"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": "claude-sonnet-5"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0.5
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "turnCompleted",
+                "resultText": "Done.",
+                "costUSD": 0.5,
+                "isError": false,
+                "detail": "success"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "runtimeError",
+                "message": "Error: boom"
+              }
+            },
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": null,
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0.5
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "ended",
+                "exitCode": 1
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "stopped",
+          "sessionID": null,
+          "modelName": "claude-sonnet-5",
+          "totalCostUSD": 0.5
+        }
+      },
+      "reason": "The CLI's last stderr words are the best explanation; the dead process no longer owns its session id (HK-076), while the model and the cost stay for the chip."
+    },
+    {
+      "name": "an unclean exit without stderr says so",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-sonnet-5\"}"
+          },
+          {
+            "terminated": {
+              "exitCode": 15,
+              "clean": false,
+              "stderrTail": ""
+            }
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": "claude-sonnet-5"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "runtimeError",
+                "message": "The claude process exited unexpectedly (code 15)."
+              }
+            },
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": null,
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "ended",
+                "exitCode": 15
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "stopped",
+          "sessionID": null,
+          "modelName": "claude-sonnet-5",
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "A kill or crash with nothing on stderr still explains itself with the code (HK-076)."
+    },
+    {
+      "name": "a clean exit is not an error",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-sonnet-5\"}"
+          },
+          {
+            "terminated": {
+              "exitCode": 0,
+              "clean": true,
+              "stderrTail": "a warning"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": "claude-sonnet-5"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": null,
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "ended",
+                "exitCode": 0
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "stopped",
+          "sessionID": null,
+          "modelName": "claude-sonnet-5",
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "A clean exit reports no error even when stderr has text; the session id is cleared so the hook echo guard does not stay armed (HK-076)."
+    },
+    {
+      "name": "start while running stops first",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-sonnet-5\"}"
+          },
+          {
+            "line": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"Done.\",\"total_cost_usd\":0.5}"
+          },
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "opus",
+              "permissionMode": "acceptEdits",
+              "effort": "high",
+              "resumeSessionID": "s-1",
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": "claude-sonnet-5"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0.5
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "turnCompleted",
+                "resultText": "Done.",
+                "costUSD": 0.5,
+                "isError": false,
+                "detail": "success"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "closeStdin"
+            },
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0.5
+            },
+            {
+              "effect": "terminateAfterGrace",
+              "seconds": 2
+            },
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": "s-1",
+              "modelName": null,
+              "totalCostUSD": 0.5
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 2,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 2,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--model",
+                "opus",
+                "--permission-mode",
+                "acceptEdits",
+                "--effort",
+                "high",
+                "--resume",
+                "s-1"
+              ],
+              "projectDir": "/work/app"
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "starting",
+          "sessionID": "s-1",
+          "modelName": null,
+          "totalCostUSD": 0.5
+        }
+      },
+      "reason": "A restart (effort change, resume retry) stops the running process first and starts a new launch generation; the cost total belongs to the app run and is kept."
+    },
+    {
+      "name": "a new start drops the old in-flight requests",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-sonnet-5\"}"
+          },
+          {
+            "setModel": "opus",
+            "processRunning": true
+          },
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"R-1\"}}"
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": "claude-sonnet-5"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "type": "control_request",
+                "request_id": "R-1",
+                "request": {
+                  "subtype": "set_model",
+                  "model": "opus"
+                }
+              }
+            }
+          ],
+          [
+            {
+              "effect": "closeStdin"
+            },
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "terminateAfterGrace",
+              "seconds": 2
+            },
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 2,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 2,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [],
+          []
+        ],
+        "snapshot": {
+          "state": "starting",
+          "sessionID": null,
+          "modelName": null,
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "A reply from a retired process must not be attributed to the new one, so every start forgets the requests in flight (HK-070)."
+    },
+    {
+      "name": "a send between a restart and the old exit is refused",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-sonnet-5\"}"
+          },
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "send": "early",
+            "processRunning": true
+          },
+          {
+            "retiredTerminated": {
+              "exitCode": 0,
+              "clean": true,
+              "stderrTail": ""
+            }
+          },
+          {
+            "send": "later",
+            "processRunning": false
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": "claude-sonnet-5"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "closeStdin"
+            },
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "terminateAfterGrace",
+              "seconds": 2
+            },
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 2,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "runtimeError",
+                "message": "Can't send that — the Claude session isn't running."
+              }
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "working",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 2,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [
+            {
+              "effect": "writeStdin",
+              "line": {
+                "type": "user",
+                "message": {
+                  "role": "user",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "later"
+                    }
+                  ]
+                },
+                "parent_tool_use_id": null
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "working",
+          "sessionID": null,
+          "modelName": null,
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "Until the old process exits it is still the adapter's process, with its stdin closed, so a turn sent then is refused rather than queued; once it has exited, turns queue for the new launch again. ClaudeService behaved this way, and the port keeps it."
+    },
+    {
+      "name": "a retired exit is ignored",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-sonnet-5\"}"
+          },
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "retiredTerminated": {
+              "exitCode": 1,
+              "clean": false,
+              "stderrTail": "Error: old"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": "claude-sonnet-5"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "closeStdin"
+            },
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "terminateAfterGrace",
+              "seconds": 2
+            },
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 2,
+              "binaryPathOverride": null
+            }
+          ],
+          []
+        ],
+        "snapshot": {
+          "state": "starting",
+          "sessionID": null,
+          "modelName": null,
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "The exit of a process a newer launch replaced must not stop the new session or report its stderr."
+    },
+    {
+      "name": "lines of a retired generation are dropped",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-sonnet-5\"}"
+          },
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "retiredLine": "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"late\"}]}}"
+          },
+          {
+            "retiredLine": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-old\",\"model\":\"claude-sonnet-5\"}"
+          },
+          {
+            "retiredLine": "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"R-1\"}}"
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": "claude-sonnet-5"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "closeStdin"
+            },
+            {
+              "effect": "publish",
+              "state": "stopped",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "terminateAfterGrace",
+              "seconds": 2
+            },
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 2,
+              "binaryPathOverride": null
+            }
+          ],
+          [],
+          [],
+          []
+        ],
+        "snapshot": {
+          "state": "starting",
+          "sessionID": null,
+          "modelName": null,
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "Output a replaced process flushes on its way out must not clobber the new launch's state."
+    },
+    {
+      "name": "a write failure is reported",
+      "input": {
+        "steps": [
+          {
+            "start": {
+              "projectDir": "/work/app",
+              "model": "default",
+              "permissionMode": "acceptEdits",
+              "effort": "default",
+              "resumeSessionID": null,
+              "binaryPathOverride": null
+            }
+          },
+          {
+            "binaryResolved": "/usr/local/bin/claude"
+          },
+          {
+            "spawned": true
+          },
+          {
+            "line": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-sonnet-5\"}"
+          },
+          {
+            "writeFailed": "Broken pipe"
+          }
+        ]
+      },
+      "expected": {
+        "effects": [
+          [
+            {
+              "effect": "publish",
+              "state": "starting",
+              "sessionID": null,
+              "modelName": null,
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "resolveBinary",
+              "generation": 1,
+              "binaryPathOverride": null
+            }
+          ],
+          [
+            {
+              "effect": "spawn",
+              "generation": 1,
+              "executable": "/usr/local/bin/claude",
+              "arguments": [
+                "-p",
+                "--verbose",
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--permission-mode",
+                "acceptEdits"
+              ],
+              "projectDir": "/work/app"
+            }
+          ],
+          [],
+          [
+            {
+              "effect": "publish",
+              "state": "ready",
+              "sessionID": "s-1",
+              "modelName": "claude-sonnet-5",
+              "totalCostUSD": 0
+            },
+            {
+              "effect": "emit",
+              "event": {
+                "type": "sessionReady",
+                "sessionID": "s-1",
+                "model": "claude-sonnet-5"
+              }
+            }
+          ],
+          [
+            {
+              "effect": "emit",
+              "event": {
+                "type": "runtimeError",
+                "message": "Couldn't reach the claude process: Broken pipe"
+              }
+            }
+          ]
+        ],
+        "snapshot": {
+          "state": "ready",
+          "sessionID": "s-1",
+          "modelName": "claude-sonnet-5",
+          "totalCostUSD": 0
+        }
+      },
+      "reason": "A failed stdin write means the turn never reached the CLI; the session hears why."
+    }
+  ]
+}

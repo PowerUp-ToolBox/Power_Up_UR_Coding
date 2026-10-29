@@ -70,9 +70,10 @@ The rules for core work:
   profiles, the Controller slot rule and the hold rule) lives in
   `powerup-core` since slice 2.2; the app reaches it only through
   `CoreBridge.swift` (DESIGN v2.11). Slice 2.3 is moving the Claude
-  stream-json parser there (`harness::claude`, played against
-  `Tests/Fixtures/harness/`); the app keeps its Swift parser until the
-  bridge lands.
+  adapter's rules there (`harness::claude`: the stream-json parser, the
+  stdout line splitter, the launch argv and the process rules, played
+  against `Tests/Fixtures/harness/`); the app keeps its Swift copies until
+  the bridge lands.
 - **Panic rule.** Every public core function is total: it returns its
   value, or a `Result` when it can fail, and never panics. Library code
   never calls `unwrap`, `expect` or `panic!` (clippy denies the first two).
