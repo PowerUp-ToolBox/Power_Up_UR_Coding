@@ -568,6 +568,10 @@ enum ClaudeState: Equatable { case stopped, starting, ready, working }
 
 // MARK: - ClaudeEvent
 
+/// What one line of the claude CLI's stream-json output means, as the Rust
+/// core's parser reports it (DESIGN v2.12). The parse-level conversion type:
+/// `ClaudeService` feeds these to the core's adapter, which turns them into
+/// `HarnessEvent`s; the parser tests and `HarnessEvent.from` read them too.
 enum ClaudeEvent: Equatable {
     case ready(sessionID: String, model: String)         // system/init parsed
     case textDelta(String)                               // stream_event text_delta

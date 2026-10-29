@@ -2,8 +2,7 @@
 
 Language-neutral test data that every implementation of PowerUp's rules is
 checked against (PLAN-any-device-any-os.md, ADR 0012): the Swift app's XCTest
-suites play every file (`harness/claude-adapter.json` from slice 2.3's #152
-on), and the Rust core's `cargo test` plays the areas whose
+suites play every file, and the Rust core's `cargo test` plays the areas whose
 rules it owns so far (`mapping/` and `device/`, since slice 2.2, and
 `harness/`, `status/` and `session/`, since slice 2.3) and checks the
 format of the rest, picking up
@@ -198,10 +197,11 @@ and expects a bool. It has one case per pattern, each named `pattern`
 followed by the pattern in quotes, and the Swift runner checks that count
 against the pattern list.
 
-Until the Swift app runs on the core's adapter (slice 2.3, #152), only the
-Rust runner plays `claude-adapter.json`: `ClaudeService` drives a real
-process, so its expectations were written from `ClaudeService.swift` rather
-than captured.
+The expectations of `claude-adapter.json` were written from
+`ClaudeService.swift` rather than captured, since the Swift adapter needed a
+real process. Since slice 2.3 (#152) `ClaudeService` carries out the core's
+adapter effects, and the Swift runner plays the table through the bridge's
+`CoreBridge.ClaudeAdapter`.
 
 The Swift runner is `Tests/PowerUpTests/HarnessFixtureTests.swift` (its
 descriptor helpers are in `FixtureValues.swift`; `destructive-actions.json`

@@ -19,12 +19,8 @@ final class ClaudeService: ObservableObject {
     @Published private(set) var modelName: String?
     @Published private(set) var totalCostUSD: Double = 0
 
-    /// Always invoked on the main actor. Wire-level events; most consumers
-    /// should use `onHarnessEvent` instead.
-    var onEvent: ((ClaudeEvent) -> Void)?
-
-    /// The normalized stream (see `HarnessEvent.from`). Always on the main
-    /// actor. This is the `HarnessAdapter` surface `AppState` consumes.
+    /// The normalized stream. Always on the main actor. This is the
+    /// `HarnessAdapter` surface `AppState` consumes.
     var onHarnessEvent: ((HarnessEvent) -> Void)?
 
     // MARK: - Private state
@@ -33,32 +29,18 @@ final class ClaudeService: ObservableObject {
     private var stdinHandle: FileHandle?
     private var channel: IOChannel?
 
-    /// Bumped on every launch so callbacks belonging to a retired process are
-    /// dropped instead of clobbering the state of a newer one.
-    private var launchGeneration: Int = 0
-
-    /// True once a `system/init` message has been seen for the current process.
-    private var didReceiveInit = false
-
-    /// Last assistant message emitted this turn (the CLI repeats assistant
-    /// messages once per completed content block, so identical repeats are
-    /// suppressed).
-    private var lastAssistantMessage: String?
-
-    /// request_id → (control subtype, requested value) for every
-    /// control_request still awaiting a control_response. The value is what the
-    /// request asked for (model alias / permission mode; nil for interrupt), so
-    /// an ack can report exactly which value was confirmed. Cleared whenever a
-    /// process starts or dies, so a reply from a retired process can never be
-    /// attributed to a new one.
-    private var inFlightControlRequests: [String: (subtype: String, value: String?)] = [:]
-
-    /// stdin payloads accepted while the binary is still being resolved off the
-    /// main thread (see `start`). Flushed in order the moment the process is up
-    /// — the CLI buffers stdin while it boots, so ordering guarantees hold.
-    private var pendingStdinPayloads: [Data] = []
+    /// The adapter's rules (DESIGN v2.12): the launch generation, the queue
+    /// of lines sent before the spawn, the in-flight control requests and
+    /// the assistant de-dupe all live in the core, across launches.
+    private let core: CoreBridge.ClaudeAdapter
 
     private let stdinQueue = DispatchQueue(label: "com.powerup.claude.stdin")
+
+    /// Control request ids are `"<requestIDPrefix>-<n>"` (HK-396); the CLI
+    /// takes any unique string, so a UUID per service keeps them unique.
+    init(requestIDPrefix: String = UUID().uuidString) {
+        core = CoreBridge.ClaudeAdapter(requestIDPrefix: requestIDPrefix)
+    }
 
     // MARK: - Binary resolution
 
@@ -142,6 +124,11 @@ final class ClaudeService: ObservableObject {
     }
 
     // MARK: - Lifecycle
+    //
+    // Every call goes to the core's adapter, which answers with effects;
+    // `run` carries them out in order. The core decides what a call means
+    // (queue it while the binary resolves, refuse it without a process,
+    // drop a retired launch's output); this class only owns the process.
 
     func start(projectDir: URL,
                model: String,
@@ -149,84 +136,107 @@ final class ClaudeService: ObservableObject {
                effort: String,
                resumeSessionID: String?,
                claudePathOverride: String?) {
+        run(core.start(HarnessConfiguration(projectDir: projectDir, model: model, permissionMode: permissionMode,
+                                            effort: effort, resumeSessionID: resumeSessionID,
+                                            binaryPathOverride: claudePathOverride)))
+    }
 
-        if process != nil { stop() }
+    /// Sends a user turn: one JSON envelope + newline on stdin.
+    func send(_ text: String) {
+        run(core.send(text, processRunning: processRunning))
+    }
 
-        // Retire the old process *before* anything else can fail: its
-        // termination handler is generation-guarded, so once we bump here a
-        // replaced process can never deliver a stale `.terminated`.
-        launchGeneration &+= 1
-        let generation = launchGeneration
+    /// Interrupts the current turn.
+    func interrupt() {
+        run(core.interrupt(processRunning: processRunning))
+    }
 
-        // Reset per-process bookkeeping *before* anything can fail: the retired
-        // process's termination handler is generation-guarded and skips this
-        // cleanup, so an aborted launch (e.g. unresolvable binary) must not
-        // leave stale in-flight entries behind.
-        didReceiveInit = false
-        lastAssistantMessage = nil
-        inFlightControlRequests.removeAll()
-        pendingStdinPayloads.removeAll()
+    /// Switches the model mid-session (applies live, no restart).
+    func setModel(_ model: String) {
+        run(core.setModel(model, processRunning: processRunning))
+    }
 
-        sessionID = resumeSessionID
-        state = .starting
-        modelName = nil
+    /// Switches the permission mode mid-session (applies live, no restart).
+    func setPermissionMode(_ mode: String) {
+        run(core.setPermissionMode(mode, processRunning: processRunning))
+    }
 
-        // Resolving the binary can shell out to a zsh *login* shell with a
-        // blocking wait of up to ~2.5s (heavy .zprofile/.zshrc) — running that
-        // on the main actor froze the window at every cold launch. Resolve off
-        // the main thread and continue the spawn on the main actor once the
-        // path is known; anything sent meanwhile is queued (see `send`).
-        Task.detached(priority: .userInitiated) { [weak self] in
-            let binaryPath = ClaudeService.resolveClaudeBinary(override: claudePathOverride)
-            guard let service = self else { return }
-            await service.finishStart(binaryPath: binaryPath,
-                                      generation: generation,
-                                      projectDir: projectDir,
-                                      model: model,
-                                      permissionMode: permissionMode,
-                                      effort: effort,
-                                      resumeSessionID: resumeSessionID)
+    /// Closes stdin (letting claude finish cleanly), then terminates after a
+    /// 2 second grace period.
+    func stop() {
+        run(core.stop())
+    }
+
+    /// The core's answer for "is there a live process to write to".
+    private var processRunning: Bool { process?.isRunning == true }
+
+    // MARK: - Carrying out the core's effects
+
+    /// Runs the effects in order. An emitted event can re-enter this class
+    /// (the session restarts the CLI from inside an `ended`); the nested
+    /// call's effects run before the rest of these, as the core expects.
+    private func run(_ effects: [CoreBridge.ClaudeAdapterEffect]) {
+        for effect in effects {
+            switch effect {
+            case .publish(let snapshot):
+                publish(snapshot)
+            case .resolveBinary(let generation, let binaryPathOverride):
+                // The lookup can shell out to a zsh *login* shell and wait up
+                // to ~2.5s (heavy .zprofile/.zshrc); on the main actor that
+                // froze the window at every cold launch. Resolve off the main
+                // thread; the core queues anything sent meanwhile.
+                Task.detached(priority: .userInitiated) { [weak self] in
+                    let path = ClaudeService.resolveClaudeBinary(override: binaryPathOverride)
+                    guard let service = self else { return }
+                    await service.binaryResolved(generation: generation, path: path)
+                }
+            case .spawn(let generation, let executable, let arguments, let projectDir):
+                spawn(generation: generation, executable: executable, arguments: arguments,
+                      projectDir: URL(fileURLWithPath: projectDir, isDirectory: true))
+            case .writeStdin(let line):
+                if let handle = stdinHandle { write(line, to: handle) }
+            case .closeStdin:
+                if let handle = stdinHandle {
+                    stdinHandle = nil
+                    stdinQueue.async {
+                        try? handle.close()
+                    }
+                }
+            case .terminateAfterGrace(let seconds):
+                // The process current now: a start that follows replaces it.
+                guard let proc = process else { break }
+                DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
+                    if proc.isRunning { proc.terminate() }
+                }
+            case .emit(let event):
+                onHarnessEvent?(event)
+            }
         }
     }
 
-    /// Second half of `start()`, entered once the binary path is resolved.
-    private func finishStart(binaryPath: String?,
-                             generation: Int,
-                             projectDir: URL,
-                             model: String,
-                             permissionMode: String,
-                             effort: String,
-                             resumeSessionID: String?) {
-        // A newer start() owns the service now, or stop() was called while the
-        // binary was being resolved — either way this launch is abandoned.
-        guard launchGeneration == generation else { return }
-        guard state != .stopped else {
-            pendingStdinPayloads.removeAll()
-            inFlightControlRequests.removeAll()
-            return
-        }
+    /// Assigns only what changed, so an unchanged field does not fire
+    /// `objectWillChange` for nothing.
+    private func publish(_ snapshot: CoreBridge.ClaudeSnapshot) {
+        if state != snapshot.state { state = snapshot.state }
+        if sessionID != snapshot.sessionID { sessionID = snapshot.sessionID }
+        if modelName != snapshot.modelName { modelName = snapshot.modelName }
+        if totalCostUSD != snapshot.totalCostUSD { totalCostUSD = snapshot.totalCostUSD }
+    }
 
-        guard let binaryPath else {
-            state = .stopped
-            sessionID = nil
-            pendingStdinPayloads.removeAll()
-            inFlightControlRequests.removeAll()
-            emit(.processError("claude CLI not found — set the path in Settings"))
-            return
-        }
+    private func binaryResolved(generation: UInt64, path: String?) {
+        run(core.binaryResolved(generation: generation, path: path))
+    }
 
+    /// Spawns the CLI with three pipes. The core hears `spawned` or
+    /// `spawnFailed` before anything else happens.
+    private func spawn(generation: UInt64, executable: String, arguments: [String], projectDir: URL) {
         ClaudeService.ignoreSIGPIPEOnce()
 
-        let arguments = ClaudeService.launchArguments(model: model,
-                                                      permissionMode: permissionMode,
-                                                      effort: effort,
-                                                      resumeSessionID: resumeSessionID)
-
         let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: binaryPath)
+        proc.executableURL = URL(fileURLWithPath: executable)
         proc.arguments = arguments
         proc.currentDirectoryURL = projectDir
-        proc.environment = ClaudeService.childEnvironment(binaryPath: binaryPath)
+        proc.environment = ClaudeService.childEnvironment(binaryPath: executable)
 
         let inPipe = Pipe()
         let outPipe = Pipe()
@@ -275,43 +285,23 @@ final class ClaudeService: ObservableObject {
             ClaudeService.drainRemaining(handle: errHandle, into: io, isStdout: false)
 
             let exitCode = finished.terminationStatus
-            let reason = finished.terminationReason
+            let clean = (exitCode == 0 && finished.terminationReason == .exit)
             let tail = io.stderrTail(maxChars: 500)
             guard let service = self else { return }
 
             Task { @MainActor in
-                guard service.launchGeneration == generation else {
-                    // A newer launch owns the service now; just drop our stale
-                    // reference if no replacement process was installed.
-                    if service.process === finished {
-                        service.process = nil
-                        service.stdinHandle = nil
-                        service.channel = nil
-                    }
-                    return
-                }
-                // Flush late stdout events before announcing termination.
+                // Late stdout events go first; the core drops a retired
+                // launch's. The references go before the exit is reported:
+                // a resume retry started from the `ended` it emits installs
+                // a new process, which must not be cleared afterwards.
                 service.drainEvents(from: io, generation: generation)
-
-                let clean = (exitCode == 0 && reason == .exit)
-                if !clean {
-                    if !tail.isEmpty {
-                        service.emit(.processError(tail))
-                    } else {
-                        service.emit(.processError("The claude process exited unexpectedly (code \(exitCode))."))
-                    }
+                if service.process === finished {
+                    service.process = nil
+                    service.stdinHandle = nil
+                    service.channel = nil
                 }
-                service.process = nil
-                service.stdinHandle = nil
-                service.channel = nil
-                service.inFlightControlRequests.removeAll()
-                service.state = .stopped
-                // A dead process no longer owns its session id. Leaving it set
-                // would keep AppState's hook echo guard armed forever — a
-                // terminal session resumed with this very id (`claude --resume`)
-                // would have all its read-back silently discarded.
-                service.sessionID = nil
-                service.emit(.terminated(exitCode: exitCode))
+                service.run(service.core.terminated(generation: generation, exitCode: exitCode,
+                                                    clean: clean, stderrTail: tail))
             }
         }
 
@@ -321,207 +311,24 @@ final class ClaudeService: ObservableObject {
             outHandle.readabilityHandler = nil
             errHandle.readabilityHandler = nil
             proc.terminationHandler = nil
-            state = .stopped
-            sessionID = nil
-            pendingStdinPayloads.removeAll()
-            inFlightControlRequests.removeAll()
-            emit(.processError("Couldn't start the claude CLI at \(binaryPath): \(error.localizedDescription)"))
+            run(core.spawnFailed(generation: generation, executable: executable,
+                                 description: error.localizedDescription))
             return
         }
 
         process = proc
         stdinHandle = inPipe.fileHandleForWriting
         channel = io
-
-        // Flush anything that was sent while the binary was still resolving.
-        if !pendingStdinPayloads.isEmpty, let handle = stdinHandle {
-            let queued = pendingStdinPayloads
-            pendingStdinPayloads.removeAll()
-            for payload in queued { write(payload, to: handle) }
-        }
+        // Flushes anything that was sent while the binary was resolving.
+        run(core.spawned(generation: generation))
     }
 
-    /// The claude CLI's argv for one launch. Internal so `HarnessFixtureTests`
-    /// can play `harness/claude-launch.json`.
-    nonisolated static func launchArguments(model: String,
-                                            permissionMode: String,
-                                            effort: String,
-                                            resumeSessionID: String?) -> [String] {
-        var arguments = [
-            "-p",
-            "--verbose",                    // REQUIRED: stream-json output refuses to run without it
-            "--input-format", "stream-json",
-            "--output-format", "stream-json",
-            "--include-partial-messages"
-        ]
-        if !model.isEmpty && model != "default" {
-            arguments.append(contentsOf: ["--model", model])
-        }
-        if !permissionMode.isEmpty {
-            arguments.append(contentsOf: ["--permission-mode", permissionMode])
-        }
-        // There is no live effort switch — "default" simply means: don't pass the flag.
-        if !effort.isEmpty && effort != "default" {
-            arguments.append(contentsOf: ["--effort", effort])
-        }
-        if let resumeSessionID = resumeSessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !resumeSessionID.isEmpty {
-            arguments.append(contentsOf: ["--resume", resumeSessionID])
-        }
-        return arguments
-    }
-
-    /// Sends a user turn: one JSON envelope + newline on stdin.
-    func send(_ text: String) {
-        guard let payload = ClaudeService.userTurnLine(text) else { return }
-
-        // The spawn may still be resolving the binary off-main — queue the
-        // turn; it is flushed, in order, the moment the process is up.
-        if process == nil, state == .starting || state == .working {
-            lastAssistantMessage = nil
-            state = .working
-            pendingStdinPayloads.append(payload)
-            return
-        }
-
-        guard let proc = process, proc.isRunning, let handle = stdinHandle else {
-            emit(.processError("Can't send that — the Claude session isn't running."))
-            return
-        }
-
-        lastAssistantMessage = nil
-        state = .working
-        write(payload, to: handle)
-    }
-
-    /// Interrupts the current turn.
-    func interrupt() {
-        sendControlRequest(subtype: "interrupt")
-    }
-
-    /// Switches the model mid-session (applies live, no restart).
-    func setModel(_ model: String) {
-        sendControlRequest(subtype: "set_model", value: model)
-    }
-
-    /// Switches the permission mode mid-session (applies live, no restart).
-    func setPermissionMode(_ mode: String) {
-        sendControlRequest(subtype: "set_permission_mode", value: mode)
-    }
-
-    /// Writes one control request (see `controlRequestLine`) and records it as
-    /// in flight with the trimmed value it asked for.
-    private func sendControlRequest(subtype: String, value: String? = nil) {
-        let requestID = UUID().uuidString
-        guard let payload = ClaudeService.controlRequestLine(requestID: requestID,
-                                                             subtype: subtype,
-                                                             value: value) else { return }
-        let value = value?.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        // Queue during the off-main binary resolution, same as `send`.
-        if process == nil, state == .starting || state == .working {
-            inFlightControlRequests[requestID] = (subtype: subtype, value: value)
-            pendingStdinPayloads.append(payload)
-            return
-        }
-
-        guard let proc = process, proc.isRunning, let handle = stdinHandle else { return }
-
-        inFlightControlRequests[requestID] = (subtype: subtype, value: value)
-        write(payload, to: handle)
-    }
-
-    /// Closes stdin (letting claude finish cleanly), then terminates after a
-    /// 2 second grace period.
-    func stop() {
-        guard let proc = process else {
-            // A launch may still be resolving its binary; finishStart sees the
-            // stopped state and abandons the spawn, and nothing queued should
-            // outlive the session it was meant for.
-            pendingStdinPayloads.removeAll()
-            inFlightControlRequests.removeAll()
-            if state != .stopped { state = .stopped }
-            return
-        }
-
-        if let handle = stdinHandle {
-            stdinHandle = nil
-            stdinQueue.async {
-                try? handle.close()
-            }
-        }
-
-        state = .stopped
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-            if proc.isRunning { proc.terminate() }
-        }
-    }
-
-    // MARK: - Main-actor event plumbing
-
-    private func drainEvents(from io: IOChannel, generation: Int) {
-        guard launchGeneration == generation else {
-            _ = io.drain()
-            return
-        }
+    /// Feeds the launch's parsed events to the core one at a time, so the
+    /// state each one leaves is published before the next is handled.
+    private func drainEvents(from io: IOChannel, generation: UInt64) {
         for event in io.drain() {
-            apply(event)
+            run(core.stdoutEvent(generation: generation, event: event))
         }
-    }
-
-    /// Applies an event's state changes, then forwards it to `onEvent`.
-    private func apply(_ event: ClaudeEvent) {
-        switch event {
-        case .ready(let id, let model):
-            sessionID = id
-            // Every init refreshes the model — after a live `set_model` the CLI
-            // reports the new one here.
-            if !model.isEmpty { modelName = model }
-            if !didReceiveInit {
-                didReceiveInit = true
-                // `send()` may already have marked the first turn as in flight
-                // (the CLI queues stdin while it boots) — don't downgrade it.
-                if state != .working { state = .ready }
-            } else if state == .stopped || state == .starting {
-                state = .ready
-            }
-            lastAssistantMessage = nil
-
-        case .assistantMessage(let text):
-            // The CLI repeats the assistant message once per content block.
-            if let previous = lastAssistantMessage, previous == text { return }
-            lastAssistantMessage = text
-
-        case .turnCompleted(_, let cost, _, _):
-            if let cost, cost.isFinite, cost > 0 { totalCostUSD += cost }
-            lastAssistantMessage = nil
-            state = .ready
-
-        case .controlResult(let requestID, let ok, let detail, _):
-            // The background parser has no access to the in-flight map, so it
-            // reports the raw request_id in `action`; resolve it to the subtype
-            // (and the value that request carried) here. Replies we don't
-            // recognise (a stale process, a request the CLI invented) are dropped.
-            guard let pending = inFlightControlRequests.removeValue(forKey: requestID) else { return }
-            // Don't wait for the next system/init to reflect a live model
-            // switch — the chip would lag a full turn behind otherwise.
-            if ok, pending.subtype == "set_model", let newModel = pending.value, !newModel.isEmpty {
-                modelName = newModel
-            }
-            emit(.controlResult(action: pending.subtype, ok: ok, detail: detail, value: pending.value))
-            return
-
-        case .textDelta, .toolUse, .processError, .terminated:
-            break
-        }
-
-        emit(event)
-    }
-
-    private func emit(_ event: ClaudeEvent) {
-        onEvent?(event)
-        onHarnessEvent?(HarnessEvent.from(event))
     }
 
     // MARK: - stdin writing
@@ -531,74 +338,13 @@ final class ClaudeService: ObservableObject {
             do {
                 try handle.write(contentsOf: data)
             } catch {
-                let message = "Couldn't reach the claude process: \(error.localizedDescription)"
+                let description = error.localizedDescription
                 guard let service = self else { return }
                 Task { @MainActor in
-                    service.emit(.processError(message))
+                    service.run(service.core.stdinWriteFailed(description: description))
                 }
             }
         }
-    }
-
-    // MARK: - stdin lines
-
-    /// The line a user turn writes on stdin, newline included:
-    /// `{"type":"user","message":{"role":"user","content":[{"type":"text","text":…}]},"parent_tool_use_id":null}`.
-    /// The text is trimmed; nil when nothing is left, so nothing is sent.
-    /// Internal so `HarnessFixtureTests` can play `harness/claude-stdin.json`.
-    nonisolated static func userTurnLine(_ text: String) -> Data? {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        let envelope: [String: Any] = [
-            "type": "user",
-            "message": [
-                "role": "user",
-                "content": [["type": "text", "text": trimmed]]
-            ],
-            "parent_tool_use_id": NSNull()
-        ]
-        return encodeLine(envelope)
-    }
-
-    /// The line one control request writes on stdin, newline included, in
-    /// the nested envelope the CLI requires.
-    ///
-    /// The flat shape `{"type":"control_request","subtype":"…"}` is FATAL — the
-    /// CLI exits with code 1 and "Missing request on control_request", killing the
-    /// session. The payload below is the verified shape:
-    /// `{"type":"control_request","request_id":"…","request":{"subtype":"…", …}}`.
-    /// `interrupt` carries no value; `set_model` carries it as `model` and
-    /// `set_permission_mode` as `mode`, trimmed, and a value that trims to
-    /// nothing sends nothing (nil). Internal for `HarnessFixtureTests`.
-    nonisolated static func controlRequestLine(requestID: String, subtype: String, value: String?) -> Data? {
-        var request: [String: Any] = ["subtype": subtype]
-        if let valueKey = controlRequestValueKey(subtype: subtype) {
-            let trimmed = (value ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { return nil }
-            request[valueKey] = trimmed
-        }
-        let envelope: [String: Any] = [
-            "type": "control_request",
-            "request_id": requestID,
-            "request": request
-        ]
-        return encodeLine(envelope)
-    }
-
-    /// The key a control request carries its value under (DESIGN v1.1 A).
-    private nonisolated static func controlRequestValueKey(subtype: String) -> String? {
-        switch subtype {
-        case "set_model": return "model"
-        case "set_permission_mode": return "mode"
-        default: return nil
-        }
-    }
-
-    private nonisolated static func encodeLine(_ object: [String: Any]) -> Data? {
-        guard JSONSerialization.isValidJSONObject(object),
-              var data = try? JSONSerialization.data(withJSONObject: object, options: []) else { return nil }
-        data.append(0x0A)
-        return data
     }
 
     /// SIGPIPE would otherwise kill the app when writing to a dead child.

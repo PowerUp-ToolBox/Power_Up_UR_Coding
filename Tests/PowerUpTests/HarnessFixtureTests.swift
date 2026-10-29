@@ -4,10 +4,10 @@ import XCTest
 /// Plays the `Tests/Fixtures/harness/` case tables (spec #98, slice 2.3)
 /// against the Swift app: how stdout bytes become lines, what one line of
 /// the claude CLI parses into, what each call writes on its stdin, and the
-/// argv a launch passes. The Rust core plays the same files
-/// (`rust/powerup-core/tests/harness.rs`), so the two can only agree. The
-/// stream and lines tables run through the bridge since slice 2.3: the app's
-/// parser and line splitter are the core's.
+/// argv a launch passes, and the adapter's process rules. The Rust core plays
+/// the same files (`rust/powerup-core/tests/harness.rs`), so the two can only
+/// agree. Every table runs through the bridge since slice 2.3: the app's
+/// parser, line splitter, stdin writer, argv and adapter rules are the core's.
 final class HarnessFixtureTests: XCTestCase {
 
     private static let area = "harness"
@@ -41,14 +41,14 @@ final class HarnessFixtureTests: XCTestCase {
     private func stdinLine(_ input: StdinInput) throws -> Data? {
         switch input.call {
         case "send":
-            return ClaudeService.userTurnLine(input.text ?? "")
+            return CoreBridge.claudeUserTurnLine(input.text ?? "")
         case "interrupt":
-            return ClaudeService.controlRequestLine(requestID: try requestID(input), subtype: "interrupt", value: nil)
+            return CoreBridge.claudeControlRequestLine(requestID: try requestID(input), subtype: "interrupt", value: nil)
         case "setModel":
-            return ClaudeService.controlRequestLine(requestID: try requestID(input), subtype: "set_model", value: input.model)
+            return CoreBridge.claudeControlRequestLine(requestID: try requestID(input), subtype: "set_model", value: input.model)
         case "setPermissionMode":
-            return ClaudeService.controlRequestLine(requestID: try requestID(input), subtype: "set_permission_mode",
-                                                    value: input.mode)
+            return CoreBridge.claudeControlRequestLine(requestID: try requestID(input), subtype: "set_permission_mode",
+                                                       value: input.mode)
         default:
             throw FixtureValueError(description: "unknown stdin call \(input.call)")
         }
@@ -137,8 +137,116 @@ final class HarnessFixtureTests: XCTestCase {
         TextSafetyFixtures.assertWellFormed(file, fileName)
         for fixtureCase in file.cases {
             let input = fixtureCase.input
-            let actual = ClaudeService.launchArguments(model: input.model, permissionMode: input.permissionMode,
-                                                       effort: input.effort, resumeSessionID: input.resumeSessionID)
+            let actual = CoreBridge.claudeLaunchArguments(model: input.model, permissionMode: input.permissionMode,
+                                                          effort: input.effort, resumeSessionID: input.resumeSessionID)
+            if let failure = TextSafetyFixtures.mismatch(in: fileName, fixtureCase, actual: actual) {
+                XCTFail(failure)
+            }
+        }
+    }
+
+    // MARK: claude-adapter.json
+
+    /// The adapter as ClaudeService drives it: through the bridge, with the
+    /// request id prefix the table expects.
+    private func adapterStep(_ adapter: CoreBridge.ClaudeAdapter,
+                             _ step: JSONValue) throws -> [CoreBridge.ClaudeAdapterEffect] {
+        guard case .object(let fields) = step else { throw FixtureValueError(description: "a step is not an object: \(step)") }
+        func string(_ key: String, in object: JSONValue? = nil) throws -> String {
+            guard let value = (object ?? step)[key]?.stringValue else {
+                throw FixtureValueError(description: "\(key) must be a string: \(step)")
+            }
+            return value
+        }
+        func optionalString(_ key: String, in object: JSONValue) throws -> String? {
+            guard let value = object[key] else { throw FixtureValueError(description: "\(key) is missing: \(step)") }
+            if value == .null { return nil }
+            return try string(key, in: object)
+        }
+        func running() throws -> Bool {
+            guard case .bool(let running)? = fields["processRunning"] else {
+                throw FixtureValueError(description: "processRunning must be a bool: \(step)")
+            }
+            return running
+        }
+        func exit(_ object: JSONValue?) throws -> (Int32, Bool, String) {
+            guard let object, case .integer(let code)? = object["exitCode"], let exitCode = Int32(exactly: code),
+                  case .bool(let clean)? = object["clean"] else {
+                throw FixtureValueError(description: "not an exit: \(step)")
+            }
+            return (exitCode, clean, try string("stderrTail", in: object))
+        }
+        func feed(_ generation: UInt64, _ line: JSONValue?) throws -> [CoreBridge.ClaudeAdapterEffect] {
+            guard let line else { throw FixtureValueError(description: "no line: \(step)") }
+            return CoreBridge.claudeEvents(fromLine: try FixtureLine.bytes(line))
+                .flatMap { adapter.stdoutEvent(generation: generation, event: $0) }
+        }
+        let current = adapter.generation
+        let retired = current &- 1
+        switch fields.keys.sorted() {
+        case ["start"]:
+            guard let config = fields["start"] else { throw FixtureValueError(description: "no start") }
+            return adapter.start(HarnessConfiguration(
+                projectDir: URL(fileURLWithPath: try string("projectDir", in: config), isDirectory: true),
+                model: try string("model", in: config),
+                permissionMode: try string("permissionMode", in: config),
+                effort: try string("effort", in: config),
+                resumeSessionID: try optionalString("resumeSessionID", in: config),
+                binaryPathOverride: try optionalString("binaryPathOverride", in: config)))
+        case ["binaryResolved"]:
+            return adapter.binaryResolved(generation: current, path: try optionalString("binaryResolved", in: step))
+        case ["spawned"]:
+            return adapter.spawned(generation: current)
+        case ["spawnFailed"]:
+            let failure = fields["spawnFailed"]
+            return adapter.spawnFailed(generation: current, executable: try string("executable", in: failure),
+                                       description: try string("description", in: failure))
+        case ["processRunning", "send"]:
+            return adapter.send(try string("send"), processRunning: try running())
+        case ["interrupt", "processRunning"]:
+            return adapter.interrupt(processRunning: try running())
+        case ["processRunning", "setModel"]:
+            return adapter.setModel(try string("setModel"), processRunning: try running())
+        case ["processRunning", "setPermissionMode"]:
+            return adapter.setPermissionMode(try string("setPermissionMode"), processRunning: try running())
+        case ["stop"]:
+            return adapter.stop()
+        case ["line"]:
+            return try feed(current, fields["line"])
+        case ["retiredLine"]:
+            return try feed(retired, fields["retiredLine"])
+        case ["terminated"]:
+            let (code, clean, tail) = try exit(fields["terminated"])
+            return adapter.terminated(generation: current, exitCode: code, clean: clean, stderrTail: tail)
+        case ["retiredTerminated"]:
+            let (code, clean, tail) = try exit(fields["retiredTerminated"])
+            return adapter.terminated(generation: retired, exitCode: code, clean: clean, stderrTail: tail)
+        case ["writeFailed"]:
+            return adapter.stdinWriteFailed(description: try string("writeFailed"))
+        default:
+            throw FixtureValueError(description: "unknown adapter step: \(step)")
+        }
+    }
+
+    private struct AdapterInput: Decodable {
+        let steps: [JSONValue]
+    }
+
+    func testClaudeAdapterTable() throws {
+        let fileName = "claude-adapter.json"
+        let file = try TextSafetyFixtures.load(fileName, area: Self.area,
+                                               input: AdapterInput.self, expected: JSONValue.self)
+        TextSafetyFixtures.assertWellFormed(file, fileName)
+        for fixtureCase in file.cases {
+            let adapter = CoreBridge.ClaudeAdapter(requestIDPrefix: "R")
+            var effects: [JSONValue] = []
+            for step in fixtureCase.input.steps {
+                effects.append(.array(try adapterStep(adapter, step).map { try $0.fixtureDescriptor() }))
+            }
+            let actual = try JSONValue(encoding: JSONValue.object([
+                "effects": .array(effects),
+                "snapshot": adapter.snapshot.fixtureFields,
+            ]))
             if let failure = TextSafetyFixtures.mismatch(in: fileName, fixtureCase, actual: actual) {
                 XCTFail(failure)
             }

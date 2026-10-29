@@ -48,26 +48,10 @@ enum HarnessEvent: Equatable {
     case ended(exitCode: Int32)
 
     /// Normalization from the Claude adapter's wire-level events. Total —
-    /// every `ClaudeEvent` has exactly one `HarnessEvent`.
+    /// every `ClaudeEvent` has exactly one `HarnessEvent` (HK-090); the
+    /// mapping runs in the Rust core (DESIGN v2.12).
     static func from(_ event: ClaudeEvent) -> HarnessEvent {
-        switch event {
-        case .ready(let sessionID, let model):
-            return .sessionReady(sessionID: sessionID, model: model)
-        case .textDelta(let chunk):
-            return .replyDelta(chunk)
-        case .assistantMessage(let text):
-            return .reply(text)
-        case .toolUse(let name, let detail):
-            return .toolUse(name: name, detail: detail)
-        case .turnCompleted(let resultText, let costUSD, let isError, let subtype):
-            return .turnCompleted(resultText: resultText, costUSD: costUSD, isError: isError, detail: subtype)
-        case .controlResult(let action, let ok, let detail, let value):
-            return .controlResult(action: action, ok: ok, detail: detail, value: value)
-        case .processError(let message):
-            return .runtimeError(message)
-        case .terminated(let exitCode):
-            return .ended(exitCode: exitCode)
-        }
+        CoreBridge.harnessEvent(from: event)
     }
 }
 
