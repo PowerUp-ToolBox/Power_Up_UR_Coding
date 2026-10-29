@@ -28,13 +28,15 @@ amendment in the PR description.
 
 ## Building and testing
 
-Requirements: macOS 14+, Xcode Command Line Tools (`swift build` must work).
-For the Rust core (below) also Rust via rustup and a full Xcode install;
-without them `scripts/build.sh` warns and builds the app without the core.
-A DualSense controller and the `claude` CLI are needed to *use* the app, but
+Requirements: macOS 14+, a full Xcode install (the build runs `xcodebuild`;
+the Command Line Tools alone are not enough) and Rust via
+[rustup](https://rustup.rs). Every build links the Rust core (below), so
+build it once before the first `swift build`, and again after any change
+under `rust/`. A DualSense controller and the `claude` CLI are needed to *use* the app, but
 **not** to build it or run the tests.
 
 ```sh
+./scripts/build-core.sh debug   # the Rust core's bridge → rust/build/
 swift build              # debug build
 swift test               # unit tests — fast, no hardware, no network
 ./scripts/build.sh       # release build → build/PowerUp.app (assembled + signed)
@@ -42,7 +44,7 @@ open build/PowerUp.app   # ALWAYS launch as a bundle — macOS permissions (TCC)
                          # track bundle identity; the raw binary breaks them
 ```
 
-CI runs `swift build` and `swift test` with and without the Rust core, the
+CI builds the Rust core, then runs `swift build` and `swift test`, the
 cargo tests on macOS, Windows and Linux, and the full bundle pipeline on every PR —
 green CI is a merge requirement.
 
@@ -87,18 +89,17 @@ The rules for core work:
 
 The macOS app reaches the core through `powerup-core-ffi`, a uniffi bridge.
 `./scripts/build-core.sh` builds it into `rust/build/` (an xcframework plus
-the generated Swift); the app links it when `POWERUP_CORE=1` is set:
+the generated Swift), and the app always links it:
 
 ```sh
 ./scripts/build-core.sh debug   # or release; scripts/build.sh runs it for you
-POWERUP_CORE=1 swift build      # the app with the core
-POWERUP_CORE=1 swift test       # also runs Tests/PowerUpCoreTests (the bridge)
+swift build                     # the app with the core
+swift test                      # also runs Tests/PowerUpCoreTests (the bridge)
 ```
 
-Plain `swift build` / `swift test` still build the app without the core until
-slice 2.2 makes it mandatory. `scripts/build.sh` links it when Rust and a full
-Xcode are installed (`POWERUP_REQUIRE_CORE=1` turns a missing one into an
-error, as in CI and releases), and the app
+Without `rust/build/`, `swift build` stops with a message telling you to run
+`./scripts/build-core.sh`. `scripts/build.sh` builds the core itself and
+fails clearly when Rust or a full Xcode is missing, and the app
 logs `Rust core linked and answering` (subsystem `com.powerup.claudepad`,
 category `core`) at launch.
 

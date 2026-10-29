@@ -2267,3 +2267,33 @@ Recorded 2026-10-28 for #139 (ADR 0012, plan stage 2 step 1).
   answering", "not linked", or "linked but failed". Nothing is shown to the
   person; the log is the stage 2 kill rule's evidence that the bridge runs
   inside the signed bundle.
+
+# v2.11 addendum — the device layer moves into the Rust core (stage 2.2)
+
+Recorded 2026-10-29 for spec #97 (tickets #143–#147, ADR 0012, plan stage 2
+step 2). Supersedes v2.10 A/B on linking, and v2.4 B/C and v2.7 A/C on where
+the rules live; the rules themselves are unchanged.
+
+## A. The core is mandatory
+
+- `Package.swift` always links `PowerUpCoreFFI` (the xcframework) and
+  `PowerUpCore` (the generated Swift) from `rust/build/`. There is no
+  `POWERUP_CORE` switch or compile define any more. When
+  `rust/build/PowerUpCoreFFI.xcframework` or `rust/build/swift/PowerUpCore.swift`
+  is missing, the manifest stops with a message telling the developer to run
+  `./scripts/build-core.sh` first. (SwiftPM caches a passing evaluation, so a
+  bridge deleted after a good build shows SwiftPM's own missing-artifact
+  error instead; the fix is the same.)
+- Rust (rustup) and a full Xcode install (`xcodebuild`) are build
+  requirements. `scripts/build.sh` always builds the core (release) and
+  fails with a clear message when either is missing; there is no build
+  without the core and no `POWERUP_REQUIRE_CORE`.
+- CI's macOS job builds the core, then runs `swift build` and `swift test`,
+  then the bundle pipeline; the bundle check greps the app binary for the
+  bridge's symbols.
+- `CoreBridge.Status` is `answering | failed(String)`. The launch check and
+  its log line are unchanged ("Rust core linked and answering", or "linked
+  but failed: …", subsystem `com.powerup.claudepad`, category `core`); the
+  "not linked" line is gone.
+- `Sources/PowerUp/CoreBridge.swift` is the only app file that imports
+  `PowerUpCore`.

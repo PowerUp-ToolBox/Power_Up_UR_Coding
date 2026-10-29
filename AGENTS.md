@@ -34,6 +34,7 @@ Swift 5.9 / SwiftPM, no Xcode project, no third-party dependencies.
 ## Build, test, run
 
 ```sh
+./scripts/build-core.sh debug  # Rust core bridge; once, and after any rust/ change
 swift build            # debug build
 swift test             # unit tests — fast, no hardware, no network
 ./scripts/build.sh     # release build → build/PowerUp.app (assembled + signed)
@@ -54,13 +55,14 @@ Apple-framework adapter.
 ```sh
 (cd rust && cargo test && cargo clippy --all-targets -- -D warnings)
 ./scripts/build-core.sh debug     # bridge → rust/build/ (xcframework + Swift)
-POWERUP_CORE=1 swift test         # app tests plus Tests/PowerUpCoreTests
+swift test                        # app tests plus Tests/PowerUpCoreTests
 ```
 
-Plain `swift build` builds the app without the core until slice 2.2;
-`scripts/build.sh` links it when Rust and a full Xcode are installed (CI and
-releases require it with `POWERUP_REQUIRE_CORE=1`). CI runs the cargo job on macOS, Windows
-and Linux.
+The app always links the core (slice 2.2): `swift build` and `swift test`
+need `./scripts/build-core.sh` to have run, and again after any change under
+`rust/`; without `rust/build/` the manifest stops with that instruction.
+Rust and a full Xcode are build requirements, and `scripts/build.sh` fails
+clearly without them. CI runs the cargo job on macOS, Windows and Linux.
 
 - **Workspace.** `rust/` holds `powerup-core` (the logic), `powerup-core-ffi`
   (the uniffi bridge the macOS app links) and `uniffi-bindgen` (generates the

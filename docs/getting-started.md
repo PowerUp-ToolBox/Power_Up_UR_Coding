@@ -14,11 +14,11 @@
   best way to drive PowerUp, but not a requirement — dictation and every
   other control also work from the
   [keyboard and mouse](controls.md#no-controller-keyboard-and-mouse-cover-everything).
-- Xcode Command Line Tools (for `swift build`), or a full Xcode install.
-- Optional while PowerUp moves its logic into a Rust core: [Rust](https://rustup.rs)
-  and a full Xcode install. With both, `./scripts/build.sh` links the core;
-  without them it prints a warning and builds the app without it, which works
-  the same today.
+- A full Xcode install (the Command Line Tools alone are not enough: the
+  build uses `xcodebuild`).
+- [Rust](https://rustup.rs), installed with rustup. Part of PowerUp's logic
+  lives in a Rust core that every build compiles; rustup fetches the exact
+  compiler version on first use.
 
 ## Building
 
@@ -28,7 +28,7 @@ From the repository root:
 ./scripts/build.sh
 ```
 
-This builds the Rust core when it can (see Requirements), runs
+This builds the Rust core (`./scripts/build-core.sh`), runs
 `swift build -c release`, assembles `build/PowerUp.app`, writes its
 `Info.plist`, and ad-hoc code-signs the bundle. It also renders the app icon:
 `scripts/IconGen.swift` is compiled with `swiftc` and produces
@@ -39,6 +39,10 @@ force a re-render with:
 ```sh
 REGEN_ICON=1 ./scripts/build.sh
 ```
+
+Working on the code? `swift build` and `swift test` need the Rust core built
+first: run `./scripts/build-core.sh debug` once, and again after any change
+under `rust/`. Without it the build stops with a message saying so.
 
 When it finishes, launch the app **as a bundle**, not as a raw binary — this
 matters because macOS ties microphone and speech-recognition permissions to

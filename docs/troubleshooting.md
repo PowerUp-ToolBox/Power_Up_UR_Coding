@@ -6,6 +6,12 @@ Remote Control problems (text not typing into the target app, no voice
 read-back, testing the listener with curl) have their own section in
 [Remote Control mode](remote-control.md#troubleshooting-remote-control).
 
+**`swift build` says "PowerUp needs its Rust core" or "does not contain a
+binary artifact".** The Rust core's bridge hasn't been built yet. Run
+`./scripts/build-core.sh debug` (it needs [Rust](https://rustup.rs) and a
+full Xcode install), then build again. `./scripts/build.sh` does this for
+you.
+
 **My dictation comes out as gibberish, the wrong words, or the wrong
 script.** Almost always a recognition-language mismatch: **Settings → Voice →
 Speech Recognition** must be set to the language you're actually speaking
