@@ -95,7 +95,12 @@ The rules for core work:
   saved as, as `JSONEncoder` writes them; `json::decoder` and
   `json::encoder`), played against `Tests/Fixtures/config/` and reached
   through `CoreBridgeConfig.swift` (DESIGN v2.14); ConfigStore keeps the
-  file, its path, the atomic write and the backups.
+  file, its path, the atomic write and the backups. It also holds the
+  transcript's JSON Lines (`transcript`: the line an entry is written as,
+  how a file's bytes load and compact, and each project's file name),
+  played against `Tests/Fixtures/transcript/` and reached through
+  `CoreBridgeTranscript.swift`; TranscriptStore keeps the folder, the
+  append, the atomic rewrite and the standardized project path.
 - **Panic rule.** Every public core function is total: it returns its
   value, or a `Result` when it can fail, and never panics. Library code
   never calls `unwrap`, `expect` or `panic!` (clippy denies the first two).

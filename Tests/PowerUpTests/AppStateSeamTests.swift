@@ -186,6 +186,28 @@ final class AppStateSeamTests: XCTestCase {
                        ["hello from before", "Earlier conversation restored — New Session starts clean."])
     }
 
+    /// HK-177: the window keeps the newest 800 entries, while the file keeps
+    /// every one (the core compacts it past 2000 on the next load).
+    func testTheWindowKeepsTheNewest800EntriesAndTheFileKeepsAll() throws {
+        env.tearDown()
+        let project = "/tmp/powerup-seam-cap-project"
+        var config = AppConfig.defaultConfig()
+        config.projectDir = project
+        config.listenerToken = "test-token"
+        env = try AppStateTestEnvironment(config: config)
+        let app = env.makeAppState()
+
+        for _ in 0..<805 { app.handle(.toggleTTS) }
+
+        XCTAssertEqual(app.transcript.count, 800)
+        // Spoken replies start on, so the notes alternate off, on, …; with
+        // the five oldest dropped the window starts at the sixth, an "on".
+        XCTAssertEqual(app.transcript.first?.text, "Spoken replies on.")
+        XCTAssertEqual(app.transcript.last?.text, "Spoken replies off.")
+        let file = try XCTUnwrap(TranscriptStore.fileURL(forProjectDir: project))
+        XCTAssertEqual(try Data(contentsOf: file).split(separator: 0x0A).count, 805)
+    }
+
     // MARK: Wiring checks that must agree with the core
 
     /// AppState still reads two settings itself: the control mode (views and

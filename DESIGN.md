@@ -3008,18 +3008,30 @@ here and stays open until a maintainer runs it before #155 closes.
 
 Recorded 2026-10-29 for spec #100 (tickets #156–#160, ADR 0011, ADR 0012,
 plan stage 2 step 5), built up ticket by ticket; this text covers #156,
-the configuration schema. It supersedes v2.11 C's "`Action`'s synthesized
+the configuration schema, and #157, the transcript's JSON Lines. It supersedes v2.11 C's "`Action`'s synthesized
 `Encodable` and the config writer (until slice 2.5)": the core reads and
 writes config.json since this slice and `Action` is a plain value. The
 on-disk format, every default and every tolerance rule of the config
 sections of this document (v1.4, v2.4 B and C, v2.5, v2.7 B) are unchanged.
 v2.12 B (plain functions and objects, no callbacks) applies as written.
+For #157 it supersedes v1.6's "`TranscriptEntry` gains `Codable`" and
+`fileURL(forProjectDir:) -> URL`: the core writes and reads each line and
+names each project's file, `TranscriptEntry` is a plain value with an
+`init(id:kind:text:date:)` for an entry read back, and `fileURL` returns
+`URL?`. The transcripts folder, the file names and the line format of v1.6
+are unchanged, except that a line's members now come in a fixed order
+(HK-416).
 
 The core gains `config` (`AppConfig`, `load_config`, `encode_config`,
 `seed_project_bookkeeping`, the defaults and the fixed vocabularies) and,
 beside the slice 2.3 reader that moved from `harness::json` to a neutral
 `json` module, `json::decoder` (config.json read as Swift's `JSONDecoder`
 reads it) and `json::encoder` (written as `JSONEncoder` writes it).
+With #157 it gains `transcript` (`TranscriptEntry`, `TranscriptKind`,
+which the session machine now shares, `entry_line`, `decode_line`,
+`load_tail`, `file_name` and the two limits), a private `sha256`, the text
+helpers `lowercase_scalars` and `is_letter_or_number`, and the compact
+writer `json::encoder::to_swift_compact`.
 
 ## A. Bridge surface
 
@@ -3041,6 +3053,20 @@ slice 2.2, `loadDeviceMappings(configJson:)` and `CoreMappingLoad`, is
 deleted: the mapping subtree now crosses inside the whole config
 (`mapping::load_device_mappings` stays in the core for
 `mapping/config-load.json`).
+
+From `rust/powerup-core-ffi/src/transcript.rs` (#157):
+
+| Generated Swift | Shape |
+| --- | --- |
+| `enum CoreTranscriptKind` | `user`, `assistant`, `tool`, `system`, `error` (moved here from the session bridge, which uses the same type) |
+| `struct CoreTranscriptEntry` | `id: String` (a `uuidString`), `kind: CoreTranscriptKind`, `text: String`, `dateSeconds: Double` (seconds since 1970) |
+| `struct CoreTranscriptLoad` | `entries: [CoreTranscriptEntry]` (oldest first), `rewrite: Data?` (the file's new bytes when it outgrew the limit) |
+| `struct CoreTranscriptLimits` | `maxStoredEntries: UInt32` (2000), `defaultRestoreCount: UInt32` (200) |
+
+Functions: `transcriptLine(entry:) -> Data` (one line, LF included),
+`transcriptLoad(bytes: Data, maxEntries: UInt32) -> CoreTranscriptLoad`,
+`transcriptFileName(standardizedPath:) -> String` (`<slug>-<hash>.jsonl`)
+and `transcriptLimits() -> CoreTranscriptLimits`.
 
 ## B. Swift wrappers and the failure policy
 
@@ -3077,6 +3103,26 @@ and runs on the defaults. A failed `encodeConfig` throws, and `save()`
 swallows it as it swallows every write failure, so nothing is written. A
 failed `seedProjectBookkeeping` leaves the config as it is.
 
+`Sources/PowerUp/CoreBridgeTranscript.swift` (#157) speaks the app's
+`TranscriptEntry` (`id.uuidString` and `date.timeIntervalSince1970` one
+way, `UUID(uuidString:)` and `Date(timeIntervalSince1970:)` the other):
+
+```swift
+struct TranscriptLoad: Equatable { let entries: [TranscriptEntry]; let rewrite: Data? }
+static func transcriptLine(_ entry: TranscriptEntry) -> Data?
+static func transcriptLoad(_ data: Data, maxEntries: Int) -> TranscriptLoad?
+static func transcriptFileName(standardizedPath: String) -> String?
+static var transcriptLimits: (maxStored: Int, restoreCount: Int)
+```
+
+Failure policy for the transcript: persistence is best-effort (HK-178), so
+a failed call persists or restores nothing and never fails the session. No
+line means nothing is appended; no file name means `fileURL` is nil and the
+store neither appends nor loads; no load means an empty restore, and the
+file is never rewritten. A failed `transcriptLimits` falls back to 2000 and
+200, which `TranscriptStoreTests.testLimitsAreTheCores` pins equal to the
+core's.
+
 ## C. What moved and what stayed
 
 Moved into `powerup-core`, unchanged in behaviour: the schema and its
@@ -3093,6 +3139,16 @@ with failures swallowed (HK-161), moving a corrupt file to
 config.json.bak, the once-only copy to config.pre-profiles.json, and
 minting the listener token (HK-168). `JSONValue` moved to the test target,
 its only user.
+
+Transcript (#157). Moved, unchanged in behaviour: how a line is written and
+read (HK-175), how a file loads, compacts past 2000 entries and returns the
+newest 200 (HK-176), and the file name: slug and SHA-256 prefix (HK-174).
+Stayed in Swift: the transcripts folder and the support-directory seam
+(HK-179), standardizing the project path with `URL.standardizedFileURL`
+(which on macOS also decomposes accents, voiced kana and Hangul; the core
+hashes the bytes it is given), the append handle, the atomic rewrite with
+the core's bytes, swallowing every I/O failure (HK-178), and AppState's
+800-entry window with the restore marker that is never persisted (HK-177).
 
 ## D. Recorded rules
 
@@ -3124,6 +3180,34 @@ its only user.
   UTF-16/32, deep mapping payloads, structural damage): saved bytes,
   corrupt or not, and the backup decision. After the nested-key fix it
   found no disagreement.
+- Transcript lines (#157, HK-416, HK-175): the core writes a line's
+  members as id, kind, text, date. Swift's `JSONEncoder` without
+  `.sortedKeys` wrote them in a hash order that changed from launch to
+  launch, so no line was ever byte-stable, and lines read by key: every
+  line an older build wrote loads
+  (`TranscriptStoreTests.testPersistedLinesFromBeforeTheSwapLoad`). A line reads through the same
+  `json::decoder` as config.json; the id reads as `UUID(uuidString:)` reads
+  it, as a C string, so an id followed by a NUL and anything reads as that
+  id. A compaction writes each kept date as a `Date` holds it, through the
+  2001 reference date and back (0.1 becomes 0.10000002384185791), as
+  Swift's rewrite of its `Date` values did.
+- The file name (HK-174) follows Swift's `String` and `URL`: lowercasing
+  scalar by scalar (no final sigma), `Character.isLetter`/`isNumber` on
+  the first scalar (macOS also calls 35 scalars of Apple's private-use area
+  letters), each step re-reading the clusters, the cut at 40 Characters,
+  and one leading U+FEFF dropped as `URL.lastPathComponent` drops it.
+- Of two equally short spellings of a Float or Double, Swift's
+  `description` writes the one ending in an even digit, where Rust's
+  formatter rounds the tie up (HK-414). `json::encoder` breaks ties to even
+  since #157, which also corrects config.json's writer of #156 for a value
+  such as a `ttsRate` of 62117.3125.
+- Before the Swift transcript code was deleted, a scratch differential
+  compared it with the core over six seeds: every Unicode scalar as a
+  folder name, 60,000 generated folder names, 60,000 generated lines,
+  12,000 written entries, 360 loaded files (compactions included) and some
+  700,000 dates and rates chosen to land on rounding ties. It found the
+  NUL-terminated id, the dropped U+FEFF, the private-use letters and the
+  float ties; after the fixes, no disagreement.
 
 ## E. Left for the maintainer
 
@@ -3131,3 +3215,11 @@ Ticket #156's acceptance criterion that a macOS-written configuration loads
 unchanged is pinned by the first case of `config/round-trip.json`; a
 maintainer's own config.json loading and saving unchanged on a real launch
 (`open build/PowerUp.app`) is the manual check, and no agent runs it.
+
+Ticket #157's acceptance criterion that transcripts persisted before the
+swap load unchanged is pinned by
+`TranscriptStoreTests.testPersistedLinesFromBeforeTheSwapLoad` (lines the
+old encoder wrote) and
+`transcript/lines.json`; opening a project with a real history from an
+earlier build and seeing it restored is the manual check, and no agent
+runs it.
