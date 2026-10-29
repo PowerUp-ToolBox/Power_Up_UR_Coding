@@ -87,6 +87,23 @@ pub fn split_on_spaces(text: &str) -> Vec<&str> {
     pieces
 }
 
+/// Foundation's `replacingOccurrences(of: from, with: to)` for a `from`
+/// that is one character: it replaces only a whole cluster equal to
+/// `from`, so a `'` that a combining mark, a spacing mark or a ZWJ follows,
+/// or that a prepended scalar (U+0600 and the like) precedes, is part of
+/// another character and is not replaced. Measured for a single quote with
+/// every scalar before and after it on macOS 27.2: the scalars that stop
+/// the match are exactly those that join the quote's cluster. Clusters are
+/// compared by text, which is canonical equivalence for any `from` that no
+/// other scalar decomposes to (the quote among them).
+pub fn replace_clusters(text: &str, from: &str, to: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for cluster in text.graphemes(true) {
+        out.push_str(if cluster == from { to } else { cluster });
+    }
+    out
+}
+
 /// Tool and status text as one short line (HK-062, HK-063): CR, LF and tab
 /// become spaces, the text is split on clusters equal to `" "` with the
 /// empty pieces dropped and joined with one space, and above `max` clusters
@@ -220,6 +237,17 @@ mod tests {
         assert_eq!(trim("\u{FEFF}x"), "\u{FEFF}x");
         assert_eq!(trim("\u{2060}x"), "\u{2060}x");
         assert_eq!(trim(" \u{301}x"), "\u{301}x");
+    }
+
+    #[test]
+    fn replace_clusters_skips_a_quote_inside_another_character() {
+        assert_eq!(replace_clusters("a'b'", "'", "Q"), "aQbQ");
+        assert_eq!(replace_clusters("a'\u{301}b", "'", "Q"), "a'\u{301}b");
+        assert_eq!(replace_clusters("a'\u{903}b", "'", "Q"), "a'\u{903}b");
+        assert_eq!(replace_clusters("a'\u{200D}b", "'", "Q"), "a'\u{200D}b");
+        assert_eq!(replace_clusters("a\u{600}'b", "'", "Q"), "a\u{600}'b");
+        assert_eq!(replace_clusters("''", "'", "Q"), "QQ");
+        assert_eq!(replace_clusters("", "'", "Q"), "");
     }
 
     #[test]

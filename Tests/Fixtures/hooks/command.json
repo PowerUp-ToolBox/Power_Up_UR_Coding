@@ -1,7 +1,7 @@
 {
   "description": "The command PowerUp registers in ~/.claude/settings.json for its hook script: the script path in single quotes, each single quote in it written as '\\'' (one that a combining scalar follows is not a match, as Foundation's replacingOccurrences finds it). Claude Code runs the command through a shell, and the path holds a space (\"Application Support\").",
   "function": "HookInstaller.hookCommand() — input the hook script's path, expected the command string",
-  "verifiedBy": "DESIGN.md v1.6, v2.14; Tests/PowerUpTests/HookFixtureTests.swift testHookCommandTable points the support directory at the path's folder and reads HookInstaller.hookCommand().",
+  "verifiedBy": "DESIGN.md v1.6, v2.14; Tests/PowerUpTests/HookFixtureTests.swift testHookCommandTable points the support directory at the path's folder and reads HookInstaller.hookCommand(). Rust: rust/powerup-core/tests/hooks.rs hook_command_cases runs hooks::hook_command.",
   "capturedAgainst": "Swift 5.9.2 Foundation (Xcode 15.2) on macOS 27.2, PowerUp at 2dd77aa",
   "cases": [
     {

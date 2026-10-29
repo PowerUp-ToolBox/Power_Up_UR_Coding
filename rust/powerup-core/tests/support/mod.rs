@@ -530,3 +530,55 @@ pub fn line_input_bytes(input: &Value) -> Vec<u8> {
 pub fn case_table(area: &str, file: &str) -> CaseTable {
     load_case_table(&fixtures_dir().join(area).join(file))
 }
+
+/// JSON text parsed however deep it nests (a fixture may hold a value 512
+/// containers deep, past serde_json's default limit of 128).
+pub fn parse_unbounded(text: &str) -> Value {
+    let mut deserializer = serde_json::Deserializer::from_str(text);
+    deserializer.disable_recursion_limit();
+    let value =
+        Value::deserialize(&mut deserializer).unwrap_or_else(|e| panic!("not JSON ({e}): {text}"));
+    deserializer
+        .end()
+        .unwrap_or_else(|e| panic!("trailing text ({e}): {text}"));
+    value
+}
+
+/// Two JSON values with numbers compared by value, as the doubles they
+/// read as (so `0.1` equals `0.10000000000000001` and `-0.0` equals `-0`),
+/// object members by key and in any order. Iterative, for deep values.
+pub fn same_json_by_number_value(left: &Value, right: &Value) -> bool {
+    let mut pending = vec![(left, right)];
+    while let Some((left, right)) = pending.pop() {
+        match (left, right) {
+            (Value::Number(a), Value::Number(b)) => {
+                if a.as_f64() != b.as_f64() {
+                    return false;
+                }
+            }
+            (Value::Array(a), Value::Array(b)) => {
+                if a.len() != b.len() {
+                    return false;
+                }
+                pending.extend(a.iter().zip(b));
+            }
+            (Value::Object(a), Value::Object(b)) => {
+                if a.len() != b.len() {
+                    return false;
+                }
+                for (key, value) in a {
+                    let Some(other) = b.get(key) else {
+                        return false;
+                    };
+                    pending.push((value, other));
+                }
+            }
+            (a, b) => {
+                if a != b {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}

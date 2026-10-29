@@ -37,7 +37,7 @@
 //! NSDecimalNumber and rejects the line when its exponent leaves Decimal's
 //! range, and rejects some exponents of four digits or more; and Swift's
 //! bridged dictionary merges keys that are canonically equivalent but
-//! spelled differently, which this reader keeps apart. Numbers are kept as
+//! spelled differently, which this reader keeps apart. Numbers are read as
 //! doubles, so an integer past 2^53 can read differently from Swift's
 //! `Int` (HK-403); no agent sends such an id or token count.
 //!
@@ -45,6 +45,15 @@
 //! text, members in the order they were built, strings escaped as Swift
 //! escapes them, without recursion either (an agent's id is echoed back as
 //! read, however deep).
+//!
+//! The hooks merge (slice 2.5) reads `~/.claude/settings.json` with the same
+//! reader, which is why each number also keeps its literal:
+//! [`write_verbatim`] hands the merged file back to Foundation with every
+//! number spelled as the person's file spelled it (HK-417). There the
+//! differences above mean that a UTF-16 or UTF-32 settings.json is refused
+//! as invalid JSON instead of read, and that a file holding a number
+//! Decimal cannot hold reads here; the macOS writer still refuses to write
+//! it back.
 //!
 //! config.json is read by the app's other Foundation reader, `JSONDecoder`,
 //! whose tolerances differ; [`decoder`] reads it that way, and [`encoder`]
@@ -61,10 +70,40 @@ use crate::{wire, CoreError};
 pub(crate) enum JsonValue {
     Null,
     Bool(bool),
-    Number(f64),
+    Number(JsonNumber),
     String(String),
     Array(Vec<JsonValue>),
     Object(Vec<(String, JsonValue)>),
+}
+
+/// A number as read: the nearest double, and the literal exactly as the
+/// text spelled it, so [`write_verbatim`] can hand another tool's number
+/// back to Foundation unchanged (a double would lose `0.1` against
+/// `0.10000000000000001`, or the digits of a 30-digit integer). Two numbers
+/// are equal when their values are.
+#[derive(Debug, Clone)]
+pub(crate) struct JsonNumber {
+    pub(crate) value: f64,
+    pub(crate) literal: Box<str>,
+}
+
+impl PartialEq for JsonNumber {
+    fn eq(&self, other: &Self) -> bool {
+        self.value == other.value
+    }
+}
+
+impl JsonNumber {
+    /// A number the core builds (an id, a code), spelled as an integer.
+    /// Our ids and codes are far below 2^53, so the double holds them
+    /// exactly.
+    #[allow(clippy::cast_precision_loss)]
+    pub(crate) fn from_i64(value: i64) -> Self {
+        JsonNumber {
+            value: value as f64,
+            literal: value.to_string().into_boxed_str(),
+        }
+    }
 }
 
 /// A value may begin only while at most this many containers are open.
@@ -94,8 +133,8 @@ impl JsonValue {
     pub(crate) fn as_swift_bool(&self) -> Option<bool> {
         match self {
             JsonValue::Bool(flag) => Some(*flag),
-            JsonValue::Number(number) if *number == 0.0 => Some(false),
-            JsonValue::Number(number) if *number == 1.0 => Some(true),
+            JsonValue::Number(number) if number.value == 0.0 => Some(false),
+            JsonValue::Number(number) if number.value == 1.0 => Some(true),
             _ => None,
         }
     }
@@ -103,7 +142,7 @@ impl JsonValue {
     /// Swift's `(as? NSNumber)?.doubleValue`: a number, or a bool as 1 or 0.
     pub(crate) fn as_swift_number(&self) -> Option<f64> {
         match self {
-            JsonValue::Number(number) => Some(*number),
+            JsonValue::Number(number) => Some(number.value),
             JsonValue::Bool(flag) => Some(if *flag { 1.0 } else { 0.0 }),
             _ => None,
         }
@@ -130,12 +169,12 @@ impl JsonValue {
     pub(crate) fn as_swift_int(&self) -> Option<i64> {
         match self {
             JsonValue::Bool(flag) => Some(i64::from(*flag)),
-            JsonValue::Number(number)
-                if number.fract() == 0.0 && (-TWO_TO_63..TWO_TO_63).contains(number) =>
+            JsonValue::Number(JsonNumber { value, .. })
+                if value.fract() == 0.0 && (-TWO_TO_63..TWO_TO_63).contains(value) =>
             {
                 // Exact: integral and inside i64's range.
                 #[allow(clippy::cast_possible_truncation)]
-                Some(*number as i64)
+                Some(*value as i64)
             }
             _ => None,
         }
@@ -150,7 +189,7 @@ impl JsonValue {
             // `as` truncates toward zero and saturates, which is what
             // NSNumber's intValue does with a double.
             #[allow(clippy::cast_possible_truncation)]
-            JsonValue::Number(number) => Some(*number as i64),
+            JsonValue::Number(number) => Some(number.value as i64),
             _ => None,
         }
     }
@@ -221,7 +260,7 @@ pub(crate) fn write(value: &JsonValue) -> Result<String, CoreError> {
             Write::Value(value) => match value {
                 JsonValue::Null => out.push_str("null"),
                 JsonValue::Bool(flag) => out.push_str(if *flag { "true" } else { "false" }),
-                JsonValue::Number(number) => {
+                JsonValue::Number(JsonNumber { value: number, .. }) => {
                     if number.fract() == 0.0 && number.abs() < TWO_TO_53 {
                         // Exact: integral and below 2^53.
                         #[allow(clippy::cast_possible_truncation)]
@@ -263,6 +302,72 @@ pub(crate) fn write(value: &JsonValue) -> Result<String, CoreError> {
         }
     }
     Ok(out)
+}
+
+/// Compact JSON text of a value [`read`] returned, for Foundation's
+/// `JSONSerialization` to read back as the value it read in the first
+/// place: numbers keep their literal, so Foundation reads the same NSNumber
+/// or NSDecimalNumber it would have read from the original file; of two
+/// members with the same key only the first is written (the one Foundation
+/// kept); and a string or key that starts with U+FEFF gets one more,
+/// because Foundation drops one leading U+FEFF of every string it reads.
+/// Strings are otherwise escaped as `write` escapes them. Iterative, like
+/// [`write`].
+pub(crate) fn write_verbatim(value: &JsonValue) -> Result<String, CoreError> {
+    let mut out = String::new();
+    let mut stack = vec![Write::Value(value)];
+    while let Some(step) = stack.pop() {
+        match step {
+            Write::Text(text) => out.push_str(text),
+            Write::Key(key) => {
+                push_verbatim_string(&mut out, key)?;
+                out.push(':');
+            }
+            Write::Value(value) => match value {
+                JsonValue::Null => out.push_str("null"),
+                JsonValue::Bool(flag) => out.push_str(if *flag { "true" } else { "false" }),
+                JsonValue::Number(number) => out.push_str(&number.literal),
+                JsonValue::String(text) => push_verbatim_string(&mut out, text)?,
+                JsonValue::Array(items) => {
+                    out.push('[');
+                    stack.push(Write::Text("]"));
+                    for (index, item) in items.iter().enumerate().rev() {
+                        stack.push(Write::Value(item));
+                        if index > 0 {
+                            stack.push(Write::Text(","));
+                        }
+                    }
+                }
+                JsonValue::Object(members) => {
+                    out.push('{');
+                    stack.push(Write::Text("}"));
+                    let mut seen = std::collections::HashSet::new();
+                    let kept: Vec<&(String, JsonValue)> = members
+                        .iter()
+                        .filter(|(key, _)| seen.insert(key.as_str()))
+                        .collect();
+                    for (index, (key, item)) in kept.into_iter().enumerate().rev() {
+                        stack.push(Write::Value(item));
+                        stack.push(Write::Key(key));
+                        if index > 0 {
+                            stack.push(Write::Text(","));
+                        }
+                    }
+                }
+            },
+        }
+    }
+    Ok(out)
+}
+
+fn push_verbatim_string(out: &mut String, text: &str) -> Result<(), CoreError> {
+    if text.starts_with('\u{FEFF}') {
+        let doubled = format!("\u{FEFF}{text}");
+        out.push_str(&wire::to_swift_json(doubled.as_str())?);
+    } else {
+        out.push_str(&wire::to_swift_json(text)?);
+    }
+    Ok(())
 }
 
 /// An open container while reading.
@@ -466,8 +571,8 @@ impl Reader<'_> {
     }
 
     /// `-? (0 | [1-9][0-9]*) (. [0-9]+)? ([eE] [+-]? [0-9]+)?`, read as the
-    /// nearest double; `None` when it overflows.
-    fn read_number(&mut self) -> Option<f64> {
+    /// nearest double and kept as written; `None` when it overflows.
+    fn read_number(&mut self) -> Option<JsonNumber> {
         let start = self.at;
         self.eat(b'-');
         match self.peek()? {
@@ -485,8 +590,12 @@ impl Reader<'_> {
             }
             self.require_digits()?;
         }
-        let number: f64 = self.text[start..self.at].parse().ok()?;
-        number.is_finite().then_some(number)
+        let literal = &self.text[start..self.at];
+        let value: f64 = literal.parse().ok()?;
+        value.is_finite().then(|| JsonNumber {
+            value,
+            literal: literal.into(),
+        })
     }
 
     fn skip_digits(&mut self) {
@@ -581,6 +690,15 @@ mod tests {
         read(text.as_bytes())
     }
 
+    /// A number by value (its literal plays no part in equality or in
+    /// `write`).
+    fn num(value: f64) -> JsonValue {
+        JsonValue::Number(JsonNumber {
+            value,
+            literal: "unused".into(),
+        })
+    }
+
     #[test]
     fn the_first_of_two_equal_keys_wins() {
         let value = read_str(r#"{"subtype":"a","subtype":"b"}"#).unwrap();
@@ -634,12 +752,12 @@ mod tests {
         let number =
             |text: &str| read_str(&format!(r#"{{"n":{text}}}"#)).map(|v| v.get("n").cloned());
         assert_eq!(number("1e400"), None);
-        assert_eq!(number("1e-400"), Some(Some(JsonValue::Number(0.0))));
+        assert_eq!(number("1e-400"), Some(Some(num(0.0))));
         assert_eq!(
             number("123456789012345678901234567890"),
-            Some(Some(JsonValue::Number(1.234_567_890_123_456_8e29)))
+            Some(Some(num(1.234_567_890_123_456_8e29)))
         );
-        assert_eq!(number("1E+2"), Some(Some(JsonValue::Number(100.0))));
+        assert_eq!(number("1E+2"), Some(Some(num(100.0))));
         for rejected in ["01", "1.", ".5", "+1", "1e", "-", "NaN", "1e+", "-01"] {
             assert_eq!(number(rejected), None, "{rejected}");
         }
@@ -848,15 +966,15 @@ mod tests {
     fn write_keeps_member_order() {
         let value = JsonValue::Object(vec![
             ("jsonrpc".to_owned(), string("2.0")),
-            ("id".to_owned(), JsonValue::Number(3.0)),
+            ("id".to_owned(), num(3.0)),
             ("method".to_owned(), string("m")),
             (
                 "params".to_owned(),
                 JsonValue::Array(vec![
                     JsonValue::Null,
                     JsonValue::Bool(true),
-                    JsonValue::Number(-1.5),
-                    JsonValue::Number(1e20),
+                    num(-1.5),
+                    num(1e20),
                     JsonValue::Object(Vec::new()),
                     JsonValue::Array(Vec::new()),
                 ]),
@@ -903,6 +1021,52 @@ mod tests {
         let (deep, line, deep_objects, objects) = worker.join().unwrap();
         assert_eq!(deep.unwrap().unwrap(), line);
         assert_eq!(deep_objects.unwrap().unwrap(), objects);
+    }
+
+    #[test]
+    fn write_verbatim_keeps_every_literal() {
+        let text = r#"{"a":1.0,"b":0.1,"c":-0,"d":-0.0,"e":12345678901234567890123,"f":1E+2,"g":[1e-400]}"#;
+        let value = read_str(text).unwrap();
+        assert_eq!(write_verbatim(&value).unwrap(), text);
+    }
+
+    #[test]
+    fn write_verbatim_keeps_the_first_of_two_equal_keys() {
+        let value = read_str(r#"{"a":1,"b":{"c":1,"c":2},"a":3}"#).unwrap();
+        assert_eq!(write_verbatim(&value).unwrap(), r#"{"a":1,"b":{"c":1}}"#);
+    }
+
+    #[test]
+    fn write_verbatim_restores_the_feff_foundation_drops() {
+        let text = "{\"\u{FEFF}k\":\"\u{FEFF}\u{FEFF}v\",\"w\":\"x\u{FEFF}\"}";
+        let value = read_str(text).unwrap();
+        let written = write_verbatim(&value).unwrap();
+        assert_eq!(written, "{\"k\":\"\u{FEFF}\u{FEFF}v\",\"w\":\"x\u{FEFF}\"}");
+        // Read back as Foundation reads it, the values are the first read's.
+        assert_eq!(read_str(&written).unwrap(), value);
+    }
+
+    #[test]
+    fn write_verbatim_escapes_strings_as_write_does() {
+        let value = read_str(r#"{"s":"a\/b \u0001 \u0000 \u007f é","k/":"\""}"#).unwrap();
+        assert_eq!(
+            write_verbatim(&value).unwrap(),
+            "{\"s\":\"a\\/b \\u0001 \\u0000 \u{7f} é\",\"k\\/\":\"\\\"\"}"
+        );
+    }
+
+    #[test]
+    fn a_deep_value_is_written_verbatim_without_the_call_stack() {
+        let worker = std::thread::Builder::new()
+            .stack_size(64 * 1024)
+            .spawn(|| {
+                let line = format!("{{\"d\":{}0.10{}}}", "[".repeat(511), "]".repeat(511));
+                let written = read_str(&line).map(|value| write_verbatim(&value));
+                (written, line)
+            })
+            .unwrap();
+        let (written, line) = worker.join().unwrap();
+        assert_eq!(written.unwrap().unwrap(), line);
     }
 
     #[test]

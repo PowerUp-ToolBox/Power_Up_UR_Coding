@@ -5,8 +5,8 @@ checked against (PLAN-any-device-any-os.md, ADR 0012): the Swift app's XCTest
 suites play every file, and the Rust core's `cargo test` plays the areas whose
 rules it owns so far (`mapping/` and `device/`, since slice 2.2,
 `harness/`, `status/` and `session/`, since slice 2.3, the ACP tables
-of `harness/`, since slice 2.4, and `config/` and `transcript/`, since
-slice 2.5) and checks the
+of `harness/`, since slice 2.4, and `config/`, `transcript/` and
+`hooks/`, since slice 2.5) and checks the
 format of the rest, picking up
 more as later slices port them. Each implementation loads these files from
 its own source location. Swift resolves
@@ -392,7 +392,11 @@ takes `{settings, scriptPath, scriptOnDisk, port, token}` and expects
 `installed` and `outOfDate`.
 
 The Swift runner is `Tests/PowerUpTests/HookFixtureTests.swift`, which
-compares every written file byte for byte.
+compares every written file byte for byte. The Rust runner is
+`rust/powerup-core/tests/hooks.rs`; the core hands back compact JSON for
+the platform's writer, so it compares that with the file as JSON: numbers
+by value, members in any order, and each string read back as Foundation
+reads it (one leading U+FEFF dropped).
 
 ## `session/`: session scenarios (format 1)
 

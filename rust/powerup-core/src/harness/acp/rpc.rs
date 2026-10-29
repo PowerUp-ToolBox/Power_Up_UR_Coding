@@ -8,7 +8,7 @@
 //! order, which was never stable, and agents parse JSON, so the fixtures
 //! compare these lines as JSON.
 
-use crate::json::{self, JsonValue};
+use crate::json::{self, JsonNumber, JsonValue};
 use crate::CoreError;
 
 /// `{"jsonrpc":"2.0","id":id,"method":method,"params":params}` and a
@@ -93,10 +93,8 @@ pub(crate) fn string(text: &str) -> JsonValue {
     JsonValue::String(text.to_owned())
 }
 
-/// Our ids and codes are far below 2^53, so the double holds them exactly.
-#[allow(clippy::cast_precision_loss)]
 pub(crate) fn number(value: i64) -> JsonValue {
-    JsonValue::Number(value as f64)
+    JsonValue::Number(JsonNumber::from_i64(value))
 }
 
 #[cfg(test)]

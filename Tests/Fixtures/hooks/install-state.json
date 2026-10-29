@@ -1,7 +1,7 @@
 {
   "description": "Whether the hooks are installed as PowerUp runs now. notInstalled unless the settings file is a JSON object whose hooks.Stop array holds a group referencing the quoted command or the legacy path; outOfDate when only the legacy path is there, when any of the five events is not an array holding a group with the quoted command, when the script is missing, or when its bytes are not the body for the current port and token; installed otherwise. isInstalled looks only at Stop, legacy path included.",
   "function": "HookInstaller.installState(port:token:settingsURL:) and isInstalled(settingsURL:) — input {settings, scriptPath, scriptOnDisk, port, token}: settings as install.json; scriptOnDisk the script file's bytes (a string, {\"hex\": <bytes>}, {\"scriptFor\": {port, token}} for the body script.json pins, {\"scriptForWithoutTrailingNewline\": {port, token}} for that body without its last byte, or null for no file); expected {installState, isInstalled}: installState one of notInstalled, installed, outOfDate",
-  "verifiedBy": "DESIGN.md v1.6, v2.14; Tests/PowerUpTests/HookFixtureTests.swift testHookInstallStateTable writes the settings and the script to temporary files and asks HookInstaller.installState and isInstalled.",
+  "verifiedBy": "DESIGN.md v1.6, v2.14; Tests/PowerUpTests/HookFixtureTests.swift testHookInstallStateTable writes the settings and the script to temporary files and asks HookInstaller.installState and isInstalled. Rust: rust/powerup-core/tests/hooks.rs install_state_cases runs hooks::install_state and hooks::is_installed.",
   "capturedAgainst": "Swift 5.9.2 Foundation (Xcode 15.2) on macOS 27.2, PowerUp at 2dd77aa",
   "cases": [
     {

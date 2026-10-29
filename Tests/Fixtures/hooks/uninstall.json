@@ -1,7 +1,7 @@
 {
   "description": "Removing the hooks from ~/.claude/settings.json. No file, a blank file or no hooks key changes nothing; a file that is not a JSON object, or a hooks value that is not an object (null too), is refused. Every event whose value is an array is rebuilt without the entries whose command is the quoted or the legacy path (a group left empty is dropped; a group that is not an object or has no hooks array is kept); an event left empty is removed, including one that was already empty when anything else changed; an event of another shape is skipped. Nothing removed means nothing is written; a hooks object left empty is removed. Writes as install.json describes.",
   "function": "HookInstaller.uninstall(settingsURL:) — input {settings, scriptPath} as install.json, expected as install.json",
-  "verifiedBy": "DESIGN.md v1.6, v2.14; Tests/PowerUpTests/HookFixtureTests.swift testHookUninstallTable runs HookInstaller.uninstall on a temporary settings file and compares the written bytes exactly.",
+  "verifiedBy": "DESIGN.md v1.6, v2.14; Tests/PowerUpTests/HookFixtureTests.swift testHookUninstallTable runs HookInstaller.uninstall on a temporary settings file and compares the written bytes exactly. Rust: rust/powerup-core/tests/hooks.rs uninstall_cases runs hooks::uninstall_edit and compares as install_cases does.",
   "capturedAgainst": "Swift 5.9.2 Foundation (Xcode 15.2) on macOS 27.2, PowerUp at 2dd77aa",
   "cases": [
     {
