@@ -18,6 +18,7 @@ mod harness;
 mod hooks;
 mod mapping;
 mod session;
+mod speech;
 mod text_safety;
 mod transcript;
 
