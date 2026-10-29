@@ -11,7 +11,7 @@
 //! surprise degrades to an error event, never a panic.
 //!
 //! The core reads the agent's raw stdout lines with the shared
-//! Foundation-matching reader (`harness::json`) and builds the lines it
+//! Foundation-matching reader (`crate::json`) and builds the lines it
 //! writes; the platform owns the process, its pipes and its timers, and
 //! carries out the adapter's effects in order.
 

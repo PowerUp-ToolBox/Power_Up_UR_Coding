@@ -2,7 +2,7 @@
 //! and a short detail for the transcript, the spoken status and the
 //! destructive-action classifier.
 
-use crate::harness::json::JsonValue;
+use crate::json::JsonValue;
 use crate::text;
 
 /// The rawInput keys tried for a detail, in order. Claude's list also has

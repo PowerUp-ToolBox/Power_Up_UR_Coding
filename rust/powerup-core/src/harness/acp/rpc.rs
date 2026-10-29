@@ -8,7 +8,7 @@
 //! order, which was never stable, and agents parse JSON, so the fixtures
 //! compare these lines as JSON.
 
-use crate::harness::json::{self, JsonValue};
+use crate::json::{self, JsonValue};
 use crate::CoreError;
 
 /// `{"jsonrpc":"2.0","id":id,"method":method,"params":params}` and a

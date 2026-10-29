@@ -11,6 +11,7 @@ pub mod action;
 pub mod harness;
 pub mod hold;
 pub mod intent;
+pub(crate) mod json;
 pub mod mapping;
 pub mod probe;
 pub mod profile;

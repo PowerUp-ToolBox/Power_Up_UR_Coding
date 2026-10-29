@@ -14,8 +14,8 @@ use std::collections::{HashMap, VecDeque};
 use super::permission::{permission_choice, PermissionOption};
 use super::rpc::{self, number, obj, string, ResponseId};
 use super::update::{tool_detail, tool_name};
-use crate::harness::json::{self, JsonValue};
 use crate::harness::{HarnessConfiguration, HarnessEvent, HarnessState};
+use crate::json::{self, JsonValue};
 use crate::text;
 use crate::CoreError;
 
