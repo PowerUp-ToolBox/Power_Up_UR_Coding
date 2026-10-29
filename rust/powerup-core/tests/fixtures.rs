@@ -26,7 +26,14 @@ fn every_session_scenario_loads() {
 
 #[test]
 fn every_case_table_loads() {
-    for area in ["status", "text-safety", "mapping", "device", "harness"] {
+    for area in [
+        "status",
+        "text-safety",
+        "mapping",
+        "device",
+        "harness",
+        "config",
+    ] {
         let files = json_files(area);
         assert!(!files.is_empty(), "no case tables in {area}/");
         for path in files {
@@ -60,7 +67,15 @@ fn every_fixture_is_a_known_format() {
         assert!(
             matches!(
                 area,
-                Some("session" | "status" | "text-safety" | "mapping" | "device" | "harness")
+                Some(
+                    "session"
+                        | "status"
+                        | "text-safety"
+                        | "mapping"
+                        | "device"
+                        | "harness"
+                        | "config"
+                )
             ),
             "{}: unknown fixture area; teach tests/support how to load it",
             relative.display()

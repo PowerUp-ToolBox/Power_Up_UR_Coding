@@ -26,7 +26,7 @@ case table's `verifiedBy` sentence.
 ## Conventions
 
 - One subdirectory per area: `session/` (scenarios), `text-safety/`,
-  `status/`, `mapping/`, `device/` and `harness/` (case tables).
+  `status/`, `mapping/`, `device/`, `harness/` and `config/` (case tables).
 - Plain JSON only, with no comments and no implementation-specific shapes.
   The one exception is `harness/acp-mock-agent.py`, the scripted ACP agent
   both suites run as a process (see [the ACP adapter](#harness-the-acp-adapter)):
@@ -37,7 +37,7 @@ case table's `verifiedBy` sentence.
     `description`, `reason` (why the rule exists), `source` (where the rule
     is written down) and `verifiedBy` (the implementations that run it, for
     example `["swift"]`). See [`session/`](#session-session-scenarios-format-1).
-  - Case tables (`text-safety/`, `status/`, `mapping/`, `device/`, `harness/`) use `description`,
+  - Case tables (`text-safety/`, `status/`, `mapping/`, `device/`, `harness/`, `config/`) use `description`,
     `function`, `verifiedBy`, `capturedAgainst` and a `cases` list in which
     every case has a `reason`. See [case tables](#text-safety-and-status-case-tables).
 - Add `capturedAgainst` when the data was recorded from a real tool (for
@@ -302,6 +302,30 @@ running the Swift suite on the Swift statics before anything else read it:
 
 Their Swift runner is `Tests/PowerUpTests/ACPFixtureTests.swift`, and the
 Rust runner is `rust/powerup-core/tests/acp.rs`.
+
+## `config/`: config.json as the app reads and writes it
+
+The configuration schema (spec #100, slice 2.5): `round-trip.json` loads
+the bytes of a config.json and saves them again, so it pins every key's
+tolerance, the corrupt-file rule, the pre-profiles backup decision and the
+exact bytes of the save at once. It is an ordinary case table with one
+more descriptor:
+
+| Descriptor | Shape |
+| --- | --- |
+| file input | a string (the file's text as UTF-8), or `{"hex": "<bytes>"}` for a byte order mark, UTF-16 or UTF-32 text, or invalid UTF-8 |
+| file lines | the expected bytes of a text file as a list of lines, joined with `"\n"`; a final `""` element would mean the file ends with a newline (config.json never does) |
+
+`round-trip.json` takes a file input and expects `{saved, backupBeforeSave}`:
+`saved` is the file lines of what the next save writes, or `null` when the
+file is corrupt (the app moves it to `config.json.bak` and runs on the
+defaults); `backupBeforeSave` is whether the file is first copied to
+`config.pre-profiles.json` (always `false` for a corrupt file). The
+comparison is byte for byte: the first case is a config.json the macOS app
+wrote, which must save back unchanged. `mapping/config-load.json` keeps the
+mapping subtree's own cases.
+
+The Swift runner is `Tests/PowerUpTests/ConfigFixtureTests.swift`.
 
 ## `session/`: session scenarios (format 1)
 
