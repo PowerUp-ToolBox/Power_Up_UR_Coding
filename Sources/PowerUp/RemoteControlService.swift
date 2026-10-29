@@ -327,12 +327,18 @@ final class RemoteControlService: ObservableObject {
 
     // MARK: - Routing
 
-    private enum Route {
+    /// How remote text and keys are delivered. The route and the target
+    /// choice are the injector's and stay in Swift (DESIGN v2.14 C); they are
+    /// internal so `RemoteRoutingTests` can pin them (HK-204, HK-208, HK-209).
+    enum Route: Equatable {
         case cmux
         case injection(bundleID: String?)   // nil = frontmost app
     }
 
-    private nonisolated static func route(for config: AppConfig) -> Route {
+    /// "frontmost" types into the frontmost app with no activation, "app"
+    /// into the configured bundle id (trimmed; blank means nil), and every
+    /// other kind goes to cmux (HK-208, HK-209).
+    nonisolated static func route(for config: AppConfig) -> Route {
         switch config.remoteTargetKind {
         case "frontmost":
             return .injection(bundleID: nil)
@@ -345,7 +351,9 @@ final class RemoteControlService: ObservableObject {
         }
     }
 
-    private nonisolated static func trimmedOrNil(_ value: String?) -> String? {
+    /// A configured value trimmed of `whitespacesAndNewlines`; nil when
+    /// nothing is left (HK-209).
+    nonisolated static func trimmedOrNil(_ value: String?) -> String? {
         guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
               !trimmed.isEmpty else { return nil }
         return trimmed
@@ -456,20 +464,32 @@ final class RemoteControlService: ObservableObject {
             guard let workspaces = CoreBridge.parseWorkspaces(list.standardOutput) else {
                 return .failed("PowerUp couldn't read cmux's workspace list — pick a workspace in Settings → Remote.")
             }
-            guard let chosen = workspaces.first(where: { $0.selected }) ?? workspaces.first else {
+            guard let chosen = autoTargetWorkspace(in: workspaces) else {
                 return .failed("cmux has no open workspaces — open one, or pick a workspace in Settings → Remote.")
             }
             reference = chosen.ref
         }
+        return .resolved(targetArguments(workspace: reference, surface: surface))
+    }
 
+    /// The workspace "auto" types into (HK-204): the one cmux has selected,
+    /// else the first listed; nil when cmux lists none, and then the person
+    /// is told to open one.
+    nonisolated static func autoTargetWorkspace(in workspaces: [CmuxWorkspace]) -> CmuxWorkspace? {
+        workspaces.first(where: { $0.selected }) ?? workspaces.first
+    }
+
+    /// `--workspace` before `--surface`, each only when it is set and not
+    /// empty (HK-204).
+    nonisolated static func targetArguments(workspace: String?, surface: String?) -> [String] {
         var arguments: [String] = []
-        if let reference, !reference.isEmpty {
-            arguments.append(contentsOf: ["--workspace", reference])
+        if let workspace, !workspace.isEmpty {
+            arguments.append(contentsOf: ["--workspace", workspace])
         }
         if let surface, !surface.isEmpty {
             arguments.append(contentsOf: ["--surface", surface])
         }
-        return .resolved(arguments)
+        return arguments
     }
 
     // MARK: - cmux binary resolution

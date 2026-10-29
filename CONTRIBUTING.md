@@ -108,7 +108,15 @@ The rules for core work:
   HookInstaller keeps the paths and their test seams, reading both files,
   the numbered backup, the settings writer and the script's 0755 write.
   Core tests never read or write a real settings file: they play fixture
-  text.
+  text. It also holds remote mode's text safety rules (`text_safety`:
+  flattening line breaks, the escape-safe `cmux send` segments, parsing
+  `cmux list-workspaces` and its titles' activity glyphs, and the friendly
+  message for a failed cmux command), played against
+  `Tests/Fixtures/text-safety/` and reached through
+  `CoreBridgeTextSafety.swift`; RemoteControlService keeps the injector:
+  the route and target choice, running cmux (the `--` separator, the
+  pauses, the deadlines, the socket password) and the Accessibility
+  typing, and sends nothing when the core cannot make text safe.
 - **Panic rule.** Every public core function is total: it returns its
   value, or a `Result` when it can fail, and never panics. Library code
   never calls `unwrap`, `expect` or `panic!` (clippy denies the first two).

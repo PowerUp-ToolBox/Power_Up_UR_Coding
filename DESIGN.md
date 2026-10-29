@@ -3008,8 +3008,9 @@ here and stays open until a maintainer runs it before #155 closes.
 
 Recorded 2026-10-29 for spec #100 (tickets #156–#160, ADR 0011, ADR 0012,
 plan stage 2 step 5), built up ticket by ticket; this text covers #156,
-the configuration schema, #157, the transcript's JSON Lines, and #158,
-the hooks merge. It supersedes v2.11 C's "`Action`'s synthesized
+the configuration schema, #157, the transcript's JSON Lines, #158, the
+hooks merge, and #159, the remote text safety rules. It supersedes
+v2.11 C's "`Action`'s synthesized
 `Encodable` and the config writer (until slice 2.5)": the core reads and
 writes config.json since this slice and `Action` is a plain value. The
 on-disk format, every default and every tolerance rule of the config
@@ -3028,6 +3029,18 @@ For #158 the `HookInstaller` API of v1.4, v1.10 and v2.2 keeps its shape:
 `settingsBytes(fromCoreJSON:path:)` is new. What install and uninstall do
 to `~/.claude/settings.json`, the hook script and the install state are
 unchanged, apart from the recorded differences of D (HK-417).
+For #159 the `RemoteControlService` API of v1.4 keeps its shape
+(`refreshStatus`, `sendText`, `sendKey`, `cmuxWorkspaces` of
+`CmuxWorkspace` rows with `ref`, `title` and `selected`; `CommandResult`
+stays the process runner's type). Its private text helpers
+(`flattenLineBreaks(in:)`, `escapeSafeSegments(_:)`, `parseWorkspaces(_:)`,
+`stripStatusGlyph(_:)`, `condense(_:maxChars:)`,
+`failureMessage(action:result:)`) are deleted for the `CoreBridge`
+wrappers of B, and the injector's own rules become internal so they can be
+tested: `Route`, `route(for:)`, `trimmedOrNil(_:)`,
+`autoTargetWorkspace(in:)` and `targetArguments(workspace:surface:)`. What
+reaches the target and every message are unchanged, apart from what a
+failed core call does (B).
 
 The core gains `config` (`AppConfig`, `load_config`, `encode_config`,
 `seed_project_bookkeeping`, the defaults and the fixed vocabularies) and,
@@ -3046,6 +3059,14 @@ slice 2.3 reader's numbers keep their literal beside their value
 (`json::JsonNumber`), `json::write_verbatim` writes a value back for
 Foundation to read, and `text::replace_unless_extended` is Foundation's
 `replacingOccurrences` for one character.
+With #159 it gains `text_safety` (`flatten_line_breaks`,
+`escape_safe_segments` with `MAX_SEND_SPLITS`, `parse_workspaces` into
+`CmuxWorkspace` rows, `strip_status_glyph`, `condense` with an `i64` limit,
+and `failure_message` for a `CommandResult`), and `text` gains
+`trim_whitespaces` (Foundation's narrower `whitespaces` set),
+`ends_with_clusters` (`hasSuffix`) and `split_once_on_space` (`split`
+with one split). The slice 2.3 `text::condense` is the cut for limits of 0
+or more.
 
 ## A. Bridge surface
 
@@ -3098,6 +3119,21 @@ port: Int64, token:) -> CoreHookInstallState`,
 `hookInstallEdit(settings: Data?, scriptPath:) -> CoreSettingsEdit` and
 `hookUninstallEdit(settings: Data?, scriptPath:) -> CoreSettingsEdit`. A nil
 `settings` or `scriptOnDisk` means there is no such file.
+
+From `rust/powerup-core-ffi/src/text_safety.rs` (#159):
+
+| Generated Swift | Shape |
+| --- | --- |
+| `struct CoreCmuxWorkspace` | `reference: String` (the `ref`: `workspace:N` or a bare UUID; `ref` is a Rust keyword), `title: String` (without its activity glyph), `selected: Bool` |
+| `struct CoreCommandResult` | `status: Int64`, `standardOutput: String`, `standardError: String`, `timedOut: Bool`, `spawnFailed: Bool` |
+
+Functions: `flattenLineBreaks(text:) -> String`,
+`escapeSafeSegments(text:) -> [String]` (empty text: no segment),
+`parseWorkspaces(output:) -> [CoreCmuxWorkspace]`,
+`stripStatusGlyph(title:) -> String`,
+`condense(text:maxChars: Int64) -> String` and
+`failureMessage(action:result: CoreCommandResult) -> String`. They take and
+return strings and values only: none runs cmux or posts a keystroke.
 
 ## B. Swift wrappers and the failure policy
 
@@ -3185,6 +3221,40 @@ written, so an empty script is never installed; a failed state reads as
 an install; a failed `hookEvents` is empty and a failed `hookCommand` nil
 (only tests read them: the app registers through the edits).
 
+`Sources/PowerUp/CoreBridgeTextSafety.swift` (#159) speaks the service's
+`CmuxWorkspace` and `RemoteControlService.CommandResult` (`Int64(status)`
+one way, `reference` as `ref` the other):
+
+```swift
+static func flattenLineBreaks(_ text: String) -> String?
+static func escapeSafeSegments(_ text: String) -> [String]?
+static func parseWorkspaces(_ output: String) -> [CmuxWorkspace]?
+static func stripStatusGlyph(_ title: String) -> String?
+static func condense(_ text: String, maxChars: Int) -> String?
+static func failureMessage(action: String, result: RemoteControlService.CommandResult) -> String
+```
+
+`sendText` flattens the text before any route, the injector seam included;
+the cmux route asks for the segments before it resolves the target and
+sends one `cmux send -- <segment>` per segment; `refreshStatus` and the
+send-time target choice read `list-workspaces` through `parseWorkspaces`;
+every failed cmux command is reported through `failureMessage`.
+`parseWorkspaces` already strips the glyph and `failureMessage` already
+condenses, so only the tests call those two wrappers directly. They run on
+the service's background queue; `CoreBridge` is safe from any thread.
+
+Failure policy for remote text: a failed call never lets raw text through,
+since a line break typed into a terminal is Enter. No flattened text or no
+segments means nothing is typed or sent, on any route, and the completion
+reads "PowerUp couldn't make that text safe to type, so it didn't send
+anything. Try again." (`textNotPreparedMessage`). A workspace list the
+core could not read is never taken for "no workspaces" and nothing in it
+is chosen as the target: at send time the send stops with "PowerUp
+couldn't read cmux's workspace list — pick a workspace in Settings →
+Remote.", and the status refresh shows no workspaces. A failed
+`failureMessage` reads "<action> failed.", so the failure is still
+reported; a failed `stripStatusGlyph` or `condense` is nil.
+
 ## C. What moved and what stayed
 
 Moved into `powerup-core`, unchanged in behaviour: the schema and its
@@ -3230,6 +3300,27 @@ which is what Settings turns into its reinstall prompt, and behaviour must
 not change, so the core keeps `outOfDate` and the tables prove that a
 missing event never reads `installed` (without Stop, `notInstalled`;
 HK-188).
+
+Remote text (#159). Moved, unchanged in behaviour: flattening every line
+break before any delivery route (HK-198), the escape-safe `cmux send`
+segments with their cap of 12 splits, which always join to the flattened
+text (HK-199 to HK-201, HK-419), parsing `cmux list-workspaces` with its
+selection markers and ref check (HK-202, HK-203; the legacy-notice guard of
+HK-299 moved with the parser), stripping a title's activity glyph
+(HK-205), condensing cmux output (HK-206, the cmux part of HK-173) and the
+failure message (HK-207). Stayed in Swift, the injector: the route for a
+target kind with its cmux fallback and the bundle id (HK-208, HK-209), the
+target choice and its `--workspace`/`--surface` arguments, which run
+`list-workspaces` (HK-204), running cmux (the `--` separator, the pauses,
+CMUX_QUIET, the socket password, binary resolution, the pipes and
+deadlines; HK-296 to HK-306), the exactly-once completion and the injector
+seam (HK-307, HK-308), and Accessibility typing (HK-309 to HK-314). Each
+OS has its own injector (CONTEXT.md), so these stay with the platform;
+HK-204, HK-208 and HK-209 had no test and `RemoteRoutingTests` now pins
+them. The one change in order: the cmux route asks for the segments before
+it lists the workspaces, so no `list-workspaces` runs for text that would
+not be sent; segmentation being pure, a working core sends exactly as
+before.
 
 ## D. Recorded rules
 
@@ -3320,6 +3411,30 @@ HK-188).
   over 60,000 random paths and tokens for the command and the script. It
   found the quote rule above, which the core first had as a cluster rule;
   after the fix only the three recorded classes remained, each counted.
+- Remote text follows Swift's `String` as the macOS app used it (#159):
+  flattening works on scalars, so a break that a combining mark follows is
+  flattened too; everything else works on Characters, and the trims are
+  Foundation's `whitespacesAndNewlines` for a list line and `whitespaces`
+  after a marker or a glyph. Segmentation compares whole Characters: a
+  backslash-n whose n a combining mark extends, or whose backslash a
+  prepended scalar (U+0600) joins, is not split, though its bytes still
+  hold backslash-n, which cmux may read as Enter (not verified live). Kept
+  for parity, so every implementation agrees (HK-419).
+- `cmux list-workspaces` lines are split on the LF Character only, so CRLF
+  output, which cmux on macOS never prints, is one row; any text after
+  `workspace:` is a ref, and a bare UUID is read as `UUID(uuidString:)`
+  reads it: the canonical 8-4-4-4-12 hex form, as a C string, so a valid
+  UUID that a NUL follows is accepted (measured on macOS 27.2; HK-203). The
+  activity glyphs are Braille and Dingbats less the 15 Dingbats with
+  Emoji_Presentation, a table measured with `Unicode.Scalar.Properties` on
+  macOS 27.2 (HK-205). A negative `condense` limit always cuts, to the
+  first Character and `…` (only `…` for empty text), as Swift's `Int` did;
+  the app passes 160 and 200.
+- Before the Swift helpers were deleted, `Tests/Fixtures/text-safety/`
+  gained the 48 Swift behaviours no case pinned, each captured from the
+  Swift code (196 cases in the six tables). A scratch differential then
+  compared the Swift functions, copied pure, with the core over 300,000
+  generated inputs in five seeds and found no difference.
 
 ## E. Left for the maintainer
 
@@ -3343,3 +3458,11 @@ event never reads as installed. Installing and removing the hooks from
 Settings on a real machine, and seeing a real Claude Code session read
 back, is the manual check; agents may not touch `~/.claude/settings.json`
 (CLAUDE.md), so no agent runs it.
+
+Ticket #159's first acceptance criterion, the 1.3 fixtures passing in both
+languages, is met: `rust/powerup-core/tests/text_safety.rs` and
+`TextSafetyFixtureTests` / `CmuxReportingFixtureTests`, through the
+bridge, play all six tables. The second, that dictated multi-line text
+injects as one line in remote mode, is the manual check on a real machine
+(cmux and a terminal target); agents may not run `cmux send` or
+`send-key` against real workspaces (CLAUDE.md), so no agent runs it.

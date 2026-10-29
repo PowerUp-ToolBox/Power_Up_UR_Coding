@@ -5,8 +5,8 @@ checked against (PLAN-any-device-any-os.md, ADR 0012): the Swift app's XCTest
 suites play every file, and the Rust core's `cargo test` plays the areas whose
 rules it owns so far (`mapping/` and `device/`, since slice 2.2,
 `harness/`, `status/` and `session/`, since slice 2.3, the ACP tables
-of `harness/`, since slice 2.4, and `config/`, `transcript/` and
-`hooks/`, since slice 2.5) and checks the
+of `harness/`, since slice 2.4, and `config/`, `transcript/`,
+`hooks/` and `text-safety/`, since slice 2.5) and checks the
 format of the rest, picking up
 more as later slices port them. Each implementation loads these files from
 its own source location. Swift resolves
@@ -53,14 +53,19 @@ remote mode does to text before it is typed or shown (`text-safety/`, epic
 #93) and how the status pill and light bar are derived (`status/`, epic
 #94). The Swift loader is `TextSafetyFixtures` in
 `Tests/PowerUpTests/TextSafetyFixtureTests.swift`; `TextSafetyFixtureTests`,
-`CmuxReportingFixtureTests` and `StatusDerivationTests` run the files.
-The Rust core plays `status/` in `rust/powerup-core/tests/status.rs`
-(slice 2.3); `text-safety/` waits for slice 2.5.
+`CmuxReportingFixtureTests` and `StatusDerivationTests` run the files;
+since slice 2.5 the first two play `text-safety/` through the bridge
+(`CoreBridgeTextSafety.swift`) into the core, which owns the rules. The Rust
+core plays `status/` in `rust/powerup-core/tests/status.rs` (slice 2.3)
+and `text-safety/` in `rust/powerup-core/tests/text_safety.rs` (slice
+2.5), one test per table; it also checks on every case that the segments
+join to the flattened text and are never empty, and that a condensed line
+keeps a limit of 2 or more.
 
 ```json
 {
   "description": "What the rule does, precisely enough to reimplement it.",
-  "function": "RemoteControlService.condense(_:maxChars:) — input {text, maxChars} in, string out",
+  "function": "text_safety::condense (Swift: CoreBridge.condense(_:maxChars:)) — input {text, maxChars} in, string out",
   "verifiedBy": "Where the rule is written down and which tests run this file.",
   "capturedAgainst": "The build or tool version the expected values were taken from.",
   "cases": [

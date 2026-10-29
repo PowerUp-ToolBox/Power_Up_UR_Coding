@@ -1,7 +1,7 @@
 {
   "description": "Stripping the activity glyph cmux prints between a workspace ref and its title. Exactly one leading character is removed, then surrounding spaces are trimmed, when that character is a single scalar in the Braille Patterns block (U+2800–U+28FF, cmux's spinner frames) or the Dingbats block (U+2700–U+27BF: ✳ ✓ ✗ …) without emoji presentation. Everything else is returned verbatim: colour emoji (including emoji-presentation Dingbats like ✅ ✨ ❌ and any glyph followed by VS16), the leading … cmux prints on truncated path titles, other symbols, and any glyph that is not first. Cosmetic only: targeting uses the ref.",
-  "function": "RemoteControlService.stripStatusGlyph(_:) — title string in, title string out",
-  "verifiedBy": "Characterization of the Swift implementation (spec #93, ticket #121); Tests/PowerUpTests/CmuxReportingFixtureTests.swift. Emoji presentation follows the Unicode Emoji_Presentation property as reported by Swift's Unicode.Scalar.Properties. Rust: rust/powerup-core/tests/text_safety.rs status_glyph_cases runs text_safety::strip_status_glyph.",
+  "function": "text_safety::strip_status_glyph (Swift: CoreBridge.stripStatusGlyph(_:); until slice 2.5 RemoteControlService.stripStatusGlyph(_:)) — title string in, title string out",
+  "verifiedBy": "DESIGN.md v1.4, v2.14; characterization of the Swift implementation (spec #93, ticket #121); Tests/PowerUpTests/CmuxReportingFixtureTests.swift testStatusGlyphStrippingMatchesFixtures plays it through CoreBridge.stripStatusGlyph(_:). Emoji presentation follows the Unicode Emoji_Presentation property as reported by Swift's Unicode.Scalar.Properties. Rust: rust/powerup-core/tests/text_safety.rs status_glyph_cases runs text_safety::strip_status_glyph.",
   "capturedAgainst": "cmux 0.64.17 (97) [9ed29d81a]; PowerUp macOS app, branch stage-1-text-views-spikes, 2026-10-23",
   "cases": [
     {

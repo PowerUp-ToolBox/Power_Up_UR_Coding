@@ -1,7 +1,7 @@
 {
   "description": "Remote-mode line-break flattening. Every real line or paragraph break (LF U+000A, CR U+000D, LINE SEPARATOR U+2028, PARAGRAPH SEPARATOR U+2029) is replaced by a single space, and a run of consecutive breaks (CRLF, blank lines, mixed) collapses to one space. Nothing else changes: existing spaces are not collapsed, nothing is trimmed, and the two-character text backslash-n is not a break. A literal newline delivered into a terminal surface is Enter, so any break that survived would submit a dictated prompt half-typed; only the separate, explicit Enter may submit.",
-  "function": "RemoteControlService.flattenLineBreaks(in:) — input string in, flattened string out",
-  "verifiedBy": "Characterization of the Swift implementation (spec #93, ticket #120); Tests/PowerUpTests/TextSafetyFixtureTests.swift. Pure function, independent of any cmux or terminal version. Rust: rust/powerup-core/tests/text_safety.rs line_break_cases runs text_safety::flatten_line_breaks.",
+  "function": "text_safety::flatten_line_breaks (Swift: CoreBridge.flattenLineBreaks(_:); until slice 2.5 RemoteControlService.flattenLineBreaks(in:)) — input string in, flattened string out",
+  "verifiedBy": "DESIGN.md v1.4, v2.14; characterization of the Swift implementation (spec #93, ticket #120); Tests/PowerUpTests/TextSafetyFixtureTests.swift testLineBreakFlatteningMatchesFixtures plays it through CoreBridge.flattenLineBreaks(_:). Pure function, independent of any cmux or terminal version. Rust: rust/powerup-core/tests/text_safety.rs line_break_cases runs text_safety::flatten_line_breaks.",
   "capturedAgainst": "PowerUp macOS app, branch stage-1-text-views-spikes, 2026-10-23",
   "cases": [
     {

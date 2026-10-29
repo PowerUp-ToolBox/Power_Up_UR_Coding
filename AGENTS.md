@@ -109,7 +109,15 @@ clearly without them. CI runs the cargo job on macOS, Windows and Linux.
   HookInstaller keeps the paths and their test seams, reading both files,
   the numbered backup, the settings writer and the script's 0755 write.
   Core tests never read or write a real settings file: they play fixture
-  text.
+  text. It also holds remote mode's text safety rules (`text_safety`:
+  flattening line breaks, the escape-safe `cmux send` segments, parsing
+  `cmux list-workspaces` and its titles' activity glyphs, and the friendly
+  message for a failed cmux command), played against
+  `Tests/Fixtures/text-safety/` and reached through
+  `CoreBridgeTextSafety.swift`; RemoteControlService keeps the injector:
+  the route and target choice, running cmux (the `--` separator, the
+  pauses, the deadlines, the socket password) and the Accessibility
+  typing, and sends nothing when the core cannot make text safe.
 - **Panic rule.** Every public core function is total: it returns its
   value, or a `Result` when it can fail, and never panics. Library code
   never calls `unwrap`, `expect` or `panic!` (clippy denies the first two).
@@ -170,7 +178,7 @@ contract change.
 | `ControllerSlot.swift` | Controller slot (`ControllerSlotSelector`) and hold (`HoldTracker`) value types; the rules run in the Rust core |
 | `ControllerPicker.swift` | Pure rows and caption for the Settings → Devices Controller picker |
 | `ViewLogic.swift` | Pure view rules extracted from MainView/ComponentViews (#126; DESIGN v2.7 §F) |
-| `RemoteControlService.swift` | Routes text/keys to cmux or keyboard injection |
+| `RemoteControlService.swift` | Routes text/keys to cmux or keyboard injection: the route and target choice, running cmux, Accessibility typing; the text safety rules (flattening, escape-safe segments, the workspace list, failure messages) are the core's |
 | `RemoteListener.swift` | Localhost HTTP listener for Claude Code hook events |
 | `HookInstaller.swift` | Installs/manages hooks in `~/.claude/settings.json`: paths and test seams, file reads, backup, the settings writer, the script file; the merge, command, script text and install state are the core's |
 | `PowerUpProtocol.swift` | WebSocket upgrade + JSON-RPC message handling |
@@ -185,6 +193,7 @@ contract change.
 | `CoreBridgeConfig.swift` | Bridge wrappers for the configuration schema: defaults, load, encode, the project bookkeeping migration, the fixed vocabularies (DESIGN v2.14) |
 | `CoreBridgeTranscript.swift` | Bridge wrappers for the transcript: the line an entry is written as, loading a file, the file name, the limits (DESIGN v2.14) |
 | `CoreBridgeHooks.swift` | Bridge wrappers for the Claude Code hooks: the install and uninstall edits, the command, the script text, the install state (DESIGN v2.14) |
+| `CoreBridgeTextSafety.swift` | Bridge wrappers for remote mode's text safety: flattening line breaks, the escape-safe cmux segments, the workspace list and its glyphs, condensing, the failure message (DESIGN v2.14) |
 
 The Rust core lives in `rust/` (see "The Rust core" above); its bridge tests
 are in `Tests/PowerUpCoreTests/`.

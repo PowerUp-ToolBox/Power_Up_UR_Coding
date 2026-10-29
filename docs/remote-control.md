@@ -30,7 +30,7 @@ etc.) all work the same way.
      this never goes through the OS's keyboard, macOS doesn't ask for
      Accessibility at all. Pick a workspace from the list, or leave it on
      **Auto (selected workspace)** to always target whichever workspace cmux
-     currently shows as `[selected]`.
+     currently shows as `[selected]` (the first one listed when none is).
    - **Terminal / specific app** — PowerUp types into a chosen *running* app
      using **keystroke injection** (simulated key presses), which is why this
      kind **requires Accessibility permission**. To save you hunting through a
@@ -102,6 +102,16 @@ etc.) all work the same way.
   - **Terminal/specific app or Frontmost app** — simulated keystrokes
     (keystroke injection) posted directly to that app, which is why these two
     kinds require Accessibility permission.
+- **Multi-line text arrives as one line.** In a terminal a line break is
+  Enter, so PowerUp turns every line break in your text (including a pasted
+  or dictated paragraph break) into a space before it types anything, on
+  every target; the prompt is sent only when Enter is pressed on purpose.
+  For cmux, text holding a backslash followed by n, r or t (`\n`, `\r`,
+  `\t`, as in a regex or a Windows path) is sent in pieces, so cmux types
+  those two characters as written instead of pressing Enter or Tab. If
+  PowerUp ever can't prepare the text this way, it sends nothing and says
+  so ("PowerUp couldn't make that text safe to type…"), rather than typing
+  something that might submit early.
 - **Dictate to Prompt Box** (L2 by default) adapts to remote mode: releasing
   the hold **types your words into the target's input box without pressing
   Enter** — review and edit them right in cmux/the terminal, then send with
