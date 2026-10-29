@@ -1,0 +1,173 @@
+{
+  "description": "The line ClaudeService writes on the claude CLI's stdin for one call, compared as JSON (key order and escaping are the writer's; HK-395). A user turn is {type: user, message: {role: user, content: [{type: text, text}]}, parent_tool_use_id: null} with the text trimmed; a control request is always the nested envelope {type: control_request, request_id, request: {subtype, …}}, never the flat shape, which makes the CLI exit 1 (DESIGN.md v1.1 A). interrupt carries no value, set_model carries model and set_permission_mode carries mode, trimmed. A call whose text or value trims to nothing writes nothing (null). Every line ends with one newline. An unknown subtype (set_effort) is not a call the app makes; verified live, the CLI answers it with an error and keeps running.",
+  "function": "What ClaudeService writes on stdin for one call (ClaudeService.userTurnLine / controlRequestLine) ↔ powerup_core::harness::claude::stdin — input {call: \"send\"|\"interrupt\"|\"setModel\"|\"setPermissionMode\", text?|model?|mode?, requestID?}; expected: the JSON object of the line, or null when nothing is written",
+  "verifiedBy": "DESIGN.md v1.1 A (verified live against claude CLI v2.1.243); Tests/PowerUpTests/HarnessFixtureTests.swift testClaudeStdinTable plays it through ClaudeService.userTurnLine and controlRequestLine.",
+  "capturedAgainst": "The Swift parser (JSONSerialization) of PowerUp at 7404080, built with Swift 5.9.2 (Xcode 15.2) and run on macOS 27.2; the wire shapes themselves were verified live against claude CLI v2.1.243 (DESIGN.md v1.1 A)",
+  "cases": [
+    {
+      "name": "a user turn",
+      "input": {
+        "call": "send",
+        "text": "Fix the bug."
+      },
+      "expected": {
+        "type": "user",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Fix the bug."
+            }
+          ]
+        },
+        "parent_tool_use_id": null
+      },
+      "reason": "Verified live: a user turn is this envelope and a newline (HK-069)."
+    },
+    {
+      "name": "the turn text is trimmed at both ends only",
+      "input": {
+        "call": "send",
+        "text": "  first line\n  second line \n"
+      },
+      "expected": {
+        "type": "user",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "first line\n  second line"
+            }
+          ]
+        },
+        "parent_tool_use_id": null
+      },
+      "reason": "Inner line breaks and indentation are the person's text (HK-069)."
+    },
+    {
+      "name": "quotes, slashes, CJK and emoji survive",
+      "input": {
+        "call": "send",
+        "text": "say \"hi\" to a/b 修复 🚀"
+      },
+      "expected": {
+        "type": "user",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "say \"hi\" to a/b 修复 🚀"
+            }
+          ]
+        },
+        "parent_tool_use_id": null
+      },
+      "reason": "The text reaches the CLI exactly; escaping is the writer's job (HK-069)."
+    },
+    {
+      "name": "a whitespace-only turn sends nothing",
+      "input": {
+        "call": "send",
+        "text": " \n\t "
+      },
+      "expected": null,
+      "reason": "An empty turn would start a turn about nothing (HK-069)."
+    },
+    {
+      "name": "an empty turn sends nothing",
+      "input": {
+        "call": "send",
+        "text": ""
+      },
+      "expected": null,
+      "reason": "Nothing to send (HK-069)."
+    },
+    {
+      "name": "interrupt",
+      "input": {
+        "call": "interrupt",
+        "requestID": "R-1"
+      },
+      "expected": {
+        "type": "control_request",
+        "request_id": "R-1",
+        "request": {
+          "subtype": "interrupt"
+        }
+      },
+      "reason": "Verified live: the nested envelope with a request_id; the flat shape kills the CLI (HK-067)."
+    },
+    {
+      "name": "set_model carries the trimmed model",
+      "input": {
+        "call": "setModel",
+        "model": " sonnet\n",
+        "requestID": "R-2"
+      },
+      "expected": {
+        "type": "control_request",
+        "request_id": "R-2",
+        "request": {
+          "subtype": "set_model",
+          "model": "sonnet"
+        }
+      },
+      "reason": "set_model carries model; the value is trimmed (HK-068)."
+    },
+    {
+      "name": "set_permission_mode carries the mode",
+      "input": {
+        "call": "setPermissionMode",
+        "mode": "plan",
+        "requestID": "R-3"
+      },
+      "expected": {
+        "type": "control_request",
+        "request_id": "R-3",
+        "request": {
+          "subtype": "set_permission_mode",
+          "mode": "plan"
+        }
+      },
+      "reason": "set_permission_mode carries mode (HK-068)."
+    },
+    {
+      "name": "an empty model sends nothing",
+      "input": {
+        "call": "setModel",
+        "model": "",
+        "requestID": "R-4"
+      },
+      "expected": null,
+      "reason": "An empty value sends no request (HK-068)."
+    },
+    {
+      "name": "a whitespace mode sends nothing",
+      "input": {
+        "call": "setPermissionMode",
+        "mode": "  ",
+        "requestID": "R-5"
+      },
+      "expected": null,
+      "reason": "A value that trims to nothing sends no request (HK-068)."
+    },
+    {
+      "name": "the request id is passed through",
+      "input": {
+        "call": "interrupt",
+        "requestID": "6F9619FF-8B86-D011-B42D-00C04FC964FF"
+      },
+      "expected": {
+        "type": "control_request",
+        "request_id": "6F9619FF-8B86-D011-B42D-00C04FC964FF",
+        "request": {
+          "subtype": "interrupt"
+        }
+      },
+      "reason": "Any unique string works as a request id (DESIGN.md v1.1 A, verified live with R1 and R2)."
+    }
+  ]
+}

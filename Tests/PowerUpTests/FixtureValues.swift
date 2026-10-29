@@ -193,3 +193,61 @@ extension ConnectedController {
         .object(["id": .string(id), "profileID": .string(profileID), "displayName": .string(displayName)])
     }
 }
+
+// MARK: - Value descriptors (Tests/Fixtures/README.md, `harness/`)
+
+extension ClaudeEvent {
+    /// `{"event": <Swift case name>}` plus the case's fields under their Swift
+    /// labels. Exhaustive, so a new case is a compile error here. Numbers go
+    /// through `JSONValue(encoding:)`, so a cost of 1.0 compares equal to a
+    /// table's `1`.
+    var fixtureDescriptor: JSONValue {
+        let fields: [String: JSONValue]
+        switch self {
+        case .ready(let sessionID, let model):
+            fields = ["event": .string("ready"), "sessionID": .string(sessionID), "model": .string(model)]
+        case .textDelta(let text):
+            fields = ["event": .string("textDelta"), "text": .string(text)]
+        case .assistantMessage(let text):
+            fields = ["event": .string("assistantMessage"), "text": .string(text)]
+        case .toolUse(let name, let detail):
+            fields = ["event": .string("toolUse"), "name": .string(name), "detail": .string(detail)]
+        case .turnCompleted(let resultText, let costUSD, let isError, let subtype):
+            fields = ["event": .string("turnCompleted"),
+                      "resultText": resultText.map(JSONValue.string) ?? .null,
+                      "costUSD": costUSD.map(JSONValue.number) ?? .null,
+                      "isError": .bool(isError),
+                      "subtype": .string(subtype)]
+        case .controlResult(let action, let ok, let detail, let value):
+            fields = ["event": .string("controlResult"), "action": .string(action), "ok": .bool(ok),
+                      "detail": .string(detail), "value": value.map(JSONValue.string) ?? .null]
+        case .processError(let message):
+            fields = ["event": .string("processError"), "message": .string(message)]
+        case .terminated(let exitCode):
+            fields = ["event": .string("terminated"), "exitCode": .integer(Int64(exitCode))]
+        }
+        return (try? JSONValue(encoding: JSONValue.object(fields))) ?? .object(fields)
+    }
+}
+
+/// A line input: a string (the line as UTF-8, no newline), or
+/// `{"hex": "<bytes>"}` for bytes that are not text.
+enum FixtureLine {
+    static func bytes(_ descriptor: JSONValue) throws -> Data {
+        if let text = descriptor.stringValue { return Data(text.utf8) }
+        guard let hex = descriptor["hex"]?.stringValue, hex.count.isMultiple(of: 2) else {
+            throw FixtureValueError(description: "not a line input: \(descriptor)")
+        }
+        var data = Data()
+        var index = hex.startIndex
+        while index < hex.endIndex {
+            let next = hex.index(index, offsetBy: 2)
+            guard let byte = UInt8(hex[index..<next], radix: 16) else {
+                throw FixtureValueError(description: "bad hex in line input: \(hex)")
+            }
+            data.append(byte)
+            index = next
+        }
+        return data
+    }
+}

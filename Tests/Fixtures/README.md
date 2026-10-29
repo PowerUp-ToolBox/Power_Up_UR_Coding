@@ -23,7 +23,7 @@ case table's `verifiedBy` sentence.
 ## Conventions
 
 - One subdirectory per area: `session/` (scenarios), `text-safety/`,
-  `status/`, `mapping/` and `device/` (case tables).
+  `status/`, `mapping/`, `device/` and `harness/` (case tables).
 - Plain JSON only, with no comments and no implementation-specific shapes.
 - Every file starts with a header and gives a `reason` for each thing it
   pins. There are two formats:
@@ -31,7 +31,7 @@ case table's `verifiedBy` sentence.
     `description`, `reason` (why the rule exists), `source` (where the rule
     is written down) and `verifiedBy` (the implementations that run it, for
     example `["swift"]`). See [`session/`](#session-session-scenarios-format-1).
-  - Case tables (`text-safety/`, `status/`, `mapping/`, `device/`) use `description`,
+  - Case tables (`text-safety/`, `status/`, `mapping/`, `device/`, `harness/`) use `description`,
     `function`, `verifiedBy`, `capturedAgainst` and a `cases` list in which
     every case has a `reason`. See [case tables](#text-safety-and-status-case-tables).
 - Add `capturedAgainst` when the data was recorded from a real tool (for
@@ -119,6 +119,34 @@ The Swift runners are `Tests/PowerUpTests/MappingFixtureTests.swift` and
 `FixtureValues.swift`), and the Rust runners are
 `rust/powerup-core/tests/mapping.rs` and `tests/device.rs` (their helpers
 are in `tests/support`).
+
+## `harness/`: case tables for the Claude adapter
+
+The built-in Claude harness's wire rules (spec #98, slice 2.3):
+`claude-stream.json` holds what one stdout line of the `claude` CLI's
+stream-json output parses into, and `claude-stdin.json` what each call
+writes on its stdin. Both are ordinary case tables, with these descriptors:
+
+| Descriptor | Shape |
+| --- | --- |
+| line input | a string (the line as UTF-8, without its newline), or `{"hex": "<bytes>"}` for bytes that are not text, such as invalid UTF-8 |
+| claude event | `{"event": <ClaudeEvent case name>}` plus Swift's field names: `ready {sessionID, model}`, `textDelta {text}`, `assistantMessage {text}`, `toolUse {name, detail}`, `turnCompleted {resultText, costUSD, isError, subtype}` (`resultText` and `costUSD` may be `null`), `controlResult {action, ok, detail, value}` (`value` may be `null`), `processError {message}`, `terminated {exitCode}` |
+
+`claude-stream.json` takes a line input and expects a list of claude
+events, in order; an empty list means the line is ignored. Numbers are
+compared as numbers, so a cost of `1` matches `1.0`. The parser reports a
+control response's raw `request_id` as `action` and a `null` value; the
+adapter swaps in the subtype and value it recorded. Deep lines are kept in
+the file as plain strings of brackets.
+
+`claude-stdin.json` takes `{call, text?, model?, mode?, requestID?}`, where
+`call` is `send`, `interrupt`, `setModel` or `setPermissionMode`, and
+expects the JSON object of the line written, compared as JSON (key order and
+escaping are the writer's), or `null` when the call writes nothing. Every
+line written ends with one newline and holds no other.
+
+The Swift runner is `Tests/PowerUpTests/HarnessFixtureTests.swift` (its
+descriptor helpers are in `FixtureValues.swift`).
 
 ## `session/`: session scenarios (format 1)
 

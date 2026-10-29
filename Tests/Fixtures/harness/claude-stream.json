@@ -1,0 +1,1385 @@
+{
+  "description": "One stdout line of the claude CLI's stream-json output (without its newline) and the events it gives, before the adapter applies them. Anything unrecognized gives no events: an unknown type, a field of the wrong type, a line that is not a JSON object. The line is read as Foundation's JSONSerialization reads it (DESIGN.md v2.12, HK-393): valid UTF-8 with one optional leading byte order mark, first of two equal keys wins, one trailing comma accepted, a number that overflows a double rejects the line, a value may begin only while at most 512 containers are open. Fields are read as Swift reads them through NSNumber (HK-394): a bool is the number 1 or 0, the numbers 0 and 1 are bools. Text lengths count extended grapheme clusters (HK-063). In a controlResult, action is the raw request_id and value is null; the adapter swaps in the recorded subtype and value.",
+  "function": "ClaudeService.events(fromLine:) ↔ powerup_core::harness::claude::parse::events_from_line — input: a line input (a string, the line as UTF-8, or {\"hex\": <bytes>} for bytes that are not text); expected: a list of claude event descriptors",
+  "verifiedBy": "DESIGN.md v1.1 A (verified live against claude CLI v2.1.243); Tests/PowerUpTests/HarnessFixtureTests.swift testClaudeStreamTable plays it through ClaudeService.events(fromLine:).",
+  "capturedAgainst": "The Swift parser (JSONSerialization) of PowerUp at 7404080, built with Swift 5.9.2 (Xcode 15.2) and run on macOS 27.2; the wire shapes themselves were verified live against claude CLI v2.1.243 (DESIGN.md v1.1 A)",
+  "cases": [
+    {
+      "name": "system init gives ready",
+      "input": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"abc-123\",\"model\":\"claude-sonnet-5\",\"cwd\":\"/tmp\"}",
+      "expected": [
+        {
+          "event": "ready",
+          "sessionID": "abc-123",
+          "model": "claude-sonnet-5"
+        }
+      ],
+      "reason": "system/init is how a session id and the model reach the app; every later rule keys on it (HK-055)."
+    },
+    {
+      "name": "system init without a session id is ignored",
+      "input": "{\"type\":\"system\",\"subtype\":\"init\",\"model\":\"m\"}",
+      "expected": [],
+      "reason": "A ready without an id would store an empty resumable session id (HK-055)."
+    },
+    {
+      "name": "system init with an empty session id is ignored",
+      "input": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"\",\"model\":\"m\"}",
+      "expected": [],
+      "reason": "An empty id is no id: it must not become the session to resume (HK-055)."
+    },
+    {
+      "name": "system init without a model reads an empty model",
+      "input": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s1\"}",
+      "expected": [
+        {
+          "event": "ready",
+          "sessionID": "s1",
+          "model": ""
+        }
+      ],
+      "reason": "The model is optional; the adapter keeps its last model when the init names none."
+    },
+    {
+      "name": "system init with a non-string model reads an empty model",
+      "input": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s1\",\"model\":5}",
+      "expected": [
+        {
+          "event": "ready",
+          "sessionID": "s1",
+          "model": ""
+        }
+      ],
+      "reason": "A field of the wrong type reads as missing, never as a failed line (CLAUDE.md: parse defensively)."
+    },
+    {
+      "name": "system status is ignored",
+      "input": "{\"type\":\"system\",\"subtype\":\"status\"}",
+      "expected": [],
+      "reason": "Only system/init means anything; system/status must never read as a new session (HK-055)."
+    },
+    {
+      "name": "system hook_started is ignored",
+      "input": "{\"type\":\"system\",\"subtype\":\"hook_started\"}",
+      "expected": [],
+      "reason": "Only system/init means anything; system/hook_started must never read as a new session (HK-055)."
+    },
+    {
+      "name": "system hook_response is ignored",
+      "input": "{\"type\":\"system\",\"subtype\":\"hook_response\"}",
+      "expected": [],
+      "reason": "Only system/init means anything; system/hook_response must never read as a new session (HK-055)."
+    },
+    {
+      "name": "system thinking_tokens is ignored",
+      "input": "{\"type\":\"system\",\"subtype\":\"thinking_tokens\"}",
+      "expected": [],
+      "reason": "Only system/init means anything; system/thinking_tokens must never read as a new session (HK-055)."
+    },
+    {
+      "name": "system api_retry is ignored",
+      "input": "{\"type\":\"system\",\"subtype\":\"api_retry\"}",
+      "expected": [],
+      "reason": "Only system/init means anything; system/api_retry must never read as a new session (HK-055)."
+    },
+    {
+      "name": "system compact_boundary is ignored",
+      "input": "{\"type\":\"system\",\"subtype\":\"compact_boundary\"}",
+      "expected": [],
+      "reason": "Only system/init means anything; system/compact_boundary must never read as a new session (HK-055)."
+    },
+    {
+      "name": "system with a non-string subtype is ignored",
+      "input": "{\"type\":\"system\",\"subtype\":1,\"session_id\":\"s1\"}",
+      "expected": [],
+      "reason": "Only the string \"init\" starts a session (HK-055)."
+    },
+    {
+      "name": "a text delta streams",
+      "input": "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hello\"}}}",
+      "expected": [
+        {
+          "event": "textDelta",
+          "text": "Hello"
+        }
+      ],
+      "reason": "Streaming text is the live reply the window shows while the turn runs (HK-056)."
+    },
+    {
+      "name": "an empty text delta is ignored",
+      "input": "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"\"}}}",
+      "expected": [],
+      "reason": "An empty delta adds nothing to the live reply (HK-056)."
+    },
+    {
+      "name": "a thinking_delta is ignored",
+      "input": "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"text\":\"x\"}}}",
+      "expected": [],
+      "reason": "Never show or speak internal content: only text_delta is reply text (HK-056)."
+    },
+    {
+      "name": "a signature_delta is ignored",
+      "input": "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"text\":\"x\"}}}",
+      "expected": [],
+      "reason": "Never show or speak internal content: only text_delta is reply text (HK-056)."
+    },
+    {
+      "name": "a input_json_delta is ignored",
+      "input": "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"text\":\"x\"}}}",
+      "expected": [],
+      "reason": "Never show or speak internal content: only text_delta is reply text (HK-056)."
+    },
+    {
+      "name": "stream_event message_start is ignored",
+      "input": "{\"type\":\"stream_event\",\"event\":{\"type\":\"message_start\"}}",
+      "expected": [],
+      "reason": "Only content_block_delta carries reply text (HK-056)."
+    },
+    {
+      "name": "stream_event content_block_start is ignored",
+      "input": "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_start\"}}",
+      "expected": [],
+      "reason": "Only content_block_delta carries reply text (HK-056)."
+    },
+    {
+      "name": "stream_event content_block_stop is ignored",
+      "input": "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_stop\"}}",
+      "expected": [],
+      "reason": "Only content_block_delta carries reply text (HK-056)."
+    },
+    {
+      "name": "stream_event message_delta is ignored",
+      "input": "{\"type\":\"stream_event\",\"event\":{\"type\":\"message_delta\"}}",
+      "expected": [],
+      "reason": "Only content_block_delta carries reply text (HK-056)."
+    },
+    {
+      "name": "stream_event message_stop is ignored",
+      "input": "{\"type\":\"stream_event\",\"event\":{\"type\":\"message_stop\"}}",
+      "expected": [],
+      "reason": "Only content_block_delta carries reply text (HK-056)."
+    },
+    {
+      "name": "a thinking-only assistant message gives nothing",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"thinking\",\"thinking\":\"hmm\"}]}}",
+      "expected": [],
+      "reason": "Verified live: assistant messages arrive once per completed content block, and the first often holds only thinking (HK-059)."
+    },
+    {
+      "name": "redacted thinking is skipped",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"redacted_thinking\",\"data\":\"xyz\"},{\"type\":\"text\",\"text\":\"Done.\"}]}}",
+      "expected": [
+        {
+          "event": "assistantMessage",
+          "text": "Done."
+        }
+      ],
+      "reason": "Redacted thinking is internal content (HK-059)."
+    },
+    {
+      "name": "a tool result block is skipped",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"content\":\"output\"}]}}",
+      "expected": [],
+      "reason": "Tool output is not reply text (HK-059)."
+    },
+    {
+      "name": "text blocks are joined with a newline",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"Part one.\"},{\"type\":\"text\",\"text\":\"Part two.\"}]}}",
+      "expected": [
+        {
+          "event": "assistantMessage",
+          "text": "Part one.\nPart two."
+        }
+      ],
+      "reason": "One assistant message is one reply, however many text blocks it has (HK-059)."
+    },
+    {
+      "name": "text blocks are trimmed",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"  Hello.\\n\"}]}}",
+      "expected": [
+        {
+          "event": "assistantMessage",
+          "text": "Hello."
+        }
+      ],
+      "reason": "Surrounding whitespace is never part of the reply (HK-059)."
+    },
+    {
+      "name": "a whitespace-only text block is dropped",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\" \\n\\t \"},{\"type\":\"text\",\"text\":\"Hi\"}]}}",
+      "expected": [
+        {
+          "event": "assistantMessage",
+          "text": "Hi"
+        }
+      ],
+      "reason": "An empty block must not add a blank line to the joined reply (HK-059)."
+    },
+    {
+      "name": "a text block with a non-string text is skipped",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":5},{\"type\":\"text\",\"text\":\"Hi\"}]}}",
+      "expected": [
+        {
+          "event": "assistantMessage",
+          "text": "Hi"
+        }
+      ],
+      "reason": "A field of the wrong type reads as missing (CLAUDE.md: parse defensively)."
+    },
+    {
+      "name": "a block that is not an object is skipped",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[\"loose\",3,{\"type\":\"text\",\"text\":\"Hi\"}]}}",
+      "expected": [
+        {
+          "event": "assistantMessage",
+          "text": "Hi"
+        }
+      ],
+      "reason": "One odd block must not lose the rest of the message."
+    },
+    {
+      "name": "a block without a type is skipped",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"text\":\"untyped\"},{\"type\":\"text\",\"text\":\"Hi\"}]}}",
+      "expected": [
+        {
+          "event": "assistantMessage",
+          "text": "Hi"
+        }
+      ],
+      "reason": "Only typed blocks are read."
+    },
+    {
+      "name": "string content is accepted",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":\"plain string reply\"}}",
+      "expected": [
+        {
+          "event": "assistantMessage",
+          "text": "plain string reply"
+        }
+      ],
+      "reason": "Verified live: after set_model the CLI sends content as a plain string; assuming an array drops every reply (HK-058)."
+    },
+    {
+      "name": "string content is trimmed",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":\"  plain\\n\"}}",
+      "expected": [
+        {
+          "event": "assistantMessage",
+          "text": "plain"
+        }
+      ],
+      "reason": "Surrounding whitespace is never part of the reply (HK-058)."
+    },
+    {
+      "name": "whitespace-only string content gives nothing",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":\"  \\n \"}}",
+      "expected": [],
+      "reason": "An empty reply is not a reply (HK-058)."
+    },
+    {
+      "name": "content of another type gives nothing",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":42}}",
+      "expected": [],
+      "reason": "Neither a string nor a list: nothing to read."
+    },
+    {
+      "name": "an assistant line without a message gives nothing",
+      "input": "{\"type\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"x\"}]}",
+      "expected": [],
+      "reason": "The content lives under message; nothing else is read."
+    },
+    {
+      "name": "an assistant message that is not an object gives nothing",
+      "input": "{\"type\":\"assistant\",\"message\":\"x\"}",
+      "expected": [],
+      "reason": "A field of the wrong type reads as missing."
+    },
+    {
+      "name": "a user echo with string content is ignored",
+      "input": "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"<local-command-stdout>Set model to sonnet</local-command-stdout>\"}}",
+      "expected": [],
+      "reason": "Verified live: the note after set_model has string content; user lines are never read, so nothing is cast (HK-057)."
+    },
+    {
+      "name": "a user echo with list content is ignored",
+      "input": "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Fix the bug.\"}]}}",
+      "expected": [],
+      "reason": "Our own turn comes back as a user line; reading it would show the prompt as a reply (HK-057)."
+    },
+    {
+      "name": "tool use gives a tool event with its detail",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Edit\",\"input\":{\"file_path\":\"src/main.py\",\"other\":\"x\"}}]}}",
+      "expected": [
+        {
+          "event": "toolUse",
+          "name": "Edit",
+          "detail": "src/main.py"
+        }
+      ],
+      "reason": "The transcript shows what a tool touches (HK-061)."
+    },
+    {
+      "name": "text comes before tool use",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"Editing now.\"},{\"type\":\"tool_use\",\"name\":\"Write\",\"input\":{\"file_path\":\"a.txt\"}}]}}",
+      "expected": [
+        {
+          "event": "assistantMessage",
+          "text": "Editing now."
+        },
+        {
+          "event": "toolUse",
+          "name": "Write",
+          "detail": "a.txt"
+        }
+      ],
+      "reason": "Within one message, the reply is shown before the tools it runs (HK-060)."
+    },
+    {
+      "name": "text after a tool still comes first",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Read\",\"input\":{\"file_path\":\"a.txt\"}},{\"type\":\"text\",\"text\":\"Read it.\"}]}}",
+      "expected": [
+        {
+          "event": "assistantMessage",
+          "text": "Read it."
+        },
+        {
+          "event": "toolUse",
+          "name": "Read",
+          "detail": "a.txt"
+        }
+      ],
+      "reason": "Text events always precede tool events, whatever the block order (HK-060)."
+    },
+    {
+      "name": "file_path beats command",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Bash\",\"input\":{\"command\":\"ls\",\"file_path\":\"a.txt\"}}]}}",
+      "expected": [
+        {
+          "event": "toolUse",
+          "name": "Bash",
+          "detail": "a.txt"
+        }
+      ],
+      "reason": "The preferred keys are tried in a fixed order: file_path, command, description, pattern, url, prompt (HK-061)."
+    },
+    {
+      "name": "command beats description",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Bash\",\"input\":{\"description\":\"List files\",\"command\":\"ls -la\"}}]}}",
+      "expected": [
+        {
+          "event": "toolUse",
+          "name": "Bash",
+          "detail": "ls -la"
+        }
+      ],
+      "reason": "The preferred keys are tried in a fixed order (HK-061)."
+    },
+    {
+      "name": "prompt is the last preferred key",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"WebFetch\",\"input\":{\"prompt\":\"Find it\",\"url\":\"https://example.com\"}}]}}",
+      "expected": [
+        {
+          "event": "toolUse",
+          "name": "WebFetch",
+          "detail": "https://example.com"
+        }
+      ],
+      "reason": "url comes before prompt (HK-061)."
+    },
+    {
+      "name": "the sorted-key fallback takes the first key",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Custom\",\"input\":{\"zeta\":\"z\",\"alpha\":\"a\"}}]}}",
+      "expected": [
+        {
+          "event": "toolUse",
+          "name": "Custom",
+          "detail": "a"
+        }
+      ],
+      "reason": "Without a preferred key, the first string field by sorted key name is shown, so the detail is stable across turns (HK-061)."
+    },
+    {
+      "name": "an upper-case key sorts first",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Custom\",\"input\":{\"b\":\"lower\",\"Z\":\"upper\"}}]}}",
+      "expected": [
+        {
+          "event": "toolUse",
+          "name": "Custom",
+          "detail": "upper"
+        }
+      ],
+      "reason": "Keys sort by code point, so upper case comes before lower case (HK-061)."
+    },
+    {
+      "name": "a non-string preferred key is skipped",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Bash\",\"input\":{\"file_path\":5,\"command\":\"ls\"}}]}}",
+      "expected": [
+        {
+          "event": "toolUse",
+          "name": "Bash",
+          "detail": "ls"
+        }
+      ],
+      "reason": "Only string values make a detail (HK-061)."
+    },
+    {
+      "name": "a preferred value that condenses to nothing falls through",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Bash\",\"input\":{\"file_path\":\" \\n\\t \",\"command\":\"ls\"}}]}}",
+      "expected": [
+        {
+          "event": "toolUse",
+          "name": "Bash",
+          "detail": "ls"
+        }
+      ],
+      "reason": "An empty detail is never chosen while another field has text (HK-061)."
+    },
+    {
+      "name": "the fallback skips empty and non-string values",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Custom\",\"input\":{\"alpha\":\" \",\"beta\":7,\"gamma\":\"g\"}}]}}",
+      "expected": [
+        {
+          "event": "toolUse",
+          "name": "Custom",
+          "detail": "g"
+        }
+      ],
+      "reason": "The first non-empty string field wins (HK-061)."
+    },
+    {
+      "name": "a tool without a name is called Tool",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"input\":{\"command\":\"ls\"}}]}}",
+      "expected": [
+        {
+          "event": "toolUse",
+          "name": "Tool",
+          "detail": "ls"
+        }
+      ],
+      "reason": "A tool line is still worth showing without its name."
+    },
+    {
+      "name": "a non-string tool name reads as Tool",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":3,\"input\":{\"command\":\"ls\"}}]}}",
+      "expected": [
+        {
+          "event": "toolUse",
+          "name": "Tool",
+          "detail": "ls"
+        }
+      ],
+      "reason": "A field of the wrong type reads as missing."
+    },
+    {
+      "name": "a tool without input has an empty detail",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Bash\"}]}}",
+      "expected": [
+        {
+          "event": "toolUse",
+          "name": "Bash",
+          "detail": ""
+        }
+      ],
+      "reason": "No input, no detail; the tool itself is still shown."
+    },
+    {
+      "name": "a tool input that is not an object has an empty detail",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Bash\",\"input\":\"ls\"}]}}",
+      "expected": [
+        {
+          "event": "toolUse",
+          "name": "Bash",
+          "detail": ""
+        }
+      ],
+      "reason": "Only an object input is read."
+    },
+    {
+      "name": "a tool input with no string values has an empty detail",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Bash\",\"input\":{\"count\":3,\"flags\":[\"-l\"]}}]}}",
+      "expected": [
+        {
+          "event": "toolUse",
+          "name": "Bash",
+          "detail": ""
+        }
+      ],
+      "reason": "Only string values make a detail."
+    },
+    {
+      "name": "tabs and newlines are flattened and collapsed",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Bash\",\"input\":{\"command\":\"  ls\\t-la\\n\\n /tmp  \"}}]}}",
+      "expected": [
+        {
+          "event": "toolUse",
+          "name": "Bash",
+          "detail": "ls -la /tmp"
+        }
+      ],
+      "reason": "The detail is one short line: CR, LF and tab become spaces and runs of spaces collapse (HK-062)."
+    },
+    {
+      "name": "CRLF is flattened",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Bash\",\"input\":{\"command\":\"echo a\\r\\necho b\"}}]}}",
+      "expected": [
+        {
+          "event": "toolUse",
+          "name": "Bash",
+          "detail": "echo a echo b"
+        }
+      ],
+      "reason": "CR and LF both become spaces before the collapse (HK-062)."
+    },
+    {
+      "name": "a line break carrying a combining mark is kept",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Bash\",\"input\":{\"command\":\"a\\n\u0301b\"}}]}}",
+      "expected": [
+        {
+          "event": "toolUse",
+          "name": "Bash",
+          "detail": "a\n\u0301b"
+        }
+      ],
+      "reason": "Swift replaces CR, LF and tab with Foundation's string search, which never matches one followed by a combining mark (Grapheme_Cluster_Break=Extend): the break stays (HK-062)."
+    },
+    {
+      "name": "a space carrying a combining mark is not a separator",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Bash\",\"input\":{\"command\":\"a \u0301b\"}}]}}",
+      "expected": [
+        {
+          "event": "toolUse",
+          "name": "Bash",
+          "detail": "a \u0301b"
+        }
+      ],
+      "reason": "Collapsing splits on characters equal to a space; a space with a combining mark is a different character (HK-063)."
+    },
+    {
+      "name": "a long detail is cut to 80 characters",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Bash\",\"input\":{\"command\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}]}}",
+      "expected": [
+        {
+          "event": "toolUse",
+          "name": "Bash",
+          "detail": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa…"
+        }
+      ],
+      "reason": "Above 80 characters the detail keeps 79 and adds an ellipsis (HK-062)."
+    },
+    {
+      "name": "80 characters are kept whole",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Bash\",\"input\":{\"command\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}]}}",
+      "expected": [
+        {
+          "event": "toolUse",
+          "name": "Bash",
+          "detail": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "reason": "The cut applies only above 80 (HK-062)."
+    },
+    {
+      "name": "81 characters are cut",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Bash\",\"input\":{\"command\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}]}}",
+      "expected": [
+        {
+          "event": "toolUse",
+          "name": "Bash",
+          "detail": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa…"
+        }
+      ],
+      "reason": "81 is the first length that is cut (HK-062)."
+    },
+    {
+      "name": "an emoji with a skin tone is kept whole at the cut",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Bash\",\"input\":{\"command\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa👍🏽zzzz\"}}]}}",
+      "expected": [
+        {
+          "event": "toolUse",
+          "name": "Bash",
+          "detail": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa👍🏽…"
+        }
+      ],
+      "reason": "Characters are extended grapheme clusters: counting bytes or scalars would cut the emoji from its modifier (HK-063)."
+    },
+    {
+      "name": "a conjunct is one character at the cut",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Bash\",\"input\":{\"command\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaक\u094dषzzzz\"}}]}}",
+      "expected": [
+        {
+          "event": "toolUse",
+          "name": "Bash",
+          "detail": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaक\u094dष…"
+        }
+      ],
+      "reason": "Unicode 15.1 grapheme rules (GB9c) join a Devanagari conjunct into one character, as Swift's String does on current macOS (HK-063)."
+    },
+    {
+      "name": "CJK is counted per character",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Bash\",\"input\":{\"command\":\"修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修\"}}]}}",
+      "expected": [
+        {
+          "event": "toolUse",
+          "name": "Bash",
+          "detail": "修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修修…"
+        }
+      ],
+      "reason": "A CJK character is one character, never three bytes (HK-063)."
+    },
+    {
+      "name": "a success result",
+      "input": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"Done.\",\"total_cost_usd\":0.042,\"num_turns\":3}",
+      "expected": [
+        {
+          "event": "turnCompleted",
+          "resultText": "Done.",
+          "costUSD": 0.042,
+          "isError": false,
+          "subtype": "success"
+        }
+      ],
+      "reason": "A turn ends with its result text and its cost (HK-064, HK-065)."
+    },
+    {
+      "name": "an error subtype is an error even without is_error",
+      "input": "{\"type\":\"result\",\"subtype\":\"error_during_execution\",\"is_error\":false,\"result\":\"boom\"}",
+      "expected": [
+        {
+          "event": "turnCompleted",
+          "resultText": "boom",
+          "costUSD": null,
+          "isError": true,
+          "subtype": "error_during_execution"
+        }
+      ],
+      "reason": "Any subtype but success is an error turn (HK-064)."
+    },
+    {
+      "name": "is_error true with a success subtype is an error",
+      "input": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":true,\"result\":\"API Error\"}",
+      "expected": [
+        {
+          "event": "turnCompleted",
+          "resultText": "API Error",
+          "costUSD": null,
+          "isError": true,
+          "subtype": "success"
+        }
+      ],
+      "reason": "Either signal makes the turn an error (HK-064)."
+    },
+    {
+      "name": "a missing subtype reads as success",
+      "input": "{\"type\":\"result\",\"is_error\":false,\"result\":\"ok\"}",
+      "expected": [
+        {
+          "event": "turnCompleted",
+          "resultText": "ok",
+          "costUSD": null,
+          "isError": false,
+          "subtype": "success"
+        }
+      ],
+      "reason": "The subtype defaults to success (HK-064)."
+    },
+    {
+      "name": "a non-string subtype reads as success",
+      "input": "{\"type\":\"result\",\"subtype\":true,\"result\":\"ok\"}",
+      "expected": [
+        {
+          "event": "turnCompleted",
+          "resultText": "ok",
+          "costUSD": null,
+          "isError": false,
+          "subtype": "success"
+        }
+      ],
+      "reason": "A field of the wrong type reads as missing, and a missing subtype is success (HK-064)."
+    },
+    {
+      "name": "a whitespace result text becomes null",
+      "input": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"   \"}",
+      "expected": [
+        {
+          "event": "turnCompleted",
+          "resultText": null,
+          "costUSD": null,
+          "isError": false,
+          "subtype": "success"
+        }
+      ],
+      "reason": "An empty result is no result (HK-065)."
+    },
+    {
+      "name": "the result text is trimmed",
+      "input": "{\"type\":\"result\",\"subtype\":\"success\",\"result\":\"  Done.\\n\"}",
+      "expected": [
+        {
+          "event": "turnCompleted",
+          "resultText": "Done.",
+          "costUSD": null,
+          "isError": false,
+          "subtype": "success"
+        }
+      ],
+      "reason": "Surrounding whitespace is never part of the result (HK-065)."
+    },
+    {
+      "name": "a non-string result becomes null",
+      "input": "{\"type\":\"result\",\"subtype\":\"success\",\"result\":{\"text\":\"x\"}}",
+      "expected": [
+        {
+          "event": "turnCompleted",
+          "resultText": null,
+          "costUSD": null,
+          "isError": false,
+          "subtype": "success"
+        }
+      ],
+      "reason": "A field of the wrong type reads as missing (HK-065)."
+    },
+    {
+      "name": "an integer cost is read",
+      "input": "{\"type\":\"result\",\"subtype\":\"success\",\"total_cost_usd\":2}",
+      "expected": [
+        {
+          "event": "turnCompleted",
+          "resultText": null,
+          "costUSD": 2,
+          "isError": false,
+          "subtype": "success"
+        }
+      ],
+      "reason": "total_cost_usd is any JSON number (HK-065)."
+    },
+    {
+      "name": "a negative cost is passed on",
+      "input": "{\"type\":\"result\",\"subtype\":\"success\",\"total_cost_usd\":-1.5}",
+      "expected": [
+        {
+          "event": "turnCompleted",
+          "resultText": null,
+          "costUSD": -1.5,
+          "isError": false,
+          "subtype": "success"
+        }
+      ],
+      "reason": "The parser reports the number; the adapter decides it never moves the total (HK-066)."
+    },
+    {
+      "name": "a cost of true reads as 1",
+      "input": "{\"type\":\"result\",\"subtype\":\"success\",\"total_cost_usd\":true}",
+      "expected": [
+        {
+          "event": "turnCompleted",
+          "resultText": null,
+          "costUSD": 1,
+          "isError": false,
+          "subtype": "success"
+        }
+      ],
+      "reason": "Swift reads the cost through NSNumber, where a JSON bool is the number 1 or 0 (HK-394)."
+    },
+    {
+      "name": "a cost of false reads as 0",
+      "input": "{\"type\":\"result\",\"subtype\":\"success\",\"total_cost_usd\":false}",
+      "expected": [
+        {
+          "event": "turnCompleted",
+          "resultText": null,
+          "costUSD": 0,
+          "isError": false,
+          "subtype": "success"
+        }
+      ],
+      "reason": "A JSON bool is the number 0 or 1 through NSNumber (HK-394)."
+    },
+    {
+      "name": "a string cost reads as null",
+      "input": "{\"type\":\"result\",\"subtype\":\"success\",\"total_cost_usd\":\"0.5\"}",
+      "expected": [
+        {
+          "event": "turnCompleted",
+          "resultText": null,
+          "costUSD": null,
+          "isError": false,
+          "subtype": "success"
+        }
+      ],
+      "reason": "A string is never a number (HK-394)."
+    },
+    {
+      "name": "a null cost reads as null",
+      "input": "{\"type\":\"result\",\"subtype\":\"success\",\"total_cost_usd\":null}",
+      "expected": [
+        {
+          "event": "turnCompleted",
+          "resultText": null,
+          "costUSD": null,
+          "isError": false,
+          "subtype": "success"
+        }
+      ],
+      "reason": "null is no cost."
+    },
+    {
+      "name": "is_error 1 is an error",
+      "input": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":1}",
+      "expected": [
+        {
+          "event": "turnCompleted",
+          "resultText": null,
+          "costUSD": null,
+          "isError": true,
+          "subtype": "success"
+        }
+      ],
+      "reason": "Swift reads is_error through NSNumber, where the numbers 0 and 1 are bools (HK-394)."
+    },
+    {
+      "name": "is_error 1.0 is an error",
+      "input": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":1.0}",
+      "expected": [
+        {
+          "event": "turnCompleted",
+          "resultText": null,
+          "costUSD": null,
+          "isError": true,
+          "subtype": "success"
+        }
+      ],
+      "reason": "1.0 is the number 1 (HK-394)."
+    },
+    {
+      "name": "is_error 0 is not an error",
+      "input": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":0}",
+      "expected": [
+        {
+          "event": "turnCompleted",
+          "resultText": null,
+          "costUSD": null,
+          "isError": false,
+          "subtype": "success"
+        }
+      ],
+      "reason": "0 is false through NSNumber (HK-394)."
+    },
+    {
+      "name": "is_error 2 is not an error",
+      "input": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":2}",
+      "expected": [
+        {
+          "event": "turnCompleted",
+          "resultText": null,
+          "costUSD": null,
+          "isError": false,
+          "subtype": "success"
+        }
+      ],
+      "reason": "Only 0 and 1 are bools; any other number reads as missing, which is false (HK-394)."
+    },
+    {
+      "name": "is_error as a string is not an error",
+      "input": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":\"true\"}",
+      "expected": [
+        {
+          "event": "turnCompleted",
+          "resultText": null,
+          "costUSD": null,
+          "isError": false,
+          "subtype": "success"
+        }
+      ],
+      "reason": "A string is never a bool (HK-394)."
+    },
+    {
+      "name": "a success response carries the request id",
+      "input": "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"R2\"}}",
+      "expected": [
+        {
+          "event": "controlResult",
+          "action": "R2",
+          "ok": true,
+          "detail": "",
+          "value": null
+        }
+      ],
+      "reason": "The parser reports the raw request id; the adapter swaps in the subtype it recorded (HK-070)."
+    },
+    {
+      "name": "a success response ignores an error field",
+      "input": "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"R2\",\"error\":\"stale\"}}",
+      "expected": [
+        {
+          "event": "controlResult",
+          "action": "R2",
+          "ok": true,
+          "detail": "",
+          "value": null
+        }
+      ],
+      "reason": "Detail is read only for a failed request."
+    },
+    {
+      "name": "an error response carries its detail",
+      "input": "{\"type\":\"control_response\",\"response\":{\"subtype\":\"error\",\"request_id\":\"R9\",\"error\":\"Unsupported control request subtype: set_effort\"}}",
+      "expected": [
+        {
+          "event": "controlResult",
+          "action": "R9",
+          "ok": false,
+          "detail": "Unsupported control request subtype: set_effort",
+          "value": null
+        }
+      ],
+      "reason": "Verified live: an unknown subtype is answered with an error, and the text explains it (HK-072)."
+    },
+    {
+      "name": "a nested error is read",
+      "input": "{\"type\":\"control_response\",\"response\":{\"subtype\":\"error\",\"request_id\":\"R9\",\"response\":{\"error\":\"nested reason\"}}}",
+      "expected": [
+        {
+          "event": "controlResult",
+          "action": "R9",
+          "ok": false,
+          "detail": "nested reason",
+          "value": null
+        }
+      ],
+      "reason": "The error sits at response.response.error in some CLI versions (HK-072)."
+    },
+    {
+      "name": "the top-level error wins over the nested one",
+      "input": "{\"type\":\"control_response\",\"response\":{\"subtype\":\"error\",\"request_id\":\"R9\",\"error\":\"top\",\"response\":{\"error\":\"nested\"}}}",
+      "expected": [
+        {
+          "event": "controlResult",
+          "action": "R9",
+          "ok": false,
+          "detail": "top",
+          "value": null
+        }
+      ],
+      "reason": "response.error is tried first (HK-072)."
+    },
+    {
+      "name": "an empty error falls back to the subtype",
+      "input": "{\"type\":\"control_response\",\"response\":{\"subtype\":\"error\",\"request_id\":\"R9\",\"error\":\"\"}}",
+      "expected": [
+        {
+          "event": "controlResult",
+          "action": "R9",
+          "ok": false,
+          "detail": "error",
+          "value": null
+        }
+      ],
+      "reason": "A failure always says something (HK-072)."
+    },
+    {
+      "name": "a whitespace error falls back to the subtype",
+      "input": "{\"type\":\"control_response\",\"response\":{\"subtype\":\"error\",\"request_id\":\"R9\",\"error\":\"  \\n\"}}",
+      "expected": [
+        {
+          "event": "controlResult",
+          "action": "R9",
+          "ok": false,
+          "detail": "error",
+          "value": null
+        }
+      ],
+      "reason": "Whitespace says nothing either (HK-072)."
+    },
+    {
+      "name": "no subtype and no error says the CLI rejected the request",
+      "input": "{\"type\":\"control_response\",\"response\":{\"request_id\":\"R9\"}}",
+      "expected": [
+        {
+          "event": "controlResult",
+          "action": "R9",
+          "ok": false,
+          "detail": "the CLI rejected the request",
+          "value": null
+        }
+      ],
+      "reason": "Not success, with nothing to quote: a generic reason (HK-072)."
+    },
+    {
+      "name": "a non-string subtype is not success",
+      "input": "{\"type\":\"control_response\",\"response\":{\"subtype\":true,\"request_id\":\"R9\"}}",
+      "expected": [
+        {
+          "event": "controlResult",
+          "action": "R9",
+          "ok": false,
+          "detail": "the CLI rejected the request",
+          "value": null
+        }
+      ],
+      "reason": "Only the string success is success."
+    },
+    {
+      "name": "a long error is condensed to 200 characters",
+      "input": "{\"type\":\"control_response\",\"response\":{\"subtype\":\"error\",\"request_id\":\"R9\",\"error\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\"}}",
+      "expected": [
+        {
+          "event": "controlResult",
+          "action": "R9",
+          "ok": false,
+          "detail": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee…",
+          "value": null
+        }
+      ],
+      "reason": "The error detail is cut to 199 characters and an ellipsis (HK-072)."
+    },
+    {
+      "name": "an error with line breaks is flattened",
+      "input": "{\"type\":\"control_response\",\"response\":{\"subtype\":\"error\",\"request_id\":\"R9\",\"error\":\"bad\\n  thing\"}}",
+      "expected": [
+        {
+          "event": "controlResult",
+          "action": "R9",
+          "ok": false,
+          "detail": "bad thing",
+          "value": null
+        }
+      ],
+      "reason": "The detail is one line (HK-072)."
+    },
+    {
+      "name": "a response without a request id is ignored",
+      "input": "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\"}}",
+      "expected": [],
+      "reason": "Without an id the answer cannot be matched to a request (HK-070)."
+    },
+    {
+      "name": "an empty request id is ignored",
+      "input": "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"\"}}",
+      "expected": [],
+      "reason": "An empty id matches no request (HK-070)."
+    },
+    {
+      "name": "a non-string request id is ignored",
+      "input": "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":7}}",
+      "expected": [],
+      "reason": "Request ids are strings."
+    },
+    {
+      "name": "a response that is not an object is ignored",
+      "input": "{\"type\":\"control_response\",\"response\":\"success\"}",
+      "expected": [],
+      "reason": "A field of the wrong type reads as missing."
+    },
+    {
+      "name": "rate_limit_event is ignored",
+      "input": "{\"type\":\"rate_limit_event\",\"info\":{}}",
+      "expected": [],
+      "reason": "The CLI adds message types across versions; unknown ones are ignored (HK-054)."
+    },
+    {
+      "name": "an unknown type is ignored",
+      "input": "{\"type\":\"something_new_from_a_future_cli\"}",
+      "expected": [],
+      "reason": "Unknown types are silently ignored (HK-054)."
+    },
+    {
+      "name": "a line without a type is ignored",
+      "input": "{\"no_type_at_all\":true}",
+      "expected": [],
+      "reason": "Nothing to dispatch on (HK-054)."
+    },
+    {
+      "name": "a non-string type is ignored",
+      "input": "{\"type\":5}",
+      "expected": [],
+      "reason": "Only a string type dispatches (HK-054)."
+    },
+    {
+      "name": "text that is not JSON is ignored",
+      "input": "not json at all",
+      "expected": [],
+      "reason": "Garbage on stdout must never fail the session (HK-054)."
+    },
+    {
+      "name": "an empty line is ignored",
+      "input": "",
+      "expected": [],
+      "reason": "Nothing to read (HK-054)."
+    },
+    {
+      "name": "a top-level array is ignored",
+      "input": "[1,2,3]",
+      "expected": [],
+      "reason": "Only an object is a message (HK-054)."
+    },
+    {
+      "name": "a top-level string is ignored",
+      "input": "\"system\"",
+      "expected": [],
+      "reason": "Only an object is a message (HK-054)."
+    },
+    {
+      "name": "a duplicate key keeps the first value",
+      "input": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"first\",\"session_id\":\"second\",\"type\":\"result\"}",
+      "expected": [
+        {
+          "event": "ready",
+          "sessionID": "first",
+          "model": ""
+        }
+      ],
+      "reason": "Foundation's reader keeps the first of two equal keys; serde_json would keep the last (HK-393)."
+    },
+    {
+      "name": "a leading byte order mark is skipped",
+      "input": "\ufeff{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"abc-123\",\"model\":\"claude-sonnet-5\",\"cwd\":\"/tmp\"}",
+      "expected": [
+        {
+          "event": "ready",
+          "sessionID": "abc-123",
+          "model": "claude-sonnet-5"
+        }
+      ],
+      "reason": "Foundation reads past one UTF-8 byte order mark (HK-393)."
+    },
+    {
+      "name": "two byte order marks are rejected",
+      "input": "\ufeff\ufeff{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"abc-123\",\"model\":\"claude-sonnet-5\",\"cwd\":\"/tmp\"}",
+      "expected": [],
+      "reason": "Only one is skipped (HK-393)."
+    },
+    {
+      "name": "a trailing carriage return is accepted",
+      "input": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"abc-123\",\"model\":\"claude-sonnet-5\",\"cwd\":\"/tmp\"}\r",
+      "expected": [
+        {
+          "event": "ready",
+          "sessionID": "abc-123",
+          "model": "claude-sonnet-5"
+        }
+      ],
+      "reason": "Lines are split on LF only, so a CRLF stream leaves a CR at the end, which is JSON whitespace (HK-393)."
+    },
+    {
+      "name": "surrounding JSON whitespace is accepted",
+      "input": " \t{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"abc-123\",\"model\":\"claude-sonnet-5\",\"cwd\":\"/tmp\"} \n",
+      "expected": [
+        {
+          "event": "ready",
+          "sessionID": "abc-123",
+          "model": "claude-sonnet-5"
+        }
+      ],
+      "reason": "Space, tab, LF and CR may surround the object (HK-393)."
+    },
+    {
+      "name": "a form feed is not JSON whitespace",
+      "input": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"abc-123\",\"model\":\"claude-sonnet-5\",\"cwd\":\"/tmp\"}\f",
+      "expected": [],
+      "reason": "Only space, tab, LF and CR are whitespace (HK-393)."
+    },
+    {
+      "name": "one trailing comma is accepted",
+      "input": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s1\",\"model\":\"m\",}",
+      "expected": [
+        {
+          "event": "ready",
+          "sessionID": "s1",
+          "model": "m"
+        }
+      ],
+      "reason": "Foundation accepts one trailing comma after the last member of an object or array (HK-393)."
+    },
+    {
+      "name": "a trailing comma in an array is accepted",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"Hi\"},]}}",
+      "expected": [
+        {
+          "event": "assistantMessage",
+          "text": "Hi"
+        }
+      ],
+      "reason": "Foundation accepts one trailing comma after the last element (HK-393)."
+    },
+    {
+      "name": "two trailing commas are rejected",
+      "input": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s1\",,}",
+      "expected": [],
+      "reason": "Only one trailing comma is accepted (HK-393)."
+    },
+    {
+      "name": "a lone comma in an empty object is rejected",
+      "input": "{\"type\":\"assistant\",\"message\":{,}}",
+      "expected": [],
+      "reason": "A trailing comma needs a member before it (HK-393)."
+    },
+    {
+      "name": "trailing text is rejected",
+      "input": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"abc-123\",\"model\":\"claude-sonnet-5\",\"cwd\":\"/tmp\"} x",
+      "expected": [],
+      "reason": "One line holds one value (HK-393)."
+    },
+    {
+      "name": "a trailing NUL is rejected",
+      "input": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"abc-123\",\"model\":\"claude-sonnet-5\",\"cwd\":\"/tmp\"}\u0000",
+      "expected": [],
+      "reason": "NUL is not whitespace (HK-393)."
+    },
+    {
+      "name": "a raw tab inside a string is rejected",
+      "input": "{\"type\":\"result\",\"subtype\":\"success\",\"result\":\"a\tb\"}",
+      "expected": [],
+      "reason": "Control characters must be escaped inside strings (HK-393)."
+    },
+    {
+      "name": "a NUL escape is accepted",
+      "input": "{\"type\":\"result\",\"subtype\":\"success\",\"result\":\"a\\u0000b\"}",
+      "expected": [
+        {
+          "event": "turnCompleted",
+          "resultText": "a\u0000b",
+          "costUSD": null,
+          "isError": false,
+          "subtype": "success"
+        }
+      ],
+      "reason": "An escaped NUL is an ordinary character (HK-393)."
+    },
+    {
+      "name": "an escaped surrogate pair is one character",
+      "input": "{\"type\":\"result\",\"subtype\":\"success\",\"result\":\"\\ud83d\\ude00 \\u00e9\\/\"}",
+      "expected": [
+        {
+          "event": "turnCompleted",
+          "resultText": "😀 é/",
+          "costUSD": null,
+          "isError": false,
+          "subtype": "success"
+        }
+      ],
+      "reason": "\\u escapes join surrogate pairs; \\/ is a slash (HK-393)."
+    },
+    {
+      "name": "a lone surrogate escape is rejected",
+      "input": "{\"type\":\"result\",\"subtype\":\"success\",\"result\":\"\\ud800\"}",
+      "expected": [],
+      "reason": "Foundation refuses an unpaired surrogate, so the whole line is ignored (HK-393)."
+    },
+    {
+      "name": "a high surrogate followed by a letter is rejected",
+      "input": "{\"type\":\"result\",\"subtype\":\"success\",\"result\":\"\\ud800\\u0041\"}",
+      "expected": [],
+      "reason": "A high surrogate must be followed by a low one (HK-393)."
+    },
+    {
+      "name": "an unknown escape is rejected",
+      "input": "{\"type\":\"result\",\"subtype\":\"success\",\"result\":\"\\x\"}",
+      "expected": [],
+      "reason": "Only JSON's escapes are read (HK-393)."
+    },
+    {
+      "name": "invalid UTF-8 is rejected",
+      "input": {
+        "hex": "7b2274797065223a22726573756c74222c22726573756c74223a22ff227d"
+      },
+      "expected": [],
+      "reason": "The line must be valid UTF-8; a stray byte makes Foundation refuse the whole line (HK-393)."
+    },
+    {
+      "name": "an encoded surrogate is rejected",
+      "input": {
+        "hex": "7b2274797065223a22726573756c74222c22726573756c74223a22eda080227d"
+      },
+      "expected": [],
+      "reason": "UTF-8 never encodes a surrogate (HK-393)."
+    },
+    {
+      "name": "a cost too large for a double is rejected",
+      "input": "{\"type\":\"result\",\"subtype\":\"success\",\"total_cost_usd\":1e400}",
+      "expected": [],
+      "reason": "Foundation refuses a number that overflows a double, and with it the whole line (HK-393)."
+    },
+    {
+      "name": "a cost too small for a double reads as 0",
+      "input": "{\"type\":\"result\",\"subtype\":\"success\",\"total_cost_usd\":1e-400}",
+      "expected": [
+        {
+          "event": "turnCompleted",
+          "resultText": null,
+          "costUSD": 0,
+          "isError": false,
+          "subtype": "success"
+        }
+      ],
+      "reason": "A number that underflows reads as zero (HK-393)."
+    },
+    {
+      "name": "a long integer cost reads as the nearest double",
+      "input": "{\"type\":\"result\",\"subtype\":\"success\",\"total_cost_usd\":123456789012345678901234567890}",
+      "expected": [
+        {
+          "event": "turnCompleted",
+          "resultText": null,
+          "costUSD": 1.2345678901234568e+29,
+          "isError": false,
+          "subtype": "success"
+        }
+      ],
+      "reason": "Integers beyond 64 bits still read as numbers (HK-393)."
+    },
+    {
+      "name": "a leading zero is rejected",
+      "input": "{\"type\":\"result\",\"subtype\":\"success\",\"total_cost_usd\":01}",
+      "expected": [],
+      "reason": "JSON numbers have no leading zeros (HK-393)."
+    },
+    {
+      "name": "NaN is rejected",
+      "input": "{\"type\":\"result\",\"subtype\":\"success\",\"total_cost_usd\":NaN}",
+      "expected": [],
+      "reason": "NaN is not JSON (HK-393)."
+    },
+    {
+      "name": "single quotes are rejected",
+      "input": "{'type':'system','subtype':'init','session_id':'s1'}",
+      "expected": [],
+      "reason": "Strings use double quotes (HK-393)."
+    },
+    {
+      "name": "a comment is rejected",
+      "input": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s1\" /* note */}",
+      "expected": [],
+      "reason": "JSON has no comments (HK-393)."
+    },
+    {
+      "name": "a value inside 512 open containers is read",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Deep\",\"input\":{\"command\":\"ls\",\"nest\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[\"x\"]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}}]}}",
+      "expected": [
+        {
+          "event": "toolUse",
+          "name": "Deep",
+          "detail": "ls"
+        }
+      ],
+      "reason": "Foundation reads a value that begins while at most 512 containers are open (HK-393)."
+    },
+    {
+      "name": "an empty container that is the 513th is read",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Deep\",\"input\":{\"command\":\"ls\",\"nest\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}}]}}",
+      "expected": [
+        {
+          "event": "toolUse",
+          "name": "Deep",
+          "detail": "ls"
+        }
+      ],
+      "reason": "The 513th container may begin; nothing may begin inside it (HK-393)."
+    },
+    {
+      "name": "a value inside 513 open containers is rejected",
+      "input": "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Deep\",\"input\":{\"command\":\"ls\",\"nest\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[\"x\"]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}}]}}",
+      "expected": [],
+      "reason": "Past Foundation's depth limit the whole line is ignored, so a deep line cannot exhaust the parser's stack either (HK-393)."
+    }
+  ]
+}
