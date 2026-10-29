@@ -1,7 +1,7 @@
 {
   "description": "The language a voice is routed for when text is spoken (spec #100 slice 2.5, ticket #160): a caller-supplied language wins as it is, never lowercased, validated or re-checked (spokenReply's decision, the English of app announcements, the Settings voice sample's own language), so an appended phrase or a too-short string cannot flip the voice; with none, the decision of language.json, and \"en\" when that is undecided. Which voice serves the language stays with the platform.",
   "function": "TTSService.voiceLanguage(for:language:) — input {text, language} with language a string or null, expected the language",
-  "verifiedBy": "DESIGN.md v1.2 A, v2.14; Tests/PowerUpTests/SpeechFixtureTests.swift testVoiceLanguageTable plays it through TTSService.voiceLanguage(for:language:).",
+  "verifiedBy": "DESIGN.md v1.2 A, v2.14; Tests/PowerUpTests/SpeechFixtureTests.swift testVoiceLanguageTable plays it through TTSService.voiceLanguage(for:language:). Rust: rust/powerup-core/tests/speech.rs voice_language_cases runs speech::voice_language.",
   "capturedAgainst": "Swift 5.9.2 Foundation and NaturalLanguage (Xcode 15.2) on macOS 27.2, PowerUp at 67659a4",
   "cases": [
     {

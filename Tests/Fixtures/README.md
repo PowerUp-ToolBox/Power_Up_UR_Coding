@@ -6,7 +6,7 @@ suites play every file, and the Rust core's `cargo test` plays the areas whose
 rules it owns so far (`mapping/` and `device/`, since slice 2.2,
 `harness/`, `status/` and `session/`, since slice 2.3, the ACP tables
 of `harness/`, since slice 2.4, and `config/`, `transcript/`,
-`hooks/` and `text-safety/`, since slice 2.5) and checks the
+`hooks/`, `text-safety/` and `speech/`, since slice 2.5) and checks the
 format of the rest, picking up
 more as later slices port them. Each implementation loads these files from
 its own source location. Swift resolves
@@ -449,10 +449,24 @@ as an accepted difference: the expected value gains `"core": <code or
 null>`, the reason says why the difference is accepted, and the ledger
 names it. No other key is allowed in an agreement expectation.
 
+The core's detector is whatlang, restricted to the languages
+NLLanguageRecognizer can answer, with its own confidence gate (above
+0.59 on its scale, where Swift's is 0.7 on the recognizer's): see
+`rust/powerup-core/src/speech/language.rs`. `language.json` holds only
+texts on which the two decide alike, so it pins the gates themselves; a
+text on which they cannot agree belongs in `language-agreement.json` with
+its difference recorded. An accepted difference is of one of two kinds:
+the core undecided, so the reply reads in English (HK-421), or Han-only
+text the Swift app read as Japanese reading as Chinese (HK-420); the Rust
+runner rejects any other.
+
 The Swift runner is `Tests/PowerUpTests/SpeechFixtureTests.swift`, which
 also checks that the truncation cases cover every sentence ender, a hard
 cut and a multi-scalar Character at the cut, and that the agreement corpus
-holds at least 80 sentences with every kind represented.
+holds at least 80 sentences with every kind represented. The Rust runner
+is `rust/powerup-core/tests/speech.rs`, one test per table; it compares
+`expected.core` where an agreement case records one and `expected.swift`
+everywhere else, and checks that a recorded difference still differs.
 
 ## `session/`: session scenarios (format 1)
 

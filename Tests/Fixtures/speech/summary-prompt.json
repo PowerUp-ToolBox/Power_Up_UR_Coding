@@ -1,7 +1,7 @@
 {
   "description": "The prompt the one-shot summarizer is given on stdin (spec #100 slice 2.5, ticket #160): a fixed English instruction to summarize in one or two short sentences meant to be READ ALOUD, plain prose with no markdown, lists or preamble, in the same language as the reply, then a blank line, \"Reply to summarize:\", a newline and the reply exactly as it is. The arguments, the binary and the process stay with the platform (HK-280).",
   "function": "SummaryService.prompt(for:) — input the reply, expected the whole prompt",
-  "verifiedBy": "DESIGN.md v1.12, v2.14; Tests/PowerUpTests/SpeechFixtureTests.swift testSummaryPromptTable plays it through SummaryService.prompt(for:).",
+  "verifiedBy": "DESIGN.md v1.12, v2.14; Tests/PowerUpTests/SpeechFixtureTests.swift testSummaryPromptTable plays it through SummaryService.prompt(for:). Rust: rust/powerup-core/tests/speech.rs summary_prompt_cases runs speech::summary_prompt.",
   "capturedAgainst": "Swift 5.9.2 Foundation and NaturalLanguage (Xcode 15.2) on macOS 27.2, PowerUp at 67659a4",
   "cases": [
     {

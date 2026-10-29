@@ -6,6 +6,7 @@ are set in `rust/deny.toml`.
 
 | Crate | Version | License | Source |
 | --- | --- | --- | --- |
+| allocator-api2 | 0.2.21 | MIT OR Apache-2.0 | https://github.com/zakarumych/allocator-api2 |
 | anstyle | 1.0.14 | MIT OR Apache-2.0 | https://github.com/rust-cli/anstyle.git |
 | anyhow | 1.0.104 | MIT OR Apache-2.0 | https://github.com/dtolnay/anyhow |
 | askama | 0.16.1 | MIT OR Apache-2.0 | https://github.com/askama-rs/askama |
@@ -27,10 +28,12 @@ are set in `rust/deny.toml`.
 | equivalent | 1.0.3 | Apache-2.0 OR MIT | https://github.com/indexmap-rs/equivalent |
 | errno | 0.3.14 | MIT OR Apache-2.0 | https://github.com/lambda-fairy/rust-errno |
 | fastrand | 2.5.0 | Apache-2.0 OR MIT | https://github.com/smol-rs/fastrand |
+| foldhash | 0.1.5 | Zlib | https://github.com/orlp/foldhash |
 | fs-err | 3.3.2 | MIT OR Apache-2.0 | https://github.com/andrewhickman/fs-err |
 | getrandom | 0.4.3 | MIT OR Apache-2.0 | https://github.com/rust-random/getrandom |
 | glob | 0.3.4 | MIT OR Apache-2.0 | https://github.com/rust-lang/glob |
 | goblin | 0.8.2 | MIT | https://github.com/m4b/goblin |
+| hashbrown | 0.15.5 | MIT OR Apache-2.0 | https://github.com/rust-lang/hashbrown |
 | hashbrown | 0.17.1 | MIT OR Apache-2.0 | https://github.com/rust-lang/hashbrown |
 | heck | 0.5.0 | MIT OR Apache-2.0 | https://github.com/withoutboats/heck |
 | indexmap | 2.14.2 | Apache-2.0 OR MIT | https://github.com/indexmap-rs/indexmap |
@@ -83,6 +86,7 @@ are set in `rust/deny.toml`.
 | uniffi_pipeline | 0.32.2 | MPL-2.0 | https://github.com/mozilla/uniffi-rs |
 | uniffi_udl | 0.32.2 | MPL-2.0 | https://github.com/mozilla/uniffi-rs |
 | weedle2 | 5.0.0 | MIT | https://github.com/mozilla/uniffi-rs |
+| whatlang | 0.18.0 | MIT | https://github.com/greyblake/whatlang-rs |
 | windows-link | 0.2.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows-sys | 0.61.2 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | winnow | 1.0.4 | MIT | https://github.com/winnow-rs/winnow |

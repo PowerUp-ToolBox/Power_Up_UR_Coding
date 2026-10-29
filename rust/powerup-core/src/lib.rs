@@ -20,6 +20,7 @@ pub mod profile;
 pub mod session;
 mod sha256;
 pub mod slots;
+pub mod speech;
 pub mod status;
 pub mod text;
 pub mod text_safety;

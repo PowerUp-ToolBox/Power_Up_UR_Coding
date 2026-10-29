@@ -1,7 +1,7 @@
 {
-  "description": "Agreement between the Swift app's language decision (NLLanguageRecognizer under the gates of language.json) and the Rust core's (a Rust detector under the same gates), on natural sentences of the kind replies hold (spec #100 slice 2.5, ticket #160; ADR 0011: the speech text rules are shared, the engines and voices are per OS). expected.swift is the decision the Swift app made (a language code, or null for undecided, read as English). A Rust decision that differs is either resolved toward the Swift one or recorded as an accepted difference: expected gains \"core\" with the core's decision, the reason says why the difference is accepted, and the ledger names it. The corpus covers en, de, fr, es, it, pt, nl, simplified and traditional Chinese, ja, ko, mixed CJK and Latin, short strings, Han-only text, text that is no language, and code-heavy prose.",
+  "description": "Agreement between the Swift app's language decision (NLLanguageRecognizer under the gates of language.json) and the Rust core's (whatlang, restricted to the languages NLLanguageRecognizer can answer, under the same gates with the confidence gate re-tuned to above 0.59 for whatlang's scale, HK-421), on natural sentences of the kind replies hold (spec #100 slice 2.5, ticket #160; ADR 0011: the speech text rules are shared, the engines and voices are per OS). expected.swift is the decision the Swift app made (a language code, or null for undecided, read as English). A Rust decision that differs is either resolved toward the Swift one or recorded as an accepted difference: expected gains \"core\" with the core's decision, the reason says why the difference is accepted, and the ledger names it. Two kinds are accepted: the core undecided, so the reply reads in English (HK-421), and Han-only text the Swift app read as Japanese reading as Chinese (HK-420). The corpus covers en, de, fr, es, it, pt, nl, simplified and traditional Chinese, ja, ko, mixed CJK and Latin, short strings, Han-only text, text that is no language, and code-heavy prose.",
   "function": "TTSService.dominantLanguageCode(of:) — input the text, expected {swift} (plus core for an accepted difference), each a language code or null",
-  "verifiedBy": "DESIGN.md v1.2 A, v2.14; Tests/PowerUpTests/SpeechFixtureTests.swift testLanguageAgreementTable plays it through TTSService.dominantLanguageCode(of:) and compares expected.swift.",
+  "verifiedBy": "DESIGN.md v1.2 A, v2.14; Tests/PowerUpTests/SpeechFixtureTests.swift testLanguageAgreementTable plays it through TTSService.dominantLanguageCode(of:) and compares expected.swift. Rust: rust/powerup-core/tests/speech.rs language_agreement_cases runs speech::dominant_language and compares expected.core where the table records an accepted difference, expected.swift everywhere else.",
   "capturedAgainst": "Swift 5.9.2 Foundation and NaturalLanguage (Xcode 15.2) on macOS 27.2, PowerUp at 67659a4",
   "cases": [
     {
@@ -72,9 +72,10 @@
       "name": "en: Let me know if you want me to split this change into smalle…",
       "input": "Let me know if you want me to split this change into smaller commits.",
       "expected": {
-        "swift": "en"
+        "swift": "en",
+        "core": null
       },
-      "reason": "A clear English reply routes to an English voice. Swift: NLLanguageRecognizer says English at 1.00 with 55 letters; the gates admit it: en."
+      "reason": "A clear English reply routes to an English voice. Swift: NLLanguageRecognizer says English at 1.00 with 55 letters; the gates admit it: en. Accepted difference (HK-421): the core's whatlang says French at 0.22, not above its 0.59 gate, so the core is undecided and the reply reads in English, as the Swift decision does."
     },
     {
       "name": "en: Everything compiles cleanly and the warnings about unused v…",
@@ -136,9 +137,10 @@
       "name": "de: Bitte prüfe, ob die neue Konfiguration für dich so passt.",
       "input": "Bitte prüfe, ob die neue Konfiguration für dich so passt.",
       "expected": {
-        "swift": "de"
+        "swift": "de",
+        "core": null
       },
-      "reason": "A clear German reply routes to a German voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says German at 1.00 with 46 letters; the gates admit it: de."
+      "reason": "A clear German reply routes to a German voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says German at 1.00 with 46 letters; the gates admit it: de. Accepted difference (HK-421): the core's whatlang says French at 0.58, not above its 0.59 gate, so the core is undecided and the reply reads in English instead; a gate that admitted it would read German in a French voice, and the same sentence written twice does pass it as French, which the agreement differential recorded (HK-421)."
     },
     {
       "name": "fr: J'ai corrigé la fonction parseJSON et tous les tests passen…",
@@ -232,9 +234,10 @@
       "name": "es: No pude reproducir el bloqueo en mi equipo; ¿puedes compart…",
       "input": "No pude reproducir el bloqueo en mi equipo; ¿puedes compartir el registro?",
       "expected": {
-        "swift": "es"
+        "swift": "es",
+        "core": null
       },
-      "reason": "A clear Spanish reply routes to a Spanish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Spanish at 1.00 with 60 letters; the gates admit it: es."
+      "reason": "A clear Spanish reply routes to a Spanish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Spanish at 1.00 with 60 letters; the gates admit it: es. Accepted difference (HK-421): the core's whatlang says Spanish at 0.17, not above its 0.59 gate, so the core is undecided and the reply reads in English instead."
     },
     {
       "name": "es: Todo compila correctamente y las advertencias han desaparec…",
@@ -248,9 +251,10 @@
       "name": "es: Avísame si prefieres dividir este cambio en varios commits…",
       "input": "Avísame si prefieres dividir este cambio en varios commits más pequeños.",
       "expected": {
-        "swift": "es"
+        "swift": "es",
+        "core": null
       },
-      "reason": "A clear Spanish reply routes to a Spanish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Spanish at 1.00 with 61 letters; the gates admit it: es."
+      "reason": "A clear Spanish reply routes to a Spanish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Spanish at 1.00 with 61 letters; the gates admit it: es. Accepted difference (HK-421): the core's whatlang says Spanish at 0.52, not above its 0.59 gate, so the core is undecided and the reply reads in English instead."
     },
     {
       "name": "it: Ho corretto la funzione e ora tutti i test passano senza al…",
@@ -368,9 +372,10 @@
       "name": "nl: Wil je dat ik de oude kolommen tijdens de migratie ook hern…",
       "input": "Wil je dat ik de oude kolommen tijdens de migratie ook hernoem?",
       "expected": {
-        "swift": "nl"
+        "swift": "nl",
+        "core": null
       },
-      "reason": "A clear Dutch reply routes to a Dutch voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Dutch at 1.00 with 51 letters; the gates admit it: nl."
+      "reason": "A clear Dutch reply routes to a Dutch voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Dutch at 1.00 with 51 letters; the gates admit it: nl. Accepted difference (HK-421): the core's whatlang says Danish at 0.07, not above its 0.59 gate, so the core is undecided and the reply reads in English instead."
     },
     {
       "name": "nl: De functie geeft nu meteen terug als de invoer leeg is.",
@@ -608,9 +613,10 @@
       "name": "mixed: 请运行 swift test --filter SpeechFixtureTests 来验证。",
       "input": "请运行 swift test --filter SpeechFixtureTests 来验证。",
       "expected": {
-        "swift": "en"
+        "swift": "en",
+        "core": null
       },
-      "reason": "Mixed CJK and Latin text: script evidence decides once CJK is at least 20% of the letters (HK-212). Swift: NLLanguageRecognizer says English at 0.77 with 39 letters; the gates admit it: en."
+      "reason": "Mixed CJK and Latin text: script evidence decides once CJK is at least 20% of the letters (HK-212). Swift: NLLanguageRecognizer says English at 0.77 with 39 letters; the gates admit it: en. Accepted difference (HK-421): the core's whatlang says Catalan at 0.26, not above its 0.59 gate, so the core is undecided and the reply reads in English, as the Swift decision does."
     },
     {
       "name": "mixed: ビルドは swift build で実行してください。",
@@ -752,25 +758,28 @@
       "name": "han: 東京駅",
       "input": "東京駅",
       "expected": {
-        "swift": "ja"
+        "swift": "ja",
+        "core": "zh"
       },
-      "reason": "Han-only text: a recognizer answer of zh, ja or ko is trusted whatever its confidence, so Han with no kana can still read as ja (HK-212). Swift: NLLanguageRecognizer says Japanese at 1.00 with 3 letters; its CJK answer is trusted."
+      "reason": "Han-only text: a recognizer answer of zh, ja or ko is trusted whatever its confidence, so Han with no kana can still read as ja (HK-212). Swift: NLLanguageRecognizer says Japanese at 1.00 with 3 letters; its CJK answer is trusted. Accepted difference (HK-420): the core's whatlang decides Han-only text by its script, zh with no kana, and has no lexicon that knows Japanese words written in kanji; a Japanese reply holds kana, which decide ja in both."
     },
     {
       "name": "han: 日本語",
       "input": "日本語",
       "expected": {
-        "swift": "ja"
+        "swift": "ja",
+        "core": "zh"
       },
-      "reason": "Han-only text: a recognizer answer of zh, ja or ko is trusted whatever its confidence, so Han with no kana can still read as ja (HK-212). Swift: NLLanguageRecognizer says Japanese at 0.58 with 3 letters; its CJK answer is trusted."
+      "reason": "Han-only text: a recognizer answer of zh, ja or ko is trusted whatever its confidence, so Han with no kana can still read as ja (HK-212). Swift: NLLanguageRecognizer says Japanese at 0.58 with 3 letters; its CJK answer is trusted. Accepted difference (HK-420): the core's whatlang decides Han-only text by its script, zh with no kana, and has no lexicon that knows Japanese words written in kanji; a Japanese reply holds kana, which decide ja in both."
     },
     {
       "name": "han: 新幹線",
       "input": "新幹線",
       "expected": {
-        "swift": "ja"
+        "swift": "ja",
+        "core": "zh"
       },
-      "reason": "Han-only text: a recognizer answer of zh, ja or ko is trusted whatever its confidence, so Han with no kana can still read as ja (HK-212). Swift: NLLanguageRecognizer says Japanese at 0.66 with 3 letters; its CJK answer is trusted."
+      "reason": "Han-only text: a recognizer answer of zh, ja or ko is trusted whatever its confidence, so Han with no kana can still read as ja (HK-212). Swift: NLLanguageRecognizer says Japanese at 0.66 with 3 letters; its CJK answer is trusted. Accepted difference (HK-420): the core's whatlang decides Han-only text by its script, zh with no kana, and has no lexicon that knows Japanese words written in kanji; a Japanese reply holds kana, which decide ja in both."
     },
     {
       "name": "han: 大丈夫",
@@ -800,9 +809,10 @@
       "name": "gate: Model Sonnet Effort High Permission Default Mode",
       "input": "Model Sonnet Effort High Permission Default Mode",
       "expected": {
-        "swift": "en"
+        "swift": "en",
+        "core": null
       },
-      "reason": "Text that is no language meets the Latin gates (HK-213). Swift: NLLanguageRecognizer says English at 0.87 with 42 letters; the gates admit it: en."
+      "reason": "Text that is no language meets the Latin gates (HK-213). Swift: NLLanguageRecognizer says English at 0.87 with 42 letters; the gates admit it: en. Accepted difference (HK-421): the core's whatlang says French at 0.27, not above its 0.59 gate, so the core is undecided and the reply reads in English, as the Swift decision does."
     },
     {
       "name": "gate: Ni hao, wo shi zhongguo ren, xie xie ni.",
@@ -824,9 +834,10 @@
       "name": "code: let result = try decoder.decode(Config.self, from: data)…",
       "input": "let result = try decoder.decode(Config.self, from: data) // throws on bad JSON",
       "expected": {
-        "swift": "en"
+        "swift": "en",
+        "core": null
       },
-      "reason": "Code-heavy prose without fences: identifiers count as letters (HK-213, HK-214). Swift: NLLanguageRecognizer says English at 0.99 with 58 letters; the gates admit it: en."
+      "reason": "Code-heavy prose without fences: identifiers count as letters (HK-213, HK-214). Swift: NLLanguageRecognizer says English at 0.99 with 58 letters; the gates admit it: en. Accepted difference (HK-421): the core's whatlang says French at 0.15, not above its 0.59 gate, so the core is undecided and the reply reads in English, as the Swift decision does."
     },
     {
       "name": "code: Set PATH=/usr/local/bin:$PATH and run make install from b…",
@@ -875,6 +886,24 @@
         "swift": null
       },
       "reason": "Code-heavy prose without fences: identifiers count as letters (HK-213, HK-214). Swift: NLLanguageRecognizer says English at 0.61 with 52 letters; 0.61 is not above 0.7, so it is undecided."
+    },
+    {
+      "name": "gate: The new unit tests all pass now.",
+      "input": "The new unit tests all pass now.",
+      "expected": {
+        "swift": "en",
+        "core": null
+      },
+      "reason": "Moved from language.json, where it pinned the 25-letter gate (HK-213). Swift: NLLanguageRecognizer says English at 0.99 with 25 letters; the gates admit it: en. Accepted difference (HK-421): the core's whatlang says English at 0.31, not above its 0.59 gate, so the core is undecided and the reply reads in English, as the Swift decision does."
+    },
+    {
+      "name": "gate: Сборка успешно завершена, и все тесты прошли без ошибок.",
+      "input": "Сборка успешно завершена, и все тесты прошли без ошибок.",
+      "expected": {
+        "swift": "ru",
+        "core": null
+      },
+      "reason": "Moved from language.json, where it showed a non-Latin, non-CJK language passing the same gates (HK-213). Swift: NLLanguageRecognizer says Russian at 1.00 with 46 letters; the gates admit it: ru. Accepted difference (HK-421): the core's whatlang says Bulgarian at 0.01, not above its 0.59 gate, so the core is undecided and the reply reads in English instead."
     }
   ]
 }

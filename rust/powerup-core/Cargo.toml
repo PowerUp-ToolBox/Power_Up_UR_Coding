@@ -23,3 +23,9 @@ serde_json = { version = "1", features = ["unbounded_depth"] }
 # Swift applies on current macOS (Tests/Fixtures/harness/claude-stream.json
 # "a conjunct is one character at the cut" pins it).
 unicode-segmentation = "=1.13.3"
+# The statistical half of the speech language decision (src/speech/
+# language.rs): a pure-Rust trigram detector, MIT, with no threads and no
+# I/O, the core's stand-in for NLLanguageRecognizer under the Swift app's
+# gates (ADR 0011). Pinned so its answers, which
+# Tests/Fixtures/speech/language-agreement.json pins, only change on purpose.
+whatlang = "=0.18.0"

@@ -1,7 +1,7 @@
 {
   "description": "Whether the summarizer's answer is spoken (spec #100 slice 2.5, ticket #160): the answer trimmed of .whitespacesAndNewlines is used only when it is not empty and is shorter than max(200, reply.count / 2) Characters (integer division on the untrimmed reply's extended grapheme clusters, strict). Otherwise, as for no answer at all, the full reply is spoken. Markdown is not stripped here; spokenReply does that afterwards with no length cap.",
   "function": "SummaryService.usableSummary(_:for:) — input {summary, reply} with summary a text descriptor or null and reply a text descriptor, expected the summary that is spoken (a text descriptor) or null",
-  "verifiedBy": "DESIGN.md v1.12, v2.14; Tests/PowerUpTests/SpeechFixtureTests.swift testSummaryAcceptanceTable plays it through SummaryService.usableSummary(_:for:).",
+  "verifiedBy": "DESIGN.md v1.12, v2.14; Tests/PowerUpTests/SpeechFixtureTests.swift testSummaryAcceptanceTable plays it through SummaryService.usableSummary(_:for:). Rust: rust/powerup-core/tests/speech.rs summary_acceptance_cases runs speech::usable_summary.",
   "capturedAgainst": "Swift 5.9.2 Foundation and NaturalLanguage (Xcode 15.2) on macOS 27.2, PowerUp at 67659a4",
   "cases": [
     {
