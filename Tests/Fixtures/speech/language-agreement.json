@@ -1,5 +1,5 @@
 {
-  "description": "Agreement between the Swift app's language decision (NLLanguageRecognizer under the gates of language.json) and the Rust core's (whatlang, restricted to the languages NLLanguageRecognizer can answer, under the same letter gate; a Latin- or Cyrillic-script answer admitted only when the text's letters fit its alphabet and its function words point to it alone, HK-425, any other with a confidence above 0.59 on whatlang's scale, HK-421; CJK the core decides by its script alone, HK-423), on natural sentences of the kind replies hold (spec #100 slice 2.5, ticket #160; ADR 0011: the speech text rules are shared, the engines and voices are per OS). expected.swift is the decision the Swift app made (a language code, or null for undecided, read as English). A Rust decision that differs is either resolved toward the Swift one or recorded as an accepted difference: expected gains \"core\" with the core's decision, the reason says why the difference is accepted, and the ledger names it. Three kinds are accepted: the core undecided, so the reply reads in English (HK-421, HK-422, HK-423, HK-425); CJK text the core decides by its script where the recognizer named another CJK language, so Han-only Japanese reads as Chinese (HK-420), a quoted kana word decides Japanese and hangul Korean (HK-423); and the core naming the language a sentence is written in, the one its case is named after, where the recognizer named another or was undecided (Russian the recognizer read as Kazakh, HK-425). Outside CJK the core never names a language other than the sentence's own. The corpus covers every Latin- and Cyrillic-script language the core can name (en, de, fr, es, it, pt, nl, cs, sk, pl, hr, sv, da, nb, fi, hu, ro, tr, id, vi, ca, ru, uk, bg, with terse English code-review prose among the en sentences), simplified and traditional Chinese, ja, ko, mixed CJK and Latin, full-width forms, texts mixing CJK scripts, short strings, Han-only text, text that is no language, code-heavy prose, and languages the core cannot name (unlisted: the core answers only the languages both whatlang and NLLanguageRecognizer know, HK-422).",
+  "description": "Agreement between the Swift app's language decision (NLLanguageRecognizer under the gates of language.json) and the Rust core's (whatlang, restricted to the languages NLLanguageRecognizer can answer, under the same letter gate; a Latin- or Cyrillic-script answer admitted only when the text's letters fit its alphabet and its function words point to it alone, HK-425, any other with a confidence above 0.59 on whatlang's scale, HK-421; CJK the core decides by its script alone, HK-423), on natural sentences of the kind replies hold (spec #100 slice 2.5, ticket #160; ADR 0011: the speech text rules are shared, the engines and voices are per OS). expected.swift is the decision the Swift app made (a language code, or null for undecided, read as English). A Rust decision that differs is either resolved toward the Swift one or recorded as an accepted difference: expected gains \"core\" with the core's decision, the reason says why the difference is accepted, and the ledger names it. Three kinds are accepted: the core undecided, so the reply reads in English (HK-421, HK-422, HK-423, HK-425); CJK text the core decides by its script where the recognizer named another CJK language, so Han-only Japanese reads as Chinese (HK-420), a quoted kana word decides Japanese and hangul Korean (HK-423); and the core naming the language a sentence is written in, the one its case is named after, where the recognizer named another or was undecided (Russian the recognizer read as Kazakh, HK-425). Outside CJK the core never names a language other than the sentence's own. The corpus covers every Latin- and Cyrillic-script language the core can name (en, de, fr, es, it, pt, nl, cs, sk, pl, hr, sv, da, nb, fi, hu, ro, tr, id, vi, ca, ru, uk, bg, with terse English code-review prose and English quoting accented loanwords among the en sentences, and Turkish opening with a capital İ among the tr ones), eleven languages whose script the confidence gate decides (ar, ur, hi, mr, he, el, th, ka, hy, bn, ta, with short replies around an identifier on either side of the gate), simplified and traditional Chinese, ja, ko, mixed CJK and Latin, full-width forms (full-width English past the letter gate among them), texts mixing CJK scripts, short strings, Han-only text, text that is no language, code-heavy prose, and languages the core cannot name (unlisted: the core answers only the languages both whatlang and NLLanguageRecognizer know, HK-422).",
   "function": "speech::dominant_language (Swift: CoreBridge.dominantLanguage(of:); until slice 2.5 TTSService.dominantLanguageCode(of:)) — input the text, expected {swift} (plus core for an accepted difference), each a language code or null",
   "verifiedBy": "DESIGN.md v1.2 A, v2.14; Tests/PowerUpTests/SpeechFixtureTests.swift testLanguageAgreementTable plays it through CoreBridge.dominantLanguage(of:) and compares expected.core where the table records an accepted difference, expected.swift everywhere else. Rust: rust/powerup-core/tests/speech.rs language_agreement_cases runs speech::dominant_language and compares expected.core where the table records an accepted difference, expected.swift everywhere else.",
   "capturedAgainst": "Swift 5.9.2 Foundation and NaturalLanguage (Xcode 15.2) on macOS 27.2, PowerUp at 67659a4",
@@ -261,6 +261,42 @@
         "core": null
       },
       "reason": "Terse English code-review prose, the kind replies hold, on which whatlang is often confidently wrong (HK-425). Swift: NLLanguageRecognizer says English at 1.00 with 109 letters; the gates admit it: en. Accepted difference (HK-425): whatlang says French at 0.68, but the text holds more English function words (9) than French ones (3); the evidence does not back the answer, so the core is undecided and the reply reads in English, as the Swift decision does."
+    },
+    {
+      "name": "en: Fixed the crème brûlée example: a la carte entries are parse…",
+      "input": "Fixed the crème brûlée example: a la carte entries are parsed as one.",
+      "expected": {
+        "swift": "en",
+        "core": null
+      },
+      "reason": "English prose quoting an accented loanword: English counts as a rival whatever the letters (HK-425). Swift: NLLanguageRecognizer says English at 1.00 with 55 letters; the gates admit it: en. Accepted difference (HK-425): whatlang says French at 0.72, but the text holds more English function words (5) than French ones (2); è is no English letter, so English's own answer is undecided too, the core is undecided and the reply reads in English, as the Swift decision does."
+    },
+    {
+      "name": "en: Use a résumé or CV, de facto the same, as a real input.",
+      "input": "Use a résumé or CV, de facto the same, as a real input.",
+      "expected": {
+        "swift": "en",
+        "core": null
+      },
+      "reason": "English prose quoting an accented loanword: English counts as a rival whatever the letters (HK-425). Swift: NLLanguageRecognizer says English at 1.00 with 40 letters; the gates admit it: en. Accepted difference (HK-425): whatlang says Portuguese at 0.24, but the text holds more English function words (6) than Portuguese ones (4); é is no English letter, so English's own answer is undecided too, the core is undecided and the reply reads in English, as the Swift decision does."
+    },
+    {
+      "name": "en: Moved the São Paulo config to the new region; it is de facto…",
+      "input": "Moved the São Paulo config to the new region; it is de facto the default now.",
+      "expected": {
+        "swift": "en",
+        "core": null
+      },
+      "reason": "English prose quoting an accented loanword: English counts as a rival whatever the letters (HK-425). Swift: NLLanguageRecognizer says English at 1.00 with 60 letters; the gates admit it: en. Accepted difference (HK-425): whatlang says Portuguese at 0.15, but the text holds more English function words (7) than Portuguese ones (2); ã is no English letter, so English's own answer is undecided too, the core is undecided and the reply reads in English, as the Swift decision does."
+    },
+    {
+      "name": "en: The café is open and the naïve parser works for the résumé.",
+      "input": "The café is open and the naïve parser works for the résumé.",
+      "expected": {
+        "swift": "en",
+        "core": null
+      },
+      "reason": "English prose quoting an accented loanword: English counts as a rival whatever the letters (HK-425). Swift: NLLanguageRecognizer says English at 0.97 with 47 letters; the gates admit it: en. Accepted difference (HK-425): whatlang says Dutch at 0.13, but the text holds more English function words (6) than Dutch ones (1); é is no English letter, so English's own answer is undecided too, the core is undecided and the reply reads in English, as the Swift decision does."
     },
     {
       "name": "de: Ich habe den Parser überarbeitet, und jetzt laufen alle Tes…",
@@ -1199,6 +1235,38 @@
       "reason": "A clear Turkish reply routes to a Turkish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Turkish at 1.00 with 42 letters; the gates admit it: tr. The core agrees (HK-425): whatlang says Turkish at 0.55, the letters fit its alphabet, and its function words point to it alone (1, and no other language's)."
     },
     {
+      "name": "tr: İşlem tamamlandı, yeni sürüm yayınlandı ve belgeler güncellendi.",
+      "input": "İşlem tamamlandı, yeni sürüm yayınlandı ve belgeler güncellendi.",
+      "expected": {
+        "swift": "tr"
+      },
+      "reason": "A clear Turkish reply opening with a capital İ routes to a Turkish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Turkish at 1.00 with 55 letters; the gates admit it: tr. The core agrees (HK-425): whatlang says Turkish at 1.00, the letters fit its alphabet, and its function words point to it alone (1, and no other language's). Each capital İ lowers to i alone, so it is the first letter of its word; lowered to i and a combining dot above, it ended the word there and gave English, whose list holds \"i\", a word for each."
+    },
+    {
+      "name": "tr: İlk olarak yapılandırmayı güncelledim. İkinci adımda testler…",
+      "input": "İlk olarak yapılandırmayı güncelledim. İkinci adımda testleri çalıştırdım.",
+      "expected": {
+        "swift": "tr"
+      },
+      "reason": "A clear Turkish reply opening with a capital İ routes to a Turkish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Turkish at 1.00 with 65 letters; the gates admit it: tr. The core agrees (HK-425): whatlang says Turkish at 1.00, the letters fit its alphabet, and its function words point to it alone (1, and no other language's). Each capital İ lowers to i alone, so it is the first letter of its word; lowered to i and a combining dot above, it ended the word there and gave English, whose list holds \"i\", a word for each."
+    },
+    {
+      "name": "tr: İki dosyayı değiştirdim. İlgili testleri ekledim. İnceleme i…",
+      "input": "İki dosyayı değiştirdim. İlgili testleri ekledim. İnceleme için hazır.",
+      "expected": {
+        "swift": "tr"
+      },
+      "reason": "A clear Turkish reply opening with a capital İ routes to a Turkish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Turkish at 1.00 with 59 letters; the gates admit it: tr. The core agrees (HK-425): whatlang says Turkish at 1.00, the letters fit its alphabet, and its function words point to it alone (1, and no other language's). Each capital İ lowers to i alone, so it is the first letter of its word; lowered to i and a combining dot above, it ended the word there and gave English, whose list holds \"i\", a word for each."
+    },
+    {
+      "name": "tr: İSTANBUL ofisindeki sunucu için yeni bir yapılandırma ekledi…",
+      "input": "İSTANBUL ofisindeki sunucu için yeni bir yapılandırma ekledim ve testler geçiyor.",
+      "expected": {
+        "swift": "tr"
+      },
+      "reason": "A clear Turkish reply opening with a capital İ routes to a Turkish voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Turkish at 1.00 with 70 letters; the gates admit it: tr. The core agrees (HK-425): whatlang says Turkish at 1.00, the letters fit its alphabet, and its function words point to it alone (3, and no other language's). Each capital İ lowers to i alone, so it is the first letter of its word; lowered to i and a combining dot above, it ended the word there and gave English, whose list holds \"i\", a word for each."
+    },
+    {
       "name": "id: Saya sudah memperbaiki bug di parser dan sekarang semua tes…",
       "input": "Saya sudah memperbaiki bug di parser dan sekarang semua tes lulus lagi.",
       "expected": {
@@ -1456,6 +1524,418 @@
         "swift": "bg"
       },
       "reason": "A clear Bulgarian reply routes to a Bulgarian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Bulgarian at 1.00 with 47 letters; the gates admit it: bg. The core agrees (HK-425): whatlang says Bulgarian at 1.00, the letters fit its alphabet, and its function words point to it alone (3, against at most 2 Russian)."
+    },
+    {
+      "name": "ar: لقد أصلحت الخطأ في المحلل، والآن تنجح جميع الاختبارات.",
+      "input": "لقد أصلحت الخطأ في المحلل، والآن تنجح جميع الاختبارات.",
+      "expected": {
+        "swift": "ar"
+      },
+      "reason": "A clear Arabic reply routes to an Arabic voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Arabic at 1.00 with 44 letters; the gates admit it: ar. The core agrees (HK-421): whatlang says Arabic at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "ar: أضفت اختبارين جديدين للمدخلات الفارغة في ملف parser.rs.",
+      "input": "أضفت اختبارين جديدين للمدخلات الفارغة في ملف parser.rs.",
+      "expected": {
+        "swift": "ar"
+      },
+      "reason": "A clear Arabic reply routes to an Arabic voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Arabic at 1.00 with 46 letters; the gates admit it: ar. The core agrees (HK-421): whatlang says Arabic at 0.81, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "ar: هل تريد أن أقسم هذا التغيير إلى عدة التزامات أصغر؟",
+      "input": "هل تريد أن أقسم هذا التغيير إلى عدة التزامات أصغر؟",
+      "expected": {
+        "swift": "ar"
+      },
+      "reason": "A clear Arabic reply routes to an Arabic voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Arabic at 1.00 with 40 letters; the gates admit it: ar. The core agrees (HK-421): whatlang says Arabic at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "ar: فشل البناء لأن الرابط لم يجد مكتبة النواة.",
+      "input": "فشل البناء لأن الرابط لم يجد مكتبة النواة.",
+      "expected": {
+        "swift": "ar"
+      },
+      "reason": "A clear Arabic reply routes to an Arabic voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Arabic at 1.00 with 34 letters; the gates admit it: ar. The core agrees (HK-421): whatlang says Arabic at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "ar: تم، parseJSON() يعمل الآن بشكل صحيح تماما",
+      "input": "تم، parseJSON() يعمل الآن بشكل صحيح تماما",
+      "expected": {
+        "swift": "ar"
+      },
+      "reason": "A short Arabic reply around an identifier, near the confidence gate (HK-421). Swift: NLLanguageRecognizer says Arabic at 1.00 with 32 letters; the gates admit it: ar. The core agrees (HK-421): whatlang says Arabic at 0.66, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "ar: تم، parseJSON() يعمل الآن بشكل صحيح",
+      "input": "تم، parseJSON() يعمل الآن بشكل صحيح",
+      "expected": {
+        "swift": "ar",
+        "core": null
+      },
+      "reason": "A short Arabic reply around an identifier, near the confidence gate (HK-421). Swift: NLLanguageRecognizer says Arabic at 1.00 with 27 letters; the gates admit it: ar. Accepted difference (HK-421): whatlang says Arabic at 0.50, a script the core holds no evidence for, and that is under the confidence gate of 0.59, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "ur: میں نے پارسر میں غلطی ٹھیک کر دی ہے اور اب تمام ٹیسٹ پاس ہو…",
+      "input": "میں نے پارسر میں غلطی ٹھیک کر دی ہے اور اب تمام ٹیسٹ پاس ہو رہے ہیں۔",
+      "expected": {
+        "swift": "ur"
+      },
+      "reason": "A clear Urdu reply routes to an Urdu voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Urdu at 1.00 with 51 letters; the gates admit it: ur. The core agrees (HK-421): whatlang says Urdu at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "ur: میں نے خالی ان پٹ کے لیے دو نئے ٹیسٹ شامل کیے ہیں۔",
+      "input": "میں نے خالی ان پٹ کے لیے دو نئے ٹیسٹ شامل کیے ہیں۔",
+      "expected": {
+        "swift": "ur"
+      },
+      "reason": "A clear Urdu reply routes to an Urdu voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Urdu at 1.00 with 37 letters; the gates admit it: ur. The core agrees (HK-421): whatlang says Urdu at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "ur: کیا آپ چاہتے ہیں کہ میں اس تبدیلی کو چھوٹے حصوں میں تقسیم کروں؟",
+      "input": "کیا آپ چاہتے ہیں کہ میں اس تبدیلی کو چھوٹے حصوں میں تقسیم کروں؟",
+      "expected": {
+        "swift": "ur"
+      },
+      "reason": "A clear Urdu reply routes to an Urdu voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Urdu at 1.00 with 49 letters; the gates admit it: ur. The core agrees (HK-421): whatlang says Urdu at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "ur: بلڈ ناکام ہو گیا کیونکہ لنکر کو لائبریری نہیں ملی۔",
+      "input": "بلڈ ناکام ہو گیا کیونکہ لنکر کو لائبریری نہیں ملی۔",
+      "expected": {
+        "swift": "ur"
+      },
+      "reason": "A clear Urdu reply routes to an Urdu voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Urdu at 1.00 with 40 letters; the gates admit it: ur. The core agrees (HK-421): whatlang says Urdu at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "hi: म\u0948\u0902न\u0947 प\u093Eर\u094Dसर म\u0947\u0902 गलत\u0940 ठ\u0940क कर द\u0940 ह\u0948 और अब सभ\u0940 पर\u0940क\u094Dषण सफल ह\u094B…",
+      "input": "म\u0948\u0902न\u0947 प\u093Eर\u094Dसर म\u0947\u0902 गलत\u0940 ठ\u0940क कर द\u0940 ह\u0948 और अब सभ\u0940 पर\u0940क\u094Dषण सफल ह\u094B रह\u0947 ह\u0948\u0902।",
+      "expected": {
+        "swift": "hi"
+      },
+      "reason": "A clear Hindi reply routes to a Hindi voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Hindi at 1.00 with 50 letters; the gates admit it: hi. The core agrees (HK-421): whatlang says Hindi at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "hi: म\u0948\u0902न\u0947 parser.rs फ\u093C\u093Eइल म\u0947\u0902 ख\u093Eल\u0940 इनप\u0941ट क\u0947 ल\u093Fए द\u094B नए पर\u0940क\u094Dषण ज\u094Bड\u093C\u0947।",
+      "input": "म\u0948\u0902न\u0947 parser.rs फ\u093C\u093Eइल म\u0947\u0902 ख\u093Eल\u0940 इनप\u0941ट क\u0947 ल\u093Fए द\u094B नए पर\u0940क\u094Dषण ज\u094Bड\u093C\u0947।",
+      "expected": {
+        "swift": "hi"
+      },
+      "reason": "A short Hindi reply around an identifier, near the confidence gate (HK-421). Swift: NLLanguageRecognizer says Hindi at 1.00 with 48 letters; the gates admit it: hi. The core agrees (HK-421): whatlang says Hindi at 0.66, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "hi: क\u094Dय\u093E आप च\u093Eहत\u0947 ह\u0948\u0902 क\u093F म\u0948\u0902 इस बदल\u093Eव क\u094B छ\u094Bट\u0947 ह\u093Fस\u094Dस\u094B\u0902 म\u0947\u0902 ब\u093E\u0901ट द\u0942\u0901?",
+      "input": "क\u094Dय\u093E आप च\u093Eहत\u0947 ह\u0948\u0902 क\u093F म\u0948\u0902 इस बदल\u093Eव क\u094B छ\u094Bट\u0947 ह\u093Fस\u094Dस\u094B\u0902 म\u0947\u0902 ब\u093E\u0901ट द\u0942\u0901?",
+      "expected": {
+        "swift": "hi"
+      },
+      "reason": "A clear Hindi reply routes to a Hindi voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Hindi at 1.00 with 47 letters; the gates admit it: hi. The core agrees (HK-421): whatlang says Hindi at 0.99, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "hi: ब\u093Fल\u094Dड व\u093Fफल ह\u094B गय\u093E क\u094Dय\u094B\u0902क\u093F ल\u093F\u0902कर क\u094B क\u094Bर ल\u093Eइब\u094Dर\u0947र\u0940 नह\u0940\u0902 म\u093Fल\u0940।",
+      "input": "ब\u093Fल\u094Dड व\u093Fफल ह\u094B गय\u093E क\u094Dय\u094B\u0902क\u093F ल\u093F\u0902कर क\u094B क\u094Bर ल\u093Eइब\u094Dर\u0947र\u0940 नह\u0940\u0902 म\u093Fल\u0940।",
+      "expected": {
+        "swift": "hi"
+      },
+      "reason": "A clear Hindi reply routes to a Hindi voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Hindi at 1.00 with 45 letters; the gates admit it: hi. The core agrees (HK-421): whatlang says Hindi at 0.76, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "hi: म\u0948\u0902न\u0947 ट\u0947स\u094Dट ज\u094Bड\u093C\u0947 और build अब ठ\u0940क ह\u0948",
+      "input": "म\u0948\u0902न\u0947 ट\u0947स\u094Dट ज\u094Bड\u093C\u0947 और build अब ठ\u0940क ह\u0948",
+      "expected": {
+        "swift": "hi"
+      },
+      "reason": "A short Hindi reply around an identifier, near the confidence gate (HK-421). Swift: NLLanguageRecognizer says Hindi at 1.00 with 27 letters; the gates admit it: hi. The core agrees (HK-421): whatlang says Hindi at 0.62, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "hi: म\u0948\u0902न\u0947 CI ठ\u0940क कर द\u093Fय\u093E ह\u0948, अब build हर\u093E ह\u0948।",
+      "input": "म\u0948\u0902न\u0947 CI ठ\u0940क कर द\u093Fय\u093E ह\u0948, अब build हर\u093E ह\u0948।",
+      "expected": {
+        "swift": "hi",
+        "core": null
+      },
+      "reason": "A short Hindi reply around an identifier, near the confidence gate (HK-421). Swift: NLLanguageRecognizer says Hindi at 1.00 with 30 letters; the gates admit it: hi. Accepted difference (HK-421): whatlang says Hindi at 0.57, a script the core holds no evidence for, and that is under the confidence gate of 0.59, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "hi: सभ\u0940 tests प\u093Eस ह\u094B गए ह\u0948\u0902, PR त\u0948य\u093Eर ह\u0948।",
+      "input": "सभ\u0940 tests प\u093Eस ह\u094B गए ह\u0948\u0902, PR त\u0948य\u093Eर ह\u0948।",
+      "expected": {
+        "swift": "hi",
+        "core": null
+      },
+      "reason": "A short Hindi reply around an identifier, near the confidence gate (HK-421). Swift: NLLanguageRecognizer says Hindi at 1.00 with 27 letters; the gates admit it: hi. Accepted difference (HK-421): whatlang says Hindi at 0.48, a script the core holds no evidence for, and that is under the confidence gate of 0.59, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "mr: म\u0940 प\u093Eर\u094Dसरमध\u0940ल च\u0942क द\u0941र\u0941स\u094Dत क\u0947ल\u0940 आह\u0947 आण\u093F आत\u093E सर\u094Dव च\u093Eचण\u094Dय\u093E यशस\u094D…",
+      "input": "म\u0940 प\u093Eर\u094Dसरमध\u0940ल च\u0942क द\u0941र\u0941स\u094Dत क\u0947ल\u0940 आह\u0947 आण\u093F आत\u093E सर\u094Dव च\u093Eचण\u094Dय\u093E यशस\u094Dव\u0940 ह\u094Bत आह\u0947त.",
+      "expected": {
+        "swift": "mr"
+      },
+      "reason": "A clear Marathi reply routes to a Marathi voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Marathi at 1.00 with 54 letters; the gates admit it: mr. The core agrees (HK-421): whatlang says Marathi at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "mr: म\u0940 र\u093Fक\u093Eम\u094Dय\u093E इनप\u0941टस\u093Eठ\u0940 द\u094Bन नव\u0940न च\u093Eचण\u094Dय\u093E ज\u094Bडल\u094Dय\u093E आह\u0947त.",
+      "input": "म\u0940 र\u093Fक\u093Eम\u094Dय\u093E इनप\u0941टस\u093Eठ\u0940 द\u094Bन नव\u0940न च\u093Eचण\u094Dय\u093E ज\u094Bडल\u094Dय\u093E आह\u0947त.",
+      "expected": {
+        "swift": "mr"
+      },
+      "reason": "A clear Marathi reply routes to a Marathi voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Marathi at 1.00 with 41 letters; the gates admit it: mr. The core agrees (HK-421): whatlang says Marathi at 0.82, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "mr: त\u0941म\u094Dह\u093Eल\u093E ह\u093E बदल लह\u093Eन भ\u093Eग\u093E\u0902मध\u094Dय\u0947 व\u093Fभ\u093Eग\u0942न हव\u093E आह\u0947 क\u093E?",
+      "input": "त\u0941म\u094Dह\u093Eल\u093E ह\u093E बदल लह\u093Eन भ\u093Eग\u093E\u0902मध\u094Dय\u0947 व\u093Fभ\u093Eग\u0942न हव\u093E आह\u0947 क\u093E?",
+      "expected": {
+        "swift": "mr"
+      },
+      "reason": "A clear Marathi reply routes to a Marathi voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Marathi at 1.00 with 40 letters; the gates admit it: mr. The core agrees (HK-421): whatlang says Marathi at 0.73, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "mr: ब\u093Fल\u094Dड अयशस\u094Dव\u0940 झ\u093Eल\u0947 क\u093Eरण ल\u093F\u0902करल\u093E क\u094Bर ल\u093Eयब\u094Dरर\u0940 स\u093Eपडल\u0940 न\u093Eह\u0940.",
+      "input": "ब\u093Fल\u094Dड अयशस\u094Dव\u0940 झ\u093Eल\u0947 क\u093Eरण ल\u093F\u0902करल\u093E क\u094Bर ल\u093Eयब\u094Dरर\u0940 स\u093Eपडल\u0940 न\u093Eह\u0940.",
+      "expected": {
+        "swift": "mr",
+        "core": null
+      },
+      "reason": "A clear Marathi reply routes to a Marathi voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Marathi at 1.00 with 45 letters; the gates admit it: mr. Accepted difference (HK-421): whatlang says Marathi at 0.29, a script the core holds no evidence for, and that is under the confidence gate of 0.59, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "mr: म\u0940 build च\u093Eलवल\u093E आण\u093F सर\u094Dव tests प\u093Eस झ\u093Eल\u0947.",
+      "input": "म\u0940 build च\u093Eलवल\u093E आण\u093F सर\u094Dव tests प\u093Eस झ\u093Eल\u0947.",
+      "expected": {
+        "swift": "mr"
+      },
+      "reason": "A clear Marathi reply routes to a Marathi voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Marathi at 1.00 with 31 letters; the gates admit it: mr. The core agrees (HK-421): whatlang says Marathi at 0.94, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "he: תיקנתי את הבאג במנתח, ועכשיו כל הבדיקות עוברות.",
+      "input": "תיקנתי את הבאג במנתח, ועכשיו כל הבדיקות עוברות.",
+      "expected": {
+        "swift": "he"
+      },
+      "reason": "A clear Hebrew reply routes to a Hebrew voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Hebrew at 1.00 with 38 letters; the gates admit it: he. The core agrees (HK-421): whatlang says Hebrew at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "he: הוספתי שתי בדיקות חדשות לקלט ריק בקובץ parser.rs.",
+      "input": "הוספתי שתי בדיקות חדשות לקלט ריק בקובץ parser.rs.",
+      "expected": {
+        "swift": "he"
+      },
+      "reason": "A clear Hebrew reply routes to a Hebrew voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Hebrew at 1.00 with 40 letters; the gates admit it: he. The core agrees (HK-421): whatlang says Hebrew at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "he: האם תרצה שאפצל את השינוי הזה לכמה קומיטים קטנים יותר?",
+      "input": "האם תרצה שאפצל את השינוי הזה לכמה קומיטים קטנים יותר?",
+      "expected": {
+        "swift": "he"
+      },
+      "reason": "A clear Hebrew reply routes to a Hebrew voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Hebrew at 1.00 with 43 letters; the gates admit it: he. The core agrees (HK-421): whatlang says Hebrew at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "he: הבנייה נכשלה כי המקשר לא מצא את ספריית הליבה.",
+      "input": "הבנייה נכשלה כי המקשר לא מצא את ספריית הליבה.",
+      "expected": {
+        "swift": "he"
+      },
+      "reason": "A clear Hebrew reply routes to a Hebrew voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Hebrew at 1.00 with 36 letters; the gates admit it: he. The core agrees (HK-421): whatlang says Hebrew at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "el: Διόρθωσα το σφάλμα στον αναλυτή και τώρα όλες οι δοκιμές περ…",
+      "input": "Διόρθωσα το σφάλμα στον αναλυτή και τώρα όλες οι δοκιμές περνούν.",
+      "expected": {
+        "swift": "el"
+      },
+      "reason": "A clear Greek reply routes to a Greek voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Greek at 1.00 with 54 letters; the gates admit it: el. The core agrees (HK-421): whatlang says Greek at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "el: Πρόσθεσα δύο νέες δοκιμές για κενή είσοδο στο αρχείο parser.rs.",
+      "input": "Πρόσθεσα δύο νέες δοκιμές για κενή είσοδο στο αρχείο parser.rs.",
+      "expected": {
+        "swift": "el"
+      },
+      "reason": "A clear Greek reply routes to a Greek voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Greek at 1.00 with 52 letters; the gates admit it: el. The core agrees (HK-421): whatlang says Greek at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "el: Θέλεις να χωρίσω αυτή την αλλαγή σε μικρότερα commits;",
+      "input": "Θέλεις να χωρίσω αυτή την αλλαγή σε μικρότερα commits;",
+      "expected": {
+        "swift": "el"
+      },
+      "reason": "A clear Greek reply routes to a Greek voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Greek at 1.00 with 45 letters; the gates admit it: el. The core agrees (HK-421): whatlang says Greek at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "el: Η κατασκευή απέτυχε επειδή ο συνδέτης δεν βρήκε τη βιβλιοθήκη.",
+      "input": "Η κατασκευή απέτυχε επειδή ο συνδέτης δεν βρήκε τη βιβλιοθήκη.",
+      "expected": {
+        "swift": "el"
+      },
+      "reason": "A clear Greek reply routes to a Greek voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Greek at 1.00 with 52 letters; the gates admit it: el. The core agrees (HK-421): whatlang says Greek at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "el: Άλλαξα το fetchData() και το renderView() στο αρχείο.",
+      "input": "Άλλαξα το fetchData() και το renderView() στο αρχείο.",
+      "expected": {
+        "swift": "el"
+      },
+      "reason": "A clear Greek reply routes to a Greek voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Greek at 1.00 with 41 letters; the gates admit it: el. The core agrees (HK-421): whatlang says Greek at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "th: ฉ\u0E31นแก\u0E49ไขข\u0E49อผ\u0E34ดพลาดในต\u0E31วแยกว\u0E34เคราะห\u0E4Cแล\u0E49ว และตอนน\u0E35\u0E49การทดสอบท\u0E31\u0E49…",
+      "input": "ฉ\u0E31นแก\u0E49ไขข\u0E49อผ\u0E34ดพลาดในต\u0E31วแยกว\u0E34เคราะห\u0E4Cแล\u0E49ว และตอนน\u0E35\u0E49การทดสอบท\u0E31\u0E49งหมดผ\u0E48านแล\u0E49ว",
+      "expected": {
+        "swift": "th"
+      },
+      "reason": "A clear Thai reply routes to a Thai voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Thai at 1.00 with 63 letters; the gates admit it: th. The core agrees (HK-421): whatlang says Thai at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "th: ฉ\u0E31นเพ\u0E34\u0E48มการทดสอบใหม\u0E48สองรายการสำหร\u0E31บอ\u0E34นพ\u0E38ตว\u0E48างในไฟล\u0E4C parser.rs",
+      "input": "ฉ\u0E31นเพ\u0E34\u0E48มการทดสอบใหม\u0E48สองรายการสำหร\u0E31บอ\u0E34นพ\u0E38ตว\u0E48างในไฟล\u0E4C parser.rs",
+      "expected": {
+        "swift": "th"
+      },
+      "reason": "A clear Thai reply routes to a Thai voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Thai at 1.00 with 55 letters; the gates admit it: th. The core agrees (HK-421): whatlang says Thai at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "th: ค\u0E38ณต\u0E49องการให\u0E49ฉ\u0E31นแบ\u0E48งการเปล\u0E35\u0E48ยนแปลงน\u0E35\u0E49เป\u0E47นคอมม\u0E34ตท\u0E35\u0E48เล\u0E47กลงไหม",
+      "input": "ค\u0E38ณต\u0E49องการให\u0E49ฉ\u0E31นแบ\u0E48งการเปล\u0E35\u0E48ยนแปลงน\u0E35\u0E49เป\u0E47นคอมม\u0E34ตท\u0E35\u0E48เล\u0E47กลงไหม",
+      "expected": {
+        "swift": "th"
+      },
+      "reason": "A clear Thai reply routes to a Thai voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Thai at 1.00 with 51 letters; the gates admit it: th. The core agrees (HK-421): whatlang says Thai at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "th: การสร\u0E49างล\u0E49มเหลวเพราะต\u0E31วเช\u0E37\u0E48อมโยงหาไลบราร\u0E35หล\u0E31กไม\u0E48พบ",
+      "input": "การสร\u0E49างล\u0E49มเหลวเพราะต\u0E31วเช\u0E37\u0E48อมโยงหาไลบราร\u0E35หล\u0E31กไม\u0E48พบ",
+      "expected": {
+        "swift": "th"
+      },
+      "reason": "A clear Thai reply routes to a Thai voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Thai at 1.00 with 46 letters; the gates admit it: th. The core agrees (HK-421): whatlang says Thai at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "ka: შეცდომა გავასწორე და ახლა ყველა ტესტი წარმატებით გადის.",
+      "input": "შეცდომა გავასწორე და ახლა ყველა ტესტი წარმატებით გადის.",
+      "expected": {
+        "swift": "ka"
+      },
+      "reason": "A clear Georgian reply routes to a Georgian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Georgian at 1.00 with 47 letters; the gates admit it: ka. The core agrees (HK-421): whatlang says Georgian at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "ka: დავამატე ორი ახალი ტესტი ცარიელი შეყვანისთვის parser.rs ფაილში.",
+      "input": "დავამატე ორი ახალი ტესტი ცარიელი შეყვანისთვის parser.rs ფაილში.",
+      "expected": {
+        "swift": "ka"
+      },
+      "reason": "A clear Georgian reply routes to a Georgian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Georgian at 1.00 with 54 letters; the gates admit it: ka. The core agrees (HK-421): whatlang says Georgian at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "ka: გინდა, რომ ეს ცვლილება პატარა ნაწილებად დავყო?",
+      "input": "გინდა, რომ ეს ცვლილება პატარა ნაწილებად დავყო?",
+      "expected": {
+        "swift": "ka"
+      },
+      "reason": "A clear Georgian reply routes to a Georgian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Georgian at 1.00 with 38 letters; the gates admit it: ka. The core agrees (HK-421): whatlang says Georgian at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "ka: აწყობა ვერ მოხერხდა, რადგან ბიბლიოთეკა ვერ მოიძებნა.",
+      "input": "აწყობა ვერ მოხერხდა, რადგან ბიბლიოთეკა ვერ მოიძებნა.",
+      "expected": {
+        "swift": "ka"
+      },
+      "reason": "A clear Georgian reply routes to a Georgian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Georgian at 1.00 with 44 letters; the gates admit it: ka. The core agrees (HK-421): whatlang says Georgian at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "hy: Ես ուղղեցի սխալը վերլուծիչում, և հիմա բոլոր թեստերն անցնում են։",
+      "input": "Ես ուղղեցի սխալը վերլուծիչում, և հիմա բոլոր թեստերն անցնում են։",
+      "expected": {
+        "swift": "hy"
+      },
+      "reason": "A clear Armenian reply routes to an Armenian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Armenian at 1.00 with 52 letters; the gates admit it: hy. The core agrees (HK-421): whatlang says Armenian at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "hy: Ես ավելացրի երկու նոր թեստ դատարկ մուտքի համար parser.rs ֆայ…",
+      "input": "Ես ավելացրի երկու նոր թեստ դատարկ մուտքի համար parser.rs ֆայլում։",
+      "expected": {
+        "swift": "hy"
+      },
+      "reason": "A clear Armenian reply routes to an Armenian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Armenian at 1.00 with 54 letters; the gates admit it: hy. The core agrees (HK-421): whatlang says Armenian at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "hy: Ուզո՞ւմ ես, որ այս փոփոխությունը բաժանեմ ավելի փոքր մասերի։",
+      "input": "Ուզո՞ւմ ես, որ այս փոփոխությունը բաժանեմ ավելի փոքր մասերի։",
+      "expected": {
+        "swift": "hy"
+      },
+      "reason": "A clear Armenian reply routes to an Armenian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Armenian at 1.00 with 48 letters; the gates admit it: hy. The core agrees (HK-421): whatlang says Armenian at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "hy: Կառուցումը ձախողվեց, քանի որ կապողը չգտավ գրադարանը։",
+      "input": "Կառուցումը ձախողվեց, քանի որ կապողը չգտավ գրադարանը։",
+      "expected": {
+        "swift": "hy"
+      },
+      "reason": "A clear Armenian reply routes to an Armenian voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Armenian at 1.00 with 44 letters; the gates admit it: hy. The core agrees (HK-421): whatlang says Armenian at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "bn: আম\u09BF প\u09BEর\u09CDস\u09BEর\u09C7র ত\u09CDর\u09C1ট\u09BF ঠ\u09BFক কর\u09C7ছ\u09BF এব\u0982 এখন সব পর\u09C0ক\u09CDষ\u09BE সফল হচ\u09CDছ\u09C7।",
+      "input": "আম\u09BF প\u09BEর\u09CDস\u09BEর\u09C7র ত\u09CDর\u09C1ট\u09BF ঠ\u09BFক কর\u09C7ছ\u09BF এব\u0982 এখন সব পর\u09C0ক\u09CDষ\u09BE সফল হচ\u09CDছ\u09C7।",
+      "expected": {
+        "swift": "bn"
+      },
+      "reason": "A clear Bengali reply routes to a Bengali voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Bengali at 1.00 with 45 letters; the gates admit it: bn. The core agrees (HK-421): whatlang says Bengali at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "bn: আম\u09BF parser.rs ফ\u09BEইল\u09C7 খ\u09BEল\u09BF ইনপ\u09C1ট\u09C7র জন\u09CDয দ\u09C1ট\u09BF নত\u09C1ন পর\u09C0ক\u09CDষ\u09BE য\u09CBগ…",
+      "input": "আম\u09BF parser.rs ফ\u09BEইল\u09C7 খ\u09BEল\u09BF ইনপ\u09C1ট\u09C7র জন\u09CDয দ\u09C1ট\u09BF নত\u09C1ন পর\u09C0ক\u09CDষ\u09BE য\u09CBগ কর\u09C7ছ\u09BF।",
+      "expected": {
+        "swift": "bn"
+      },
+      "reason": "A clear Bengali reply routes to a Bengali voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Bengali at 1.00 with 52 letters; the gates admit it: bn. The core agrees (HK-421): whatlang says Bengali at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "bn: আপন\u09BF ক\u09BF চ\u09BEন আম\u09BF এই পর\u09BFবর\u09CDতনট\u09BF ছ\u09CBট ছ\u09CBট অ\u0982শ\u09C7 ভ\u09BEগ কর\u09BF?",
+      "input": "আপন\u09BF ক\u09BF চ\u09BEন আম\u09BF এই পর\u09BFবর\u09CDতনট\u09BF ছ\u09CBট ছ\u09CBট অ\u0982শ\u09C7 ভ\u09BEগ কর\u09BF?",
+      "expected": {
+        "swift": "bn"
+      },
+      "reason": "A clear Bengali reply routes to a Bengali voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Bengali at 1.00 with 39 letters; the gates admit it: bn. The core agrees (HK-421): whatlang says Bengali at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "bn: ব\u09BFল\u09CDড ব\u09CDযর\u09CDথ হয\u09BC\u09C7ছ\u09C7 ক\u09BEরণ ল\u09BF\u0982ক\u09BEর ক\u09CBর ল\u09BEইব\u09CDর\u09C7র\u09BF খ\u09C1\u0981জ\u09C7 প\u09BEয\u09BCন\u09BF।",
+      "input": "ব\u09BFল\u09CDড ব\u09CDযর\u09CDথ হয\u09BC\u09C7ছ\u09C7 ক\u09BEরণ ল\u09BF\u0982ক\u09BEর ক\u09CBর ল\u09BEইব\u09CDর\u09C7র\u09BF খ\u09C1\u0981জ\u09C7 প\u09BEয\u09BCন\u09BF।",
+      "expected": {
+        "swift": "bn"
+      },
+      "reason": "A clear Bengali reply routes to a Bengali voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Bengali at 1.00 with 44 letters; the gates admit it: bn. The core agrees (HK-421): whatlang says Bengali at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "ta: ந\u0BBEன\u0BCD ப\u0BBEக\u0BC1பட\u0BC1த\u0BCDத\u0BBFய\u0BBFல\u0BCD உள\u0BCDள ப\u0BBFழ\u0BC8ய\u0BC8ச\u0BCD சர\u0BBFச\u0BC6ய\u0BCDத\u0BC7ன\u0BCD, இப\u0BCDப\u0BCBத\u0BC1 எல\u0BCDல…",
+      "input": "ந\u0BBEன\u0BCD ப\u0BBEக\u0BC1பட\u0BC1த\u0BCDத\u0BBFய\u0BBFல\u0BCD உள\u0BCDள ப\u0BBFழ\u0BC8ய\u0BC8ச\u0BCD சர\u0BBFச\u0BC6ய\u0BCDத\u0BC7ன\u0BCD, இப\u0BCDப\u0BCBத\u0BC1 எல\u0BCDல\u0BBE ச\u0BCBதன\u0BC8கள\u0BC1ம\u0BCD வ\u0BC6ற\u0BCDற\u0BBF ப\u0BC6ற\u0BC1க\u0BBFன\u0BCDறன.",
+      "expected": {
+        "swift": "ta"
+      },
+      "reason": "A clear Tamil reply routes to a Tamil voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Tamil at 1.00 with 68 letters; the gates admit it: ta. The core agrees (HK-421): whatlang says Tamil at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "ta: parser.rs க\u0BCBப\u0BCDப\u0BBFல\u0BCD வ\u0BC6ற\u0BCDற\u0BC1 உள\u0BCDள\u0BC0ட\u0BCDட\u0BBFற\u0BCDக\u0BC1 இரண\u0BCDட\u0BC1 ப\u0BC1த\u0BBFய ச\u0BCBதன\u0BC8கள…",
+      "input": "parser.rs க\u0BCBப\u0BCDப\u0BBFல\u0BCD வ\u0BC6ற\u0BCDற\u0BC1 உள\u0BCDள\u0BC0ட\u0BCDட\u0BBFற\u0BCDக\u0BC1 இரண\u0BCDட\u0BC1 ப\u0BC1த\u0BBFய ச\u0BCBதன\u0BC8கள\u0BC8ச\u0BCD ச\u0BC7ர\u0BCDத\u0BCDத\u0BC7ன\u0BCD.",
+      "expected": {
+        "swift": "ta"
+      },
+      "reason": "A clear Tamil reply routes to a Tamil voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Tamil at 1.00 with 55 letters; the gates admit it: ta. The core agrees (HK-421): whatlang says Tamil at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "ta: இந\u0BCDத ம\u0BBEற\u0BCDறத\u0BCDத\u0BC8 ச\u0BBFற\u0BBFய பக\u0BC1த\u0BBFகள\u0BBEகப\u0BCD ப\u0BBFர\u0BBFக\u0BCDக வ\u0BC7ண\u0BCDட\u0BC1ம\u0BBE?",
+      "input": "இந\u0BCDத ம\u0BBEற\u0BCDறத\u0BCDத\u0BC8 ச\u0BBFற\u0BBFய பக\u0BC1த\u0BBFகள\u0BBEகப\u0BCD ப\u0BBFர\u0BBFக\u0BCDக வ\u0BC7ண\u0BCDட\u0BC1ம\u0BBE?",
+      "expected": {
+        "swift": "ta"
+      },
+      "reason": "A clear Tamil reply routes to a Tamil voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Tamil at 1.00 with 38 letters; the gates admit it: ta. The core agrees (HK-421): whatlang says Tamil at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
+    },
+    {
+      "name": "ta: இண\u0BC8ப\u0BCDப\u0BBEன\u0BCD ம\u0BC8ய ந\u0BC2லகத\u0BCDத\u0BC8க\u0BCD கண\u0BCDட\u0BC1ப\u0BBFட\u0BBFக\u0BCDக\u0BBEதத\u0BBEல\u0BCD உர\u0BC1வ\u0BBEக\u0BCDகம\u0BCD த\u0BCBல\u0BCDவ…",
+      "input": "இண\u0BC8ப\u0BCDப\u0BBEன\u0BCD ம\u0BC8ய ந\u0BC2லகத\u0BCDத\u0BC8க\u0BCD கண\u0BCDட\u0BC1ப\u0BBFட\u0BBFக\u0BCDக\u0BBEதத\u0BBEல\u0BCD உர\u0BC1வ\u0BBEக\u0BCDகம\u0BCD த\u0BCBல\u0BCDவ\u0BBFயட\u0BC8ந\u0BCDதத\u0BC1.",
+      "expected": {
+        "swift": "ta"
+      },
+      "reason": "A clear Tamil reply routes to a Tamil voice on every OS (ADR 0011). Swift: NLLanguageRecognizer says Tamil at 1.00 with 53 letters; the gates admit it: ta. The core agrees (HK-421): whatlang says Tamil at 1.00, a script the core holds no evidence for, and that is above the confidence gate of 0.59."
     },
     {
       "name": "zh-Hans: 我重构了解析器，现在所有测试都通过了。",
@@ -1970,6 +2450,24 @@
       "reason": "Full-width forms (U+FF00..U+FFEF: punctuation, digits, Latin letters, halfwidth katakana) are no CJK script; whatlang counts the whole block as hangul, so the core decides CJK by its script rule alone and never from whatlang's zh, ja or ko (HK-423). Swift: NLLanguageRecognizer says Japanese at 1.00 with 3 letters; its CJK answer is trusted. Accepted difference (HK-420): the core decides CJK by its script alone, Han with no kana is zh, and it has no lexicon that knows Japanese words written in kanji; a Japanese reply holds kana, and any kana decides ja in the core."
     },
     {
+      "name": "fullwidth: Ｔｈｅ\u3000ｂｕｉｌｄ\u3000ｐａｓｓｅｄ\u3000ａｎｄ\u3000ａｌｌ\u3000ｔｅｓｔｓ\u3000ａｒｅ\u3000ｇｒｅｅｎ\u3000ｎｏｗ",
+      "input": "Ｔｈｅ\u3000ｂｕｉｌｄ\u3000ｐａｓｓｅｄ\u3000ａｎｄ\u3000ａｌｌ\u3000ｔｅｓｔｓ\u3000ａｒｅ\u3000ｇｒｅｅｎ\u3000ｎｏｗ",
+      "expected": {
+        "swift": "en",
+        "core": null
+      },
+      "reason": "Full-width forms (U+FF00..U+FFEF: punctuation, digits, Latin letters, halfwidth katakana) are no CJK script; whatlang counts the whole block as hangul, so the core decides CJK by its script rule alone and never from whatlang's zh, ja or ko (HK-423). Swift: NLLanguageRecognizer says English at 1.00 with 36 letters; the gates admit it: en. Accepted difference (HK-423): whatlang says Korean at 1.00, counting the full-width letters as hangul, past the 25-letter gate; the text holds no CJK script, so its ko is undecided, and the reply reads in English, as the Swift decision does."
+    },
+    {
+      "name": "fullwidth: ＡＬＬ\u3000ＴＥＳＴＳ\u3000ＰＡＳＳＥＤ\u3000ＡＮＤ\u3000ＴＨＥ\u3000ＢＵＩＬＤ\u3000ＩＳ\u3000ＧＲＥＥＮ",
+      "input": "ＡＬＬ\u3000ＴＥＳＴＳ\u3000ＰＡＳＳＥＤ\u3000ＡＮＤ\u3000ＴＨＥ\u3000ＢＵＩＬＤ\u3000ＩＳ\u3000ＧＲＥＥＮ",
+      "expected": {
+        "swift": "en",
+        "core": null
+      },
+      "reason": "Full-width forms (U+FF00..U+FFEF: punctuation, digits, Latin letters, halfwidth katakana) are no CJK script; whatlang counts the whole block as hangul, so the core decides CJK by its script rule alone and never from whatlang's zh, ja or ko (HK-423). Swift: NLLanguageRecognizer says English at 1.00 with 32 letters; the gates admit it: en. Accepted difference (HK-423): whatlang says Korean at 1.00, counting the full-width letters as hangul, past the 25-letter gate; the text holds no CJK script, so its ko is undecided, and the reply reads in English, as the Swift decision does."
+    },
+    {
       "name": "script: 本日東京地方裁判所判決言渡、被告人無罪確定の模様。",
       "input": "本日東京地方裁判所判決言渡、被告人無罪確定の模様。",
       "expected": {
@@ -2333,6 +2831,60 @@
         "swift": "hr"
       },
       "reason": "Serbian, a language the core does not answer (HK-422). Swift: NLLanguageRecognizer says Croatian at 1.00 with 53 letters; the gates admit it: hr. The core agrees (HK-425): whatlang says Croatian at 1.00, the letters fit its alphabet, and its function words point to it alone (5, against at most 1 English)."
+    },
+    {
+      "name": "unlisted: من خطای تجزیه\u200Cگر را برطرف کردم و اکنون همه آزمون\u200Cها با موفقی…",
+      "input": "من خطای تجزیه\u200Cگر را برطرف کردم و اکنون همه آزمون\u200Cها با موفقیت اجرا می\u200Cشوند.",
+      "expected": {
+        "swift": "ar",
+        "core": null
+      },
+      "reason": "Persian, a language the core does not answer (HK-422). Swift: NLLanguageRecognizer says Arabic at 1.00 with 58 letters; the gates admit it: ar. Accepted difference (HK-422, HK-421): whatlang says Urdu at 0.03, under the confidence gate of 0.59 the core holds for a script without evidence, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "unlisted: دو آزمون تازه برای ورودی خالی به پرونده parser.rs اضافه کردم.",
+      "input": "دو آزمون تازه برای ورودی خالی به پرونده parser.rs اضافه کردم.",
+      "expected": {
+        "swift": "ar",
+        "core": null
+      },
+      "reason": "Persian, a language the core does not answer (HK-422). Swift: NLLanguageRecognizer says Arabic at 1.00 with 49 letters; the gates admit it: ar. Accepted difference (HK-422, HK-421): whatlang says Urdu at 0.37, under the confidence gate of 0.59 the core holds for a script without evidence, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "unlisted: म\u0948ल\u0947 प\u093Eर\u094Dसरक\u094B त\u094Dर\u0941ट\u093F सच\u094Dय\u093Eए\u0901 र अब सब\u0948 पर\u0940क\u094Dषणहर\u0942 सफल भइरह\u0947क\u093E…",
+      "input": "म\u0948ल\u0947 प\u093Eर\u094Dसरक\u094B त\u094Dर\u0941ट\u093F सच\u094Dय\u093Eए\u0901 र अब सब\u0948 पर\u0940क\u094Dषणहर\u0942 सफल भइरह\u0947क\u093E छन\u094D।",
+      "expected": {
+        "swift": "hi",
+        "core": null
+      },
+      "reason": "Nepali, a language the core does not answer (HK-422). Swift: NLLanguageRecognizer says Hindi at 1.00 with 49 letters; the gates admit it: hi. Accepted difference (HK-422, HK-421): whatlang says Marathi at 0.17, under the confidence gate of 0.59 the core holds for a script without evidence, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "unlisted: क\u0947 तप\u093Eई\u0902 च\u093Eहन\u0941ह\u0941न\u094Dछ क\u093F म य\u094B पर\u093Fवर\u094Dतनल\u093Eई स\u093Eन\u093E भ\u093Eगहर\u0942म\u093E ब\u093E\u0901ड\u0942\u0901?",
+      "input": "क\u0947 तप\u093Eई\u0902 च\u093Eहन\u0941ह\u0941न\u094Dछ क\u093F म य\u094B पर\u093Fवर\u094Dतनल\u093Eई स\u093Eन\u093E भ\u093Eगहर\u0942म\u093E ब\u093E\u0901ड\u0942\u0901?",
+      "expected": {
+        "swift": "hi",
+        "core": null
+      },
+      "reason": "Nepali, a language the core does not answer (HK-422). Swift: NLLanguageRecognizer says Hindi at 1.00 with 49 letters; the gates admit it: hi. Accepted difference (HK-422, HK-421): whatlang says Hindi at 0.34, under the confidence gate of 0.59 the core holds for a script without evidence, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "unlisted: ما هەڵەکەمان چاککرد و ئێستا هەموو تاقیکردنەوەکان سەرکەوتوو دەبن.",
+      "input": "ما هەڵەکەمان چاککرد و ئێستا هەموو تاقیکردنەوەکان سەرکەوتوو دەبن.",
+      "expected": {
+        "swift": "ur",
+        "core": null
+      },
+      "reason": "Central Kurdish, a language the core does not answer (HK-422). Swift: NLLanguageRecognizer says Urdu at 0.99 with 55 letters; the gates admit it: ur. Accepted difference (HK-422, HK-421): whatlang says Arabic at 0.15, under the confidence gate of 0.59 the core holds for a script without evidence, so the core is undecided and the reply reads in English instead."
+    },
+    {
+      "name": "unlisted: ما خطا سمه کړه او اوس ټولې ازموینې بریالۍ دي.",
+      "input": "ما خطا سمه کړه او اوس ټولې ازموینې بریالۍ دي.",
+      "expected": {
+        "swift": "ar",
+        "core": null
+      },
+      "reason": "Pashto, a language the core does not answer (HK-422). Swift: NLLanguageRecognizer says Arabic at 1.00 with 35 letters; the gates admit it: ar. Accepted difference (HK-422, HK-421): whatlang says Arabic at 0.07, under the confidence gate of 0.59 the core holds for a script without evidence, so the core is undecided and the reply reads in English instead."
     }
   ]
 }

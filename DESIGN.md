@@ -3595,21 +3595,33 @@ reply the same and routes it to the same language.
   the text must hold more of the answer's commonest function words than
   of any other listed language's whose alphabet the letters fit, and than
   of English's whatever the letters. Words are runs of Alphabetic scalars,
-  lowercased; each of the 24 listed Latin- and Cyrillic-script languages
-  has an alphabet and a list, and the check takes no confidence. An answer
-  in any other script (Arabic, Devanagari, Greek, Hebrew, Thai, …) keeps a
-  confidence gate, above 0.59 on whatlang's scale, where the first
-  agreement corpus put it (HK-421).
+  lowercased, a capital İ to i alone (Unicode lowers it to i and a
+  combining dot above, which would end the word and give English an "i"
+  in every Turkish sentence opening with İ); each of the 24 listed Latin-
+  and Cyrillic-script languages has an alphabet and a list, and the check
+  takes no confidence. An answer in any other script (Arabic, Devanagari,
+  Greek, Hebrew, Thai, …) keeps a confidence gate, above 0.59 on
+  whatlang's scale (HK-421). The value was first tuned on Latin-script
+  sentences, when the gate still held them; the agreement corpus measures
+  it in the scripts it holds now, eleven of their languages: whatlang's
+  right answers there are mostly 1.00 and decide from 0.62, short Hindi
+  and Arabic replies around an identifier (0.48 to 0.57) and one Marathi
+  sentence (0.29) fall under it, and the neighbour whatlang names for a
+  language the core does not answer (Persian, Nepali, Central Kurdish,
+  Pashto) stays under it, at 0.37 or less.
 - Accepted differences, each a case of
   `Tests/Fixtures/speech/language-agreement.json` with `expected.core`
-  (284 sentences, 58 of them differences), and of three kinds, which both
+  (351 sentences, 74 of them differences), and of three kinds, which both
   runners enforce: the core undecided; CJK decided by its script where the
   recognizer named another CJK language; and the language a sentence is
   written in, the one its case is named after, where the recognizer named
   another or was undecided. So outside CJK the core names a language the
   app did not only when it is the sentence's own. The corpus holds at
   least four sentences of every listed Latin- and Cyrillic-script
-  language, terse English code-review prose among the English ones.
+  language and of eleven languages the confidence gate decides (ar, ur,
+  hi, mr, he, el, th, ka, hy, bn, ta), terse English code-review prose
+  and English quoting accented loanwords (crème brûlée, résumé) among the
+  English ones, and Turkish opening with a capital İ.
   Han-only text with no kana is zh in the core, where the recognizer knew
   Japanese words written in kanji (東京駅, 日本語, 新幹線 and
   合計：１，２３４，５６７円 read ja in the app; 大丈夫 agrees; HK-420); a
@@ -3621,17 +3633,24 @@ reply the same and routes it to the same language.
   zh or ko in the app, Korean with Han (大韓民國 헌법 제１조) is ko and was
   zh, and Korean with full-width exclamation marks is ko and was ja. Text
   whose only CJK-looking scalars are full-width forms is undecided in the
-  core where the recognizer said ja (（１２／１２）, ｶﾀｶﾅ; HK-423). 46
-  sentences are undecided in the core (HK-421, HK-425): 13 the app read as
-  English anyway, and 33 it read in another language, among them German
-  (the repeated 'Bitte prüfe…' too, which a confidence gate alone read as
-  French, HK-424), Dutch, Czech, Slovak, Croatian, Swedish, Danish and
+  core where the recognizer said ja (（１２／１２）, ｶﾀｶﾅ), and so is
+  full-width English, which whatlang counts as hangul (HK-423). 62
+  sentences are undecided in the core (HK-421, HK-422, HK-423, HK-425):
+  19 the app read as English anyway, and 43 it read in another language,
+  among them German (the repeated 'Bitte prüfe…' too, which a confidence
+  gate alone read as French, HK-424), Dutch, Czech, Slovak, Croatian, Swedish, Danish and
   Norwegian (which share most function words), Russian and Ukrainian,
   where whatlang's answer was another language or the function words did
-  not settle it. Five languages only the recognizer names (Icelandic,
-  Kazakh, Lao, Tibetan, Cherokee) and unlisted ones it names a neighbour
-  for (Slovene, Belarusian, Swahili) are undecided in the core, and
-  Amharic, which only whatlang names, is undecided in both (HK-422). Two
+  not settle it, and short Hindi, Arabic and Marathi under the confidence
+  gate. Five languages only the recognizer names (Icelandic, Kazakh, Lao,
+  Tibetan, Cherokee) and languages the core does not answer that the
+  recognizer read as Arabic, Hindi or Urdu (Persian, Nepali, Central
+  Kurdish, Pashto, whose neighbour in whatlang stays under the gate) are
+  undecided in the core;
+  so are some sentences in unlisted languages the recognizer named a
+  Latin- or Cyrillic-script neighbour for (Slovene, Belarusian, Swahili,
+  Galician, Estonian, Serbian), where others agree; and Amharic, which
+  only whatlang names, is undecided in both (HK-422). Two
   Russian sentences read as Russian in the core where the recognizer said
   Kazakh, or was undecided (HK-425).
 - The summary rules count Characters (HK-169, HK-170, HK-173): a reply is

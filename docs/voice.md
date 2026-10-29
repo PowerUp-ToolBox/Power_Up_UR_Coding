@@ -65,12 +65,14 @@ How the language is decided, honestly stated:
   that language's alphabet and the reply's small common words ("und",
   "les", "jsem", "что") point to that language and no other. Short,
   terse technical English otherwise fooled the guess into French or
-  Portuguese.
+  Portuguese. For a language written in another script (Arabic, Hindi,
+  Greek, Hebrew, Thai and the rest), the guess must be a confident one.
 - **When PowerUp isn't sure, it reads in English.** Very short replies
   ("OK", "Done."), lists of names or paths, and sentences whose common
   words don't settle the language (Danish and Norwegian share most of
-  theirs, as do Czech and Slovak) are read by an English voice rather
-  than risk a wrong one. So now and then a short reply in another
+  theirs, as do Czech and Slovak), and a short Hindi or Arabic note that
+  is mostly English identifiers are read by an English voice rather than
+  risk a wrong one. So now and then a short reply in another
   language is read in English. A few languages macOS can name but
   PowerUp's detector can't (Icelandic, Kazakh, Lao, Tibetan and Cherokee
   among them) are always read in English.

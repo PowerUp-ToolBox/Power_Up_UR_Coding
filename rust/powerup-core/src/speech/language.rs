@@ -34,8 +34,16 @@ pub const CJK_SHARE: f64 = 0.2;
 /// short Latin-script prose it is high for wrong answers too (an English
 /// sentence French at 0.93), so a Latin or Cyrillic answer is checked
 /// against the text's letters and function words instead, at any
-/// confidence (HK-425). In the other scripts most languages own theirs,
-/// and the gate stays where the first agreement corpus put it, above 0.59.
+/// confidence (HK-425). In the other scripts most languages own theirs.
+/// The value was first tuned on Latin-script sentences, when the gate
+/// still held them; the agreement corpus measures it in the scripts it
+/// holds now (its ar, ur, hi, mr, he, el, th, ka, hy, bn and ta cases).
+/// whatlang's right answers there are mostly 1.00 and decide from 0.62;
+/// short Hindi and Arabic replies around an identifier (0.48 to 0.57) and
+/// one Marathi sentence (0.29) fall under it and read in English; and the
+/// neighbour whatlang names for a language the core does not answer
+/// (Persian, Nepali, Central Kurdish, Pashto) stays under it, at 0.37 or
+/// less, where the app read them as Arabic, Hindi or Urdu.
 pub const CONFIDENCE_GATE: f64 = 0.59;
 
 /// The languages whatlang may answer, with the subtag the core returns
@@ -287,6 +295,54 @@ mod tests {
         );
         assert_eq!(dominant_language("（１２／１２）"), None);
         assert_eq!(dominant_language("Ｈｅｌｌｏ\u{3000}Ｗｏｒｌｄ"), None);
+        // Past the letter gate, only the rule that whatlang's zh, ja or ko
+        // without the script is undecided keeps full-width English from a
+        // Korean voice: no evidence is held for ko, and 1.00 clears the
+        // confidence gate.
+        let english = "Ｔｈｅ\u{3000}ｂｕｉｌｄ\u{3000}ｐａｓｓｅｄ\u{3000}ａｎｄ\u{3000}ａｌｌ\u{3000}ｔｅｓｔｓ\u{3000}ａｒｅ\u{3000}ｇｒｅｅｎ\u{3000}ｎｏｗ";
+        assert!(
+            english
+                .chars()
+                .filter(|scalar| scalar.is_alphabetic())
+                .count()
+                >= MINIMUM_LETTERS
+        );
+        assert_eq!(
+            statistical_answer(english).map(|(code, _)| code),
+            Some("ko")
+        );
+        assert_eq!(dominant_language(english), None);
+    }
+
+    #[test]
+    fn the_confidence_gate_decides_a_script_without_evidence() {
+        // Hindi around an identifier, whatlang's Hindi either side of the
+        // gate; NLLanguageRecognizer says Hindi at 1.00 for both (HK-421).
+        let above = "मैंने टेस्ट जोड़े और build अब ठीक है";
+        let below = "मैंने CI ठीक कर दिया है, अब build हरा है।";
+        for (text, decided) in [(above, true), (below, false)] {
+            assert_eq!(evidence::confirms(text, "hi"), None);
+            let (code, confidence) = statistical_answer(text).unwrap_or(("", 0.0));
+            assert_eq!(code, "hi", "{text:?}");
+            assert!(
+                (confidence - CONFIDENCE_GATE).abs() < 0.05,
+                "{text:?}: {confidence}"
+            );
+            assert_eq!(
+                confidence > CONFIDENCE_GATE,
+                decided,
+                "{text:?}: {confidence}"
+            );
+            assert_eq!(dominant_language(text).is_some(), decided, "{text:?}");
+        }
+        assert_eq!(dominant_language(above).as_deref(), Some("hi"));
+        // Persian, which the core does not answer: whatlang's Urdu stays
+        // under the gate.
+        let persian = "دو آزمون تازه برای ورودی خالی به پرونده parser.rs اضافه کردم.";
+        let (code, confidence) = statistical_answer(persian).unwrap_or(("", 1.0));
+        assert_eq!(code, "ur");
+        assert!(confidence < CONFIDENCE_GATE, "{confidence}");
+        assert_eq!(dominant_language(persian), None);
     }
 
     #[test]

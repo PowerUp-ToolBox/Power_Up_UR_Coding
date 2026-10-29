@@ -21,7 +21,8 @@
 //!    whatever the letters (an English sentence quoting "Zürich" is still
 //!    English). A word is a run of Alphabetic scalars, lowercased, so
 //!    `l'erreur` is `l` and `erreur`; a word several lists hold counts for
-//!    each of them.
+//!    each of them. A capital `İ` lowers to `i` alone ([`lowered`]), so
+//!    Turkish `İçin` is `için`, not `i` and `çin`.
 //!
 //! An answer the evidence does not back is undecided, which reads as
 //! English: a wrong voice is worse than the fallback.
@@ -712,12 +713,32 @@ fn fits(language: &Evidence, lowered: &[char]) -> bool {
         .all(|scalar| language.letters.contains(*scalar))
 }
 
+/// `text` lowercased scalar by scalar, with `İ` (U+0130) lowered to `i`.
+/// Unicode lowers `İ` to `i` and a combining dot above (U+0307), which is
+/// no Alphabetic scalar, so it would end the word there: every Turkish
+/// sentence opening with `İlk`, `İki` or `İşlem` gave English (whose list
+/// holds `i`) a word, and a clear Turkish reply came out undecided. `İ` is
+/// the only scalar Unicode lowers to more than one
+/// (`only_the_dotted_capital_i_lowers_to_more_than_one_scalar`), so every
+/// scalar of `text` stays one scalar here.
+fn lowered(text: &str) -> Vec<char> {
+    text.chars()
+        .flat_map(|scalar| {
+            if scalar == '\u{130}' {
+                'i'.to_lowercase()
+            } else {
+                scalar.to_lowercase()
+            }
+        })
+        .collect()
+}
+
 /// Whether the evidence backs `code` as the language of `text`: `None`
 /// when the core holds no evidence for `code` (a script other than Latin
 /// or Cyrillic), else whether both checks agree with it.
 pub(super) fn confirms(text: &str, code: &str) -> Option<bool> {
     let answer = TABLE.iter().position(|language| language.code == code)?;
-    let lowered: Vec<char> = text.chars().flat_map(char::to_lowercase).collect();
+    let lowered = lowered(text);
     let fitting = |language: &Evidence| fits(language, &lowered);
     if !TABLE.get(answer).is_some_and(fitting) {
         return Some(false);
@@ -849,12 +870,45 @@ mod tests {
             Some(true)
         );
         // English counts whatever the letters: an English sentence quoting
-        // a German name is no German or French. English itself writes no
-        // ü, so its own answer is undecided, which reads as English all the
-        // same.
-        let quoting = "I moved the Zürich office to the new server and it works now.";
-        assert_eq!(confirms(quoting, "de"), Some(false));
+        // a French dish is no French (whatlang: French at 0.72;
+        // NLLanguageRecognizer: English). French holds two words here ("a",
+        // "la"), and the letters rule out every other language that holds
+        // any (û is French's alone), so without English as a rival French
+        // would lead. English holds five ("the", "a", "are", "as", "one"),
+        // so French is vetoed. English itself writes no è, so its own
+        // answer is undecided, which reads as English all the same.
+        let quoting = "Fixed the crème brûlée example: a la carte entries are parsed as one.";
         assert_eq!(confirms(quoting, "fr"), Some(false));
         assert_eq!(confirms(quoting, "en"), Some(false));
+        assert_eq!(
+            confirms(
+                "Use a résumé or CV, de facto the same, as a real input.",
+                "pt"
+            ),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn a_capital_dotted_i_is_one_letter_of_its_word() {
+        // Unicode lowers İ to i and U+0307; split there, each İ gave English
+        // an "i", which tied or beat Turkish's own words.
+        assert_eq!(lowered("İşlem"), ['i', 'ş', 'l', 'e', 'm']);
+        for turkish in [
+            "İşlem tamamlandı, yeni sürüm yayınlandı ve belgeler güncellendi.",
+            "İlk olarak yapılandırmayı güncelledim. İkinci adımda testleri çalıştırdım.",
+            "İki dosyayı değiştirdim. İlgili testleri ekledim. İnceleme için hazır.",
+        ] {
+            assert_eq!(confirms(turkish, "tr"), Some(true), "{turkish:?}");
+        }
+    }
+
+    #[test]
+    fn only_the_dotted_capital_i_lowers_to_more_than_one_scalar() {
+        let expanding: Vec<char> = (0..=u32::from(char::MAX))
+            .filter_map(char::from_u32)
+            .filter(|scalar| scalar.to_lowercase().count() > 1)
+            .collect();
+        assert_eq!(expanding, ['\u{130}']);
     }
 }

@@ -467,8 +467,8 @@ decides CJK by the script rule of `language.json` alone: see
 pins the gates themselves; a text on which they cannot agree belongs in
 `language-agreement.json` with its difference recorded. An accepted
 difference is of one of three kinds: the core undecided, so the reply
-reads in English (HK-421 and HK-425 where the evidence backs no answer,
-HK-422 for a language whatlang or the recognizer cannot name, HK-423 for
+reads in English (HK-425 where the evidence backs no answer, HK-421
+where an answer in another script is under the confidence gate, HK-422 for a language whatlang or the recognizer cannot name, HK-423 for
 text with no CJK script but full-width forms); CJK text the core decides
 by its script where the recognizer named another CJK language (Han-only
 Japanese reading as Chinese, HK-420; a quoted kana word deciding
@@ -477,21 +477,25 @@ is the script rule's answer; or the language a sentence is written in,
 the one its case is named after, where the recognizer named another or
 was undecided (Russian the recognizer read as Kazakh, HK-425). Both
 runners reject any other, so outside CJK the core never names a language
-the app did not unless it is the sentence's own. The corpus holds 284
+the app did not unless it is the sentence's own. The corpus holds 351
 sentences, at least four of every Latin- and Cyrillic-script language the
-core can name, terse English code-review prose among the English ones,
-and 58 accepted differences (4 of HK-420, 8 of HK-423, 3 of HK-422 alone,
-43 citing HK-425, two of those with HK-422 and one with HK-424).
+core can name and of eleven languages whose script the confidence gate
+decides (ar, ur, hi, mr, he, el, th, ka, hy, bn, ta), terse English
+code-review prose and English quoting accented loanwords among the
+English ones, and 74 accepted differences, counted by the ledger rows
+their "Accepted difference" clause cites: 4 of HK-420; 10 of HK-423; 4 of
+HK-421; 11 of HK-422, 3 of them alone, 2 with HK-425 and 6 with HK-421;
+and 45 of HK-425, one of those with HK-424.
 
 The Swift runner is `Tests/PowerUpTests/SpeechFixtureTests.swift`, which
 plays every table through the bridge (`CoreBridgeSpeech.swift`), compares
 an agreement case with `expected.core` where it records one and
 `expected.swift` everywhere else, and also checks that the truncation
 cases cover every sentence ender, a hard cut and a multi-scalar Character
-at the cut, that the agreement corpus holds at least 250 sentences with
-every kind and every Latin- and Cyrillic-script language the core can
-name represented, and that each recorded difference is real and of an
-accepted kind. The Rust runner
+at the cut, that the agreement corpus holds at least 340 sentences with
+every kind, every Latin- and Cyrillic-script language the core can name
+and the eleven languages of the confidence gate's scripts represented,
+and that each recorded difference is real and of an accepted kind. The Rust runner
 is `rust/powerup-core/tests/speech.rs`, one test per table; it compares
 `expected.core` where an agreement case records one and `expected.swift`
 everywhere else, and checks that a recorded difference still differs and is of an

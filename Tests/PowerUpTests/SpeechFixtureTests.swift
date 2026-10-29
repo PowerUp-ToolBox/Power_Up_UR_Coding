@@ -146,14 +146,17 @@ final class SpeechFixtureTests: XCTestCase {
         }
     }
 
-    /// The agreement corpus stays a corpus: at least 250 sentences, and each
+    /// The agreement corpus stays a corpus: at least 340 sentences, and each
     /// language and kind of text the spec names is there, every Latin- and
-    /// Cyrillic-script language the core can name among them (HK-425).
+    /// Cyrillic-script language the core can name among them (HK-425), and
+    /// the scripts the confidence gate decides in (HK-421).
     func testLanguageAgreementCorpusCoversEveryKind() throws {
         let file = try SpeechFixtures.load("language-agreement.json")
-        XCTAssertGreaterThanOrEqual(file.cases.count, 250)
+        XCTAssertGreaterThanOrEqual(file.cases.count, 340)
         let kinds = ["en", "de", "fr", "es", "it", "pt", "nl", "cs", "sk", "pl", "hr", "sv", "da", "nb", "fi",
-                     "hu", "ro", "tr", "id", "vi", "ca", "ru", "uk", "bg", "zh-Hans", "zh-Hant", "ja", "ko",
+                     "hu", "ro", "tr", "id", "vi", "ca", "ru", "uk", "bg",
+                     "ar", "ur", "hi", "mr", "he", "el", "th", "ka", "hy", "bn", "ta",
+                     "zh-Hans", "zh-Hant", "ja", "ko",
                      "mixed", "fullwidth", "script", "short", "code", "han", "gate", "unlisted"]
         for kind in kinds {
             let count = file.cases.filter { $0.name.hasPrefix("\(kind): ") }.count
