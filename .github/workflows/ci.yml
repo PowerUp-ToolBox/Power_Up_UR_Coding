@@ -104,6 +104,14 @@ jobs:
       - name: Lint (unwrap/expect denied in library code)
         run: cargo clippy --all-targets --locked -- -D warnings
 
+      # tests/acp_mock_agent.rs runs the scripted ACP agent
+      # (Tests/Fixtures/harness/acp-mock-agent.py); with CI set, a missing
+      # Python fails it instead of skipping.
+      - name: Python for the mock ACP agent
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       # Includes the shared-fixtures checks: an empty Tests/Fixtures fails.
       - name: Test
         run: cargo test --locked

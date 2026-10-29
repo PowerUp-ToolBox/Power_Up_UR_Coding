@@ -4,8 +4,9 @@
 # session/set_model, with no real harness and no network.
 #
 # Both suites run it in place: Swift's ACPAdapterIntegrationTests through the
-# app's ACPAdapter, and the Rust core's tests. The lines it prints are copied
-# byte for byte into the "mock agent: ..." cases of acp-adapter.json.
+# app's ACPAdapter, and rust/powerup-core/tests/acp_mock_agent.rs through the
+# core's AcpAdapter. The lines it prints are copied byte for byte into the
+# "mock agent: ..." cases of acp-adapter.json.
 #
 # --record PATH appends one JSON object per line to PATH:
 # {"received": <a line read, without its line break>} and
