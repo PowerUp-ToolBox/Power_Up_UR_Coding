@@ -193,3 +193,39 @@ enum FixtureMappings {
         .object(mappings.mapValues { .object($0.mapValues(\.fixtureDescriptor)) })
     }
 }
+
+extension HoldEffect {
+    /// `{"effect": <Swift case name>}`, plus `"mode"` for beginCapture and
+    /// `"intent"` (an intent descriptor) for deliver. Exhaustive, so a sixth
+    /// effect is a compile error here before the tables can miss it.
+    var fixtureDescriptor: FixtureJSON {
+        switch self {
+        case .beginCapture(let mode):
+            return .object(["effect": .string("beginCapture"), "mode": .string(mode.rawValue)])
+        case .endCapture:
+            return .object(["effect": .string("endCapture")])
+        case .cancelCapture:
+            return .object(["effect": .string("cancelCapture")])
+        case .deliver(let intent):
+            return .object(["effect": .string("deliver"), "intent": intent.fixtureDescriptor])
+        case .ignore:
+            return .object(["effect": .string("ignore")])
+        }
+    }
+}
+
+extension ConnectedController {
+    /// `{"id", "profileID", "displayName"}`, every field required.
+    init(fixture descriptor: FixtureJSON) throws {
+        guard let id = descriptor["id"]?.stringValue,
+              let profileID = descriptor["profileID"]?.stringValue,
+              let displayName = descriptor["displayName"]?.stringValue else {
+            throw FixtureValueError(description: "not a controller descriptor: \(descriptor)")
+        }
+        self.init(id: id, profileID: profileID, displayName: displayName)
+    }
+
+    var fixtureDescriptor: FixtureJSON {
+        .object(["id": .string(id), "profileID": .string(profileID), "displayName": .string(displayName)])
+    }
+}

@@ -78,7 +78,8 @@ intent a press or release produces, which actions hold, the default
 mappings, how a (profile, control) pair resolves to an action, and how a
 config.json's mapping subtree loads (including whether the file is copied
 before the next save). `device/` holds the control-kind rule, how a device
-profile is read and written back, and the built-in DualSense profile. The
+profile is read and written back, the built-in DualSense profile, which
+connected controller fills the Controller slot, and the hold rule. The
 files are ordinary case tables. Values that are Swift enums in the app and
 Rust enums in the core are written as plain JSON descriptors, so neither
 language's spelling leaks into the file:
@@ -88,6 +89,9 @@ language's spelling leaks into the file:
 | action | `{"case": <case name>}`, plus `"prompt"` for `sendPrompt`. The case names are the 19 Swift case names, which are also the keys the config writer stores, for example `toggleTTS` and `pushToTalkDraft` |
 | intent | `{"intent": <Swift case name>}`, plus `"mode": "send"` or `"draft"` for `beginVoiceCapture` and `"prompt"` for `sendPrompt` |
 | mappings | `{<profile id>: {<control id>: <action descriptor>}}`, or the string `"defaults"` for the shipped default mappings (`mapping/default-mapping.json` spells those out) |
+| effect | `{"effect": <Swift case name>}`, one of `beginCapture`, `endCapture`, `cancelCapture`, `deliver` and `ignore`, plus `"mode": "send"` or `"draft"` for `beginCapture` and `"intent": <intent descriptor>` for `deliver` |
+| controller | `{"id", "profileID", "displayName"}`, every field a string, as `ConnectedController` holds them |
+| hold step | `{"action": <action descriptor>, "control": <control id>, "phase": "began"` or `"ended", "toggleCaptureActive": <bool>}`, every field required, or `{"releaseAll": true}` for the forced release |
 
 Device profiles are not descriptors: `device/profile-decode.json` and
 `device/dualsense-profile.json` hold profile objects exactly as a profile
@@ -100,7 +104,13 @@ a phase that produces no intent, or a kind or profile that fails to read.
 (`.sortedKeys`) writes, so it is a byte comparison, not a JSON comparison.
 `action-decode.json` takes any JSON value as input, because it pins what
 happens to whatever a file holds for one control. `config-load.json`
-expects `{deviceMappings, backupBeforeSave}`.
+expects `{deviceMappings, backupBeforeSave}`. `device/slot-selection.json`
+takes `{mostRecentlyConnectedFirst: [<controller>], pinnedID}` (`null` for
+Automatic) and expects the controller in the slot, or `null` when it is
+empty. `device/hold-rule.json` takes `{steps: [<hold step>]}`, played in
+order through one tracker that starts idle, and expects `{effects, owner}`:
+one effect per step and the owning control id left at the end (`null` for
+none). Its cases use all five effects between them.
 
 The Swift runners are `Tests/PowerUpTests/MappingFixtureTests.swift` and
 `DeviceFixtureTests.swift` (their descriptor helpers are in

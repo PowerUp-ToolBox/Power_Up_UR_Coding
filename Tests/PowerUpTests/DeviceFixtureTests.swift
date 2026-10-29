@@ -2,8 +2,8 @@ import XCTest
 @testable import PowerUp
 
 /// Plays the `Tests/Fixtures/device/` case tables (spec #97, slice 2.2)
-/// against the Swift app: the control-kind rule, profile decoding and the
-/// built-in DualSense profile. The Rust core plays the same files
+/// against the Swift app: the control-kind rule, profile decoding, the
+/// built-in DualSense profile, the Controller slot rule and the hold rule. The Rust core plays the same files
 /// (`rust/powerup-core/tests/device.rs`).
 final class DeviceFixtureTests: XCTestCase {
 
@@ -73,5 +73,80 @@ final class DeviceFixtureTests: XCTestCase {
             XCTAssertEqual(controls.compactMap { $0["id"]?.stringValue },
                            ControllerButton.allCases.map(\.rawValue))
         }
+    }
+
+    // MARK: slot-selection.json
+
+    func testSlotSelectionTable() throws {
+        let fileName = "slot-selection.json"
+        let file = try TextSafetyFixtures.load(fileName, area: Self.area,
+                                               input: FixtureJSON.self, expected: FixtureJSON.self)
+        TextSafetyFixtures.assertWellFormed(file, fileName)
+        for fixtureCase in file.cases {
+            guard case .array(let listed)? = fixtureCase.input["mostRecentlyConnectedFirst"] else {
+                throw FixtureValueError(description: "\(fileName) case \(fixtureCase.name): no controller list")
+            }
+            let pinnedID: String?
+            switch fixtureCase.input["pinnedID"] {
+            case .null?: pinnedID = nil
+            case .string(let id)?: pinnedID = id
+            default:
+                throw FixtureValueError(description: "\(fileName) case \(fixtureCase.name): pinnedID must be a string or null")
+            }
+            let slot = ControllerSlotSelector(
+                mostRecentlyConnectedFirst: try listed.map { try ConnectedController(fixture: $0) },
+                pinnedID: pinnedID
+            )
+            let actual = slot.active?.fixtureDescriptor ?? .null
+            if let failure = TextSafetyFixtures.mismatch(in: fileName, fixtureCase, actual: actual) {
+                XCTFail(failure)
+            }
+        }
+    }
+
+    // MARK: hold-rule.json
+
+    /// One tracker per case, starting idle; the steps play in order, as the
+    /// AppState adapter feeds presses, releases and the forced release.
+    func testHoldRuleTable() throws {
+        let fileName = "hold-rule.json"
+        let file = try TextSafetyFixtures.load(fileName, area: Self.area,
+                                               input: FixtureJSON.self, expected: FixtureJSON.self)
+        TextSafetyFixtures.assertWellFormed(file, fileName)
+        var seen = Set<String>()
+        for fixtureCase in file.cases {
+            guard case .array(let steps)? = fixtureCase.input["steps"] else {
+                throw FixtureValueError(description: "\(fileName) case \(fixtureCase.name): no steps")
+            }
+            var tracker = HoldTracker()
+            var effects: [FixtureJSON] = []
+            for step in steps {
+                let effect: HoldEffect
+                if step["releaseAll"] == .bool(true) {
+                    effect = tracker.releaseAll()
+                } else {
+                    guard let action = step["action"], let control = step["control"]?.stringValue,
+                          let phase = step["phase"]?.stringValue,
+                          case .bool(let toggle)? = step["toggleCaptureActive"] else {
+                        throw FixtureValueError(description: "\(fileName) case \(fixtureCase.name): bad step \(step)")
+                    }
+                    effect = tracker.effect(for: try Action(fixture: action), control: control,
+                                            phase: try ControlPhase(fixture: phase),
+                                            toggleCaptureActive: toggle)
+                }
+                effects.append(effect.fixtureDescriptor)
+                if let name = effect.fixtureDescriptor["effect"]?.stringValue { seen.insert(name) }
+            }
+            let actual: FixtureJSON = .object([
+                "effects": .array(effects),
+                "owner": tracker.owner.map { .string($0) } ?? .null,
+            ])
+            if let failure = TextSafetyFixtures.mismatch(in: fileName, fixtureCase, actual: actual) {
+                XCTFail(failure)
+            }
+        }
+        // The table speaks the whole effect vocabulary, so the Rust side
+        // playing it checks every name.
+        XCTAssertEqual(seen, ["beginCapture", "endCapture", "cancelCapture", "deliver", "ignore"])
     }
 }
