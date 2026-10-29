@@ -33,7 +33,8 @@
 //! Recorded differences, none of which a claude CLI line can show (it
 //! writes UTF-8 JSON whose numbers have at most 17 significant digits):
 //! Foundation also detects UTF-16 and UTF-32 text, which this reader
-//! rejects; it reads a number with more than 17 significant digits as an
+//! rejects ([`read_any_encoding`] detects them for a protocol client's
+//! frame, slice 2.6); it reads a number with more than 17 significant digits as an
 //! NSDecimalNumber and rejects the line when its exponent leaves Decimal's
 //! range, and rejects some exponents of four digits or more; and Swift's
 //! bridged dictionary merges keys that are canonically equivalent but
@@ -390,6 +391,100 @@ pub(crate) fn read(bytes: &[u8]) -> Option<JsonValue> {
     let root = reader.read_root()?;
     reader.skip_whitespace();
     (reader.at == text.len()).then_some(root)
+}
+
+/// [`read`] for text that may be UTF-16 or UTF-32 as well as UTF-8, as
+/// `JSONSerialization` detects it when it is handed bytes that are not a
+/// harness line: a protocol client's text frame (slice 2.6). A byte order
+/// mark names the encoding (UTF-8, UTF-32 big- or little-endian, UTF-16
+/// little- or big-endian, checked in that order and only when there are at
+/// least four bytes); without one the zero bytes among the first four (or
+/// two) name it as RFC 4627 describes; anything else is UTF-8. UTF-16 and
+/// UTF-32 text is decoded strictly (an unpaired surrogate or a stray byte
+/// rejects it) and then read as UTF-8 is. Measured on macOS 27.2 for
+/// UTF-16LE with a byte order mark and UTF-16BE without one
+/// (Tests/Fixtures/protocol/client-message.json); the UTF-32 forms follow
+/// the same detection, which swift-corelibs-foundation documents, and no
+/// client sends them.
+pub(crate) fn read_any_encoding(bytes: &[u8]) -> Option<JsonValue> {
+    let Some((encoding, skip)) = detect_encoding(bytes) else {
+        return read(bytes);
+    };
+    let units = bytes.get(skip..)?;
+    let text: String = match encoding {
+        WideEncoding::Utf16 { big_endian } => {
+            let (pairs, rest) = units.as_chunks::<2>();
+            if !rest.is_empty() {
+                return None;
+            }
+            let words = pairs.iter().map(|pair| {
+                if big_endian {
+                    u16::from_be_bytes(*pair)
+                } else {
+                    u16::from_le_bytes(*pair)
+                }
+            });
+            char::decode_utf16(words)
+                .collect::<Result<String, _>>()
+                .ok()?
+        }
+        WideEncoding::Utf32 { big_endian } => {
+            let (quads, rest) = units.as_chunks::<4>();
+            if !rest.is_empty() {
+                return None;
+            }
+            quads
+                .iter()
+                .map(|quad| {
+                    char::from_u32(if big_endian {
+                        u32::from_be_bytes(*quad)
+                    } else {
+                        u32::from_le_bytes(*quad)
+                    })
+                })
+                .collect::<Option<String>>()?
+        }
+    };
+    read(text.as_bytes())
+}
+
+/// A text encoding other than UTF-8 that [`read_any_encoding`] detects.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WideEncoding {
+    Utf16 { big_endian: bool },
+    Utf32 { big_endian: bool },
+}
+
+/// The wide encoding `bytes` are in and the length of its byte order mark,
+/// or `None` for UTF-8 (whose mark [`read`] skips itself).
+fn detect_encoding(bytes: &[u8]) -> Option<(WideEncoding, usize)> {
+    if let [first, second, third, fourth, ..] = *bytes {
+        if bytes.starts_with(BYTE_ORDER_MARK) {
+            return None;
+        }
+        let marked = match (first, second, third, fourth) {
+            (0x00, 0x00, 0xFE, 0xFF) => Some((WideEncoding::Utf32 { big_endian: true }, 4)),
+            (0xFF, 0xFE, 0x00, 0x00) => Some((WideEncoding::Utf32 { big_endian: false }, 4)),
+            (0xFF, 0xFE, _, _) => Some((WideEncoding::Utf16 { big_endian: false }, 2)),
+            (0xFE, 0xFF, _, _) => Some((WideEncoding::Utf16 { big_endian: true }, 2)),
+            _ => None,
+        };
+        if marked.is_some() {
+            return marked;
+        }
+        return match (first, second, third, fourth) {
+            (0, 0, 0, _) => Some((WideEncoding::Utf32 { big_endian: true }, 0)),
+            (_, 0, 0, 0) => Some((WideEncoding::Utf32 { big_endian: false }, 0)),
+            (0, _, 0, _) => Some((WideEncoding::Utf16 { big_endian: true }, 0)),
+            (_, 0, _, 0) => Some((WideEncoding::Utf16 { big_endian: false }, 0)),
+            _ => None,
+        };
+    }
+    match *bytes {
+        [0, _, ..] => Some((WideEncoding::Utf16 { big_endian: true }, 0)),
+        [_, 0, ..] => Some((WideEncoding::Utf16 { big_endian: false }, 0)),
+        _ => None,
+    }
 }
 
 /// The byte a measured Foundation reads as U+FFFD inside a string where a

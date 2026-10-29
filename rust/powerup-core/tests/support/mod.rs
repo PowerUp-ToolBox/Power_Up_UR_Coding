@@ -526,6 +526,49 @@ pub fn line_input_bytes(input: &Value) -> Vec<u8> {
         .collect()
 }
 
+/// A bytes descriptor (`Tests/Fixtures/README.md`, `protocol/`):
+/// `{"hex"}`, `{"text"}` (its UTF-8), `{"hex", "times"}` (those bytes n
+/// times over) or a list of these, joined in order.
+pub fn descriptor_bytes(descriptor: &Value) -> Vec<u8> {
+    if let Some(parts) = descriptor.as_array() {
+        return parts.iter().flat_map(descriptor_bytes).collect();
+    }
+    let object = descriptor
+        .as_object()
+        .unwrap_or_else(|| panic!("not a bytes descriptor: {descriptor}"));
+    for key in object.keys() {
+        assert!(
+            matches!(key.as_str(), "hex" | "text" | "times"),
+            "unknown key {key:?} in bytes descriptor {descriptor}"
+        );
+    }
+    if let Some(text) = object.get("text") {
+        assert!(
+            object.len() == 1,
+            "a text descriptor has no other keys: {descriptor}"
+        );
+        return text
+            .as_str()
+            .unwrap_or_else(|| panic!("text must be a string: {descriptor}"))
+            .as_bytes()
+            .to_vec();
+    }
+    let hex = line_input_bytes(&serde_json::json!({"hex": object.get("hex")}));
+    let times = object.get("times").map_or(1, |times| {
+        times
+            .as_u64()
+            .and_then(|n| usize::try_from(n).ok())
+            .unwrap_or_else(|| panic!("times must be a count: {descriptor}"))
+    });
+    hex.repeat(times)
+}
+
+/// `{"hex": "<bytes>"}`, the one spelling every bytes descriptor reduces to.
+pub fn hex_descriptor(bytes: &[u8]) -> Value {
+    let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
+    serde_json::json!({ "hex": hex })
+}
+
 /// The table at `Tests/Fixtures/<area>/<file>`.
 pub fn case_table(area: &str, file: &str) -> CaseTable {
     load_case_table(&fixtures_dir().join(area).join(file))

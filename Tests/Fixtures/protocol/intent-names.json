@@ -1,7 +1,7 @@
 {
   "description": "The protocol name table (docs/protocol.md, \"Intent vocabulary\"): the sixteen intents a protocol client may send, by exact, case-sensitive wire name. sendPrompt needs text that is not empty once trimmed of .whitespacesAndNewlines, and its prompt is the trimmed text; every other name ignores text. Voice capture (beginVoiceCapture, endVoiceCapture, pushToTalk, pushToTalkDraft) is never a protocol intent (HK-226), and no name grants escalation (HK-227): any name not in the table is refused, which the server answers with unknown_intent.",
   "function": "IntentMapper.intent(forProtocolName:text:) — input {name, text} (text a string or null), expected the intent descriptor ({\"intent\": <wire name>}, plus \"prompt\" for sendPrompt) or null when the name is refused",
-  "verifiedBy": "DESIGN.md v1.7, v2.11 C; docs/protocol.md spec v0; Tests/PowerUpTests/ProtocolFixtureTests.swift testIntentNameTable plays it through IntentMapper.intent(forProtocolName:text:).",
+  "verifiedBy": "DESIGN.md v1.7, v2.11 C; docs/protocol.md spec v0; Tests/PowerUpTests/ProtocolFixtureTests.swift testIntentNameTable plays it through IntentMapper.intent(forProtocolName:text:). Rust: rust/powerup-core/tests/protocol.rs intent_name_cases runs protocol::message::intent_for_protocol_name.",
   "capturedAgainst": "Swift 5.9.2 Foundation and CryptoKit (Xcode 15.2) on macOS 27.2, PowerUp at 2d20afb",
   "cases": [
     {

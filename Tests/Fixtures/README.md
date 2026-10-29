@@ -5,9 +5,9 @@ checked against (PLAN-any-device-any-os.md, ADR 0012): the Swift app's XCTest
 suites play every file, and the Rust core's `cargo test` plays the areas whose
 rules it owns so far (`mapping/` and `device/`, since slice 2.2,
 `harness/`, `status/` and `session/`, since slice 2.3, the ACP tables
-of `harness/`, since slice 2.4, and `config/`, `transcript/`,
-`hooks/`, `text-safety/` and `speech/`, since slice 2.5) and checks the
-format of the rest, picking up
+of `harness/`, since slice 2.4, `config/`, `transcript/`,
+`hooks/`, `text-safety/` and `speech/`, since slice 2.5, and
+`protocol/`, since slice 2.6) and checks the format of the rest, picking up
 more as later slices port them. Each implementation loads these files from
 its own source location. Swift resolves
 them relative to `#filePath`, because SwiftPM accepts no resources outside a
@@ -554,6 +554,11 @@ plays every table against `PowerUpProtocol`, `IntentMapper`, `RequestHead`
 and `WebSocketFraming` and checks that the tables cover every message
 type, error code, status, entry kind, handshake outcome, refusal status,
 opcode and close code in use.
+The Rust runner is `rust/powerup-core/tests/protocol.rs`, one test per
+table, against `protocol::message`, `protocol::handshake` and
+`protocol::framing`; the core writes a server message's members in the
+order the table shows, so it compares `server-message.json` byte for
+byte.
 
 ## `session/`: session scenarios (format 1)
 
