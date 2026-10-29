@@ -15,6 +15,7 @@ mod acp;
 mod config;
 mod device;
 mod harness;
+mod hooks;
 mod mapping;
 mod session;
 mod transcript;
