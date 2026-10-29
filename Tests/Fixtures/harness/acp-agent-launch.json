@@ -1,0 +1,241 @@
+{
+  "description": "How each ACP agent preset is launched before its binary is looked up: opencode with acp, the Claude and Codex bridges with npx -y and their package (no version pin), and a custom command split on spaces with empty pieces dropped (no quoting). The platform finds opencode and npx on its own install paths; a custom executable is used as typed. An unknown agent, or a custom command with no pieces, has no command.",
+  "function": "ACPAdapter.agentCommand(for:) before the install-path lookup ↔ powerup_core::harness::acp::agents::agent_launch — input {agent, customCommand}; expected {program: \"opencode\" | \"npx\" | {\"command\": <executable>}, arguments: [string]}, or null when there is no command",
+  "verifiedBy": "Swift: ACPFixtureTests.testAcpAgentLaunchTable runs ACPAdapter.agentCommand(for:isExecutable:) with every install path executable.",
+  "capturedAgainst": "ACPAdapter.swift's agentCommand(for:) as of dddf9c6 (Swift 5.9.2, macOS 27.2), with the install-path probe stubbed",
+  "cases": [
+    {
+      "name": "opencode runs acp",
+      "input": {
+        "agent": "opencode",
+        "customCommand": "/x/agent --flag"
+      },
+      "expected": {
+        "program": "opencode",
+        "arguments": [
+          "acp"
+        ]
+      },
+      "reason": "HK-129: opencode speaks ACP natively with its acp subcommand; the custom command is ignored."
+    },
+    {
+      "name": "the Claude bridge runs through npx",
+      "input": {
+        "agent": "claudeBridge",
+        "customCommand": "/x/agent"
+      },
+      "expected": {
+        "program": "npx",
+        "arguments": [
+          "-y",
+          "@agentclientprotocol/claude-agent-acp"
+        ]
+      },
+      "reason": "HK-129: npx -y with no version pin, so the bridge floats with npm; its package name was last verified on 2026-08-27 (claude-agent-acp 0.16.2)."
+    },
+    {
+      "name": "the Codex bridge runs through npx",
+      "input": {
+        "agent": "codexBridge",
+        "customCommand": "/x/agent"
+      },
+      "expected": {
+        "program": "npx",
+        "arguments": [
+          "-y",
+          "@agentclientprotocol/codex-acp"
+        ]
+      },
+      "reason": "HK-129: npx -y with no version pin; handshake verified live on 2026-08-27 (codex-acp 1.7.0)."
+    },
+    {
+      "name": "a custom command splits on spaces",
+      "input": {
+        "agent": "custom",
+        "customCommand": "/usr/local/bin/agent acp --flag"
+      },
+      "expected": {
+        "program": {
+          "command": "/usr/local/bin/agent"
+        },
+        "arguments": [
+          "acp",
+          "--flag"
+        ]
+      },
+      "reason": "HK-130: the first piece is the executable, the rest its arguments."
+    },
+    {
+      "name": "double spaces make no empty argument",
+      "input": {
+        "agent": "custom",
+        "customCommand": "agent  acp   --flag"
+      },
+      "expected": {
+        "program": {
+          "command": "agent"
+        },
+        "arguments": [
+          "acp",
+          "--flag"
+        ]
+      },
+      "reason": "HK-130: empty pieces are dropped."
+    },
+    {
+      "name": "leading and trailing spaces are dropped",
+      "input": {
+        "agent": "custom",
+        "customCommand": "  agent acp  "
+      },
+      "expected": {
+        "program": {
+          "command": "agent"
+        },
+        "arguments": [
+          "acp"
+        ]
+      },
+      "reason": "HK-130: empty pieces are dropped at both ends."
+    },
+    {
+      "name": "a one-word command has no arguments",
+      "input": {
+        "agent": "custom",
+        "customCommand": "agent"
+      },
+      "expected": {
+        "program": {
+          "command": "agent"
+        },
+        "arguments": []
+      },
+      "reason": "HK-130: a lone executable."
+    },
+    {
+      "name": "a command of spaces is no command",
+      "input": {
+        "agent": "custom",
+        "customCommand": "   "
+      },
+      "expected": null,
+      "reason": "HK-130: an empty result means no command (start then says none is configured)."
+    },
+    {
+      "name": "an empty command is no command",
+      "input": {
+        "agent": "custom",
+        "customCommand": ""
+      },
+      "expected": null,
+      "reason": "HK-130: an empty result means no command."
+    },
+    {
+      "name": "a tab is not a separator",
+      "input": {
+        "agent": "custom",
+        "customCommand": "agent\tacp x"
+      },
+      "expected": {
+        "program": {
+          "command": "agent\tacp"
+        },
+        "arguments": [
+          "x"
+        ]
+      },
+      "reason": "HK-130: only the space character splits; a tab stays inside its piece."
+    },
+    {
+      "name": "a tab-only command is a command",
+      "input": {
+        "agent": "custom",
+        "customCommand": "\t"
+      },
+      "expected": {
+        "program": {
+          "command": "\t"
+        },
+        "arguments": []
+      },
+      "reason": "HK-130: a tab is not a space, so it is a piece of its own."
+    },
+    {
+      "name": "a space with a combining mark is not a separator",
+      "input": {
+        "agent": "custom",
+        "customCommand": "a ́b c"
+      },
+      "expected": {
+        "program": {
+          "command": "a ́b"
+        },
+        "arguments": [
+          "c"
+        ]
+      },
+      "reason": "HK-063, HK-130: Swift splits on Characters equal to a space; a space that a combining acute follows is one other Character."
+    },
+    {
+      "name": "a path with a space splits",
+      "input": {
+        "agent": "custom",
+        "customCommand": "/Applications/My Agent/agent acp"
+      },
+      "expected": {
+        "program": {
+          "command": "/Applications/My"
+        },
+        "arguments": [
+          "Agent/agent",
+          "acp"
+        ]
+      },
+      "reason": "HK-130: there is no quoting, so a path with a space splits wrongly (kept from Swift)."
+    },
+    {
+      "name": "quotes are not special",
+      "input": {
+        "agent": "custom",
+        "customCommand": "agent \"a b\""
+      },
+      "expected": {
+        "program": {
+          "command": "agent"
+        },
+        "arguments": [
+          "\"a",
+          "b\""
+        ]
+      },
+      "reason": "HK-130: no quoting support."
+    },
+    {
+      "name": "agent names are case-sensitive",
+      "input": {
+        "agent": "Custom",
+        "customCommand": "agent"
+      },
+      "expected": null,
+      "reason": "The stored agent must match exactly; Custom is unknown."
+    },
+    {
+      "name": "an unknown agent has no command",
+      "input": {
+        "agent": "warp-drive",
+        "customCommand": "agent"
+      },
+      "expected": null,
+      "reason": "An agent this build does not know resolves to nothing."
+    },
+    {
+      "name": "an empty agent has no command",
+      "input": {
+        "agent": "",
+        "customCommand": "agent"
+      },
+      "expected": null,
+      "reason": "No agent, no command."
+    }
+  ]
+}

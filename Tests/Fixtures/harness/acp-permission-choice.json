@@ -1,0 +1,269 @@
+{
+  "description": "Which option answers an ACP permission request (session/request_permission) when the user approves or denies it: among the options whose kind contains allow (or reject), the first whose kind contains once, else the first; none answers the request cancelled. So a controller press never silently grants or denies \"always\". Kinds are matched with Swift's String.contains, whole clusters, case-sensitively.",
+  "function": "ACPAdapter.permissionChoice(options:allow:) ↔ powerup_core::harness::acp::permission::permission_choice — input {options: [{optionId, kind}], allow}; expected the chosen optionId, or null (answered cancelled)",
+  "verifiedBy": "Swift: ACPFixtureTests.testAcpPermissionChoiceTable runs ACPAdapter.permissionChoice.",
+  "capturedAgainst": "ACPAdapter.swift's permissionChoice as of dddf9c6 (Swift 5.9.2, macOS 27.2)",
+  "cases": [
+    {
+      "name": "allow picks allow_once over allow_always",
+      "input": {
+        "options": [
+          {
+            "optionId": "aa",
+            "kind": "allow_always"
+          },
+          {
+            "optionId": "ao",
+            "kind": "allow_once"
+          },
+          {
+            "optionId": "ra",
+            "kind": "reject_always"
+          },
+          {
+            "optionId": "ro",
+            "kind": "reject_once"
+          }
+        ],
+        "allow": true
+      },
+      "expected": "ao",
+      "reason": "HK-131: a controller press must never silently grant \"always\", so the once variant of the direction wins wherever it is."
+    },
+    {
+      "name": "reject picks reject_once over reject_always",
+      "input": {
+        "options": [
+          {
+            "optionId": "aa",
+            "kind": "allow_always"
+          },
+          {
+            "optionId": "ao",
+            "kind": "allow_once"
+          },
+          {
+            "optionId": "ra",
+            "kind": "reject_always"
+          },
+          {
+            "optionId": "ro",
+            "kind": "reject_once"
+          }
+        ],
+        "allow": false
+      },
+      "expected": "ro",
+      "reason": "HK-131: nor silently deny \"always\"."
+    },
+    {
+      "name": "without a once variant the first allow is picked",
+      "input": {
+        "options": [
+          {
+            "optionId": "aa",
+            "kind": "allow_always"
+          }
+        ],
+        "allow": true
+      },
+      "expected": "aa",
+      "reason": "HK-131: with no once option the first option of the direction answers."
+    },
+    {
+      "name": "no option of the direction answers nothing",
+      "input": {
+        "options": [
+          {
+            "optionId": "aa",
+            "kind": "allow_always"
+          }
+        ],
+        "allow": false
+      },
+      "expected": null,
+      "reason": "HK-131: no match answers the request cancelled, never the other direction."
+    },
+    {
+      "name": "no options answer nothing",
+      "input": {
+        "options": [],
+        "allow": true
+      },
+      "expected": null,
+      "reason": "HK-131: an empty option list answers cancelled."
+    },
+    {
+      "name": "disallow counts as an allow kind",
+      "input": {
+        "options": [
+          {
+            "optionId": "d",
+            "kind": "disallow"
+          },
+          {
+            "optionId": "r",
+            "kind": "reject_once"
+          }
+        ],
+        "allow": true
+      },
+      "expected": "d",
+      "reason": "HK-131: the kinds are matched with String.contains, so disallow contains allow (kept from Swift)."
+    },
+    {
+      "name": "an empty kind matches nothing",
+      "input": {
+        "options": [
+          {
+            "optionId": "x",
+            "kind": ""
+          },
+          {
+            "optionId": "y",
+            "kind": ""
+          }
+        ],
+        "allow": true
+      },
+      "expected": null,
+      "reason": "HK-131: an option without a kind is neither allow nor reject."
+    },
+    {
+      "name": "the other direction's once is ignored",
+      "input": {
+        "options": [
+          {
+            "optionId": "aa",
+            "kind": "allow_always"
+          },
+          {
+            "optionId": "ro",
+            "kind": "reject_once"
+          }
+        ],
+        "allow": true
+      },
+      "expected": "aa",
+      "reason": "HK-131: once is looked for only among the options of the chosen direction."
+    },
+    {
+      "name": "of two once options the first wins",
+      "input": {
+        "options": [
+          {
+            "optionId": "a1",
+            "kind": "allow_once"
+          },
+          {
+            "optionId": "a2",
+            "kind": "allow_once"
+          }
+        ],
+        "allow": true
+      },
+      "expected": "a1",
+      "reason": "HK-131: options keep the agent's order."
+    },
+    {
+      "name": "without a once the first match wins",
+      "input": {
+        "options": [
+          {
+            "optionId": "a1",
+            "kind": "allow_always"
+          },
+          {
+            "optionId": "a2",
+            "kind": "allow_forever"
+          }
+        ],
+        "allow": true
+      },
+      "expected": "a1",
+      "reason": "HK-131: options keep the agent's order."
+    },
+    {
+      "name": "a once listed after an always still wins",
+      "input": {
+        "options": [
+          {
+            "optionId": "aa",
+            "kind": "allow_always"
+          },
+          {
+            "optionId": "x",
+            "kind": "reject_once"
+          },
+          {
+            "optionId": "ao",
+            "kind": "allow_once"
+          }
+        ],
+        "allow": true
+      },
+      "expected": "ao",
+      "reason": "HK-131: the once variant is preferred over the first match."
+    },
+    {
+      "name": "a kind with a combining mark after allow is not allow",
+      "input": {
+        "options": [
+          {
+            "optionId": "x",
+            "kind": "alloẃ_once"
+          }
+        ],
+        "allow": true
+      },
+      "expected": null,
+      "reason": "HK-063, HK-131: String.contains matches whole clusters, so allow followed by a combining acute is no allow (measured with Swift 5.9.2)."
+    },
+    {
+      "name": "kinds are case-sensitive",
+      "input": {
+        "options": [
+          {
+            "optionId": "x",
+            "kind": "ALLOW_ONCE"
+          }
+        ],
+        "allow": true
+      },
+      "expected": null,
+      "reason": "HK-131: ALLOW_ONCE does not contain allow."
+    },
+    {
+      "name": "allow_always_once counts as once",
+      "input": {
+        "options": [
+          {
+            "optionId": "a",
+            "kind": "allow_always"
+          },
+          {
+            "optionId": "b",
+            "kind": "allow_always_once"
+          }
+        ],
+        "allow": true
+      },
+      "expected": "b",
+      "reason": "HK-131: any allow kind that contains once is a once variant."
+    },
+    {
+      "name": "reject matches inside a kind",
+      "input": {
+        "options": [
+          {
+            "optionId": "x",
+            "kind": "do_not_reject_ever"
+          }
+        ],
+        "allow": false
+      },
+      "expected": "x",
+      "reason": "HK-131: contains, not equality: a kind that merely contains reject is a reject option."
+    }
+  ]
+}

@@ -270,6 +270,23 @@ event, the state each event saw and the state after each step. The Rust
 runner is `rust/powerup-core/tests/acp.rs` (its helpers are in
 `tests/support`).
 
+Three small tables hold the rules around the adapter, each captured by
+running the Swift suite on the Swift statics before anything else read it:
+
+- `acp-permission-choice.json` takes `{options: [{optionId, kind}], allow}`
+  and expects the chosen `optionId`, or `null` when the request is answered
+  cancelled.
+- `acp-environment.json` takes a variable name and expects `true` when it
+  is removed from the agent's environment. PATH is rebuilt by the platform
+  and is never a case.
+- `acp-agent-launch.json` takes `{agent, customCommand}` and expects
+  `{program, arguments}` or `null`, where `program` is `"opencode"`,
+  `"npx"` or `{"command": <executable as typed>}`. The platform looks up
+  opencode and npx on its own install paths; the Swift runner stubs that
+  lookup so every path is executable and expects the first one.
+
+Their Swift runner is `Tests/PowerUpTests/ACPFixtureTests.swift`.
+
 ## `session/`: session scenarios (format 1)
 
 Each file is one rule of the session state machine (epic #92), played

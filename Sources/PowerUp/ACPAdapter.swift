@@ -50,30 +50,36 @@ final class ACPAdapter: ObservableObject, HarnessAdapter {
 
     // MARK: - Command resolution (pure-ish, tested)
 
+    /// Where opencode is looked for, in order.
+    nonisolated static var opencodeCandidates: [String] {
+        [NSHomeDirectory() + "/.opencode/bin/opencode", "/opt/homebrew/bin/opencode", "/usr/local/bin/opencode"]
+    }
+
+    /// Where npx is looked for, in order (the Claude and Codex bridges).
+    nonisolated static let npxCandidates = ["/opt/homebrew/bin/npx", "/usr/local/bin/npx", "/usr/bin/npx"]
+
     /// The agent command for the config's ACP settings, or nil when it can't
-    /// be resolved (missing binary, empty custom command).
-    nonisolated static func agentCommand(for config: AppConfig) -> [String]? {
+    /// be resolved (missing binary, empty custom command). `isExecutable`
+    /// answers whether an install path holds the binary; tests pass their
+    /// own so the table does not depend on what this machine has installed.
+    nonisolated static func agentCommand(
+        for config: AppConfig,
+        isExecutable: (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) }
+    ) -> [String]? {
         switch config.acpAgent {
         case "opencode":
-            let candidates = [
-                NSHomeDirectory() + "/.opencode/bin/opencode",
-                "/opt/homebrew/bin/opencode",
-                "/usr/local/bin/opencode",
-            ]
-            guard let binary = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
+            guard let binary = opencodeCandidates.first(where: isExecutable) else {
                 return nil
             }
             return [binary, "acp"]
         case "claudeBridge":
-            let candidates = ["/opt/homebrew/bin/npx", "/usr/local/bin/npx", "/usr/bin/npx"]
-            guard let npx = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
+            guard let npx = npxCandidates.first(where: isExecutable) else {
                 return nil
             }
             return [npx, "-y", "@agentclientprotocol/claude-agent-acp"]
         case "codexBridge":
             // Handshake verified live 2026-08-27 (bridge 1.7.0 via npx).
-            let candidates = ["/opt/homebrew/bin/npx", "/usr/local/bin/npx", "/usr/bin/npx"]
-            guard let npx = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
+            guard let npx = npxCandidates.first(where: isExecutable) else {
                 return nil
             }
             return [npx, "-y", "@agentclientprotocol/codex-acp"]
