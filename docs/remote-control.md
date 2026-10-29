@@ -108,7 +108,10 @@ etc.) all work the same way.
   every target; the prompt is sent only when Enter is pressed on purpose.
   For cmux, text holding a backslash followed by n, r or t (`\n`, `\r`,
   `\t`, as in a regex or a Windows path) is sent in pieces, so cmux types
-  those two characters as written instead of pressing Enter or Tab. If
+  those two characters as written instead of pressing Enter or Tab. PowerUp
+  makes at most 12 such cuts, though: in a text with more than a dozen of
+  these sequences, cmux still reads the later ones as Enter or Tab, so send
+  that kind of text in smaller parts. If
   PowerUp ever can't prepare the text this way, it sends nothing and says
   so ("PowerUp couldn't make that text safe to type…"), rather than typing
   something that might submit early.
