@@ -1,0 +1,45 @@
+{
+  "formatVersion": 1,
+  "name": "remote-approve-and-reject-press-enter-and-escape",
+  "description": "In remote mode Approve presses Enter in the remote session and Reject presses Escape; neither types a word. Reject also clears every remote turn first, so the status leaves thinking at once.",
+  "reason": "The remote session shows its own prompt, where Enter accepts and Escape declines: typing Yes or No there would answer a choice with a word. An Escape-interrupted turn never fires a Stop hook, so without the clear the light would stay amber until the turn expired.",
+  "source": "DESIGN.md v1.8 remote mode (✕ = Enter, ○ = Escape); AppState.approve / reject",
+  "verifiedBy": ["swift"],
+  "config": {
+    "controlMode": "remote",
+    "controllerConnected": true
+  },
+  "script": [
+    {
+      "hookEvent": { "type": "userPromptSubmit", "sessionID": "session-1", "cwd": "/work/app", "text": "Delete the old logs." },
+      "reason": "The remote session is working.",
+      "expect": { "status": "thinking", "remoteTurnActive": true }
+    },
+    {
+      "intent": "approve",
+      "reason": "Enter accepts what the remote session is asking.",
+      "expect": {
+        "injectorCalls": [ { "type": "key", "key": "enter" } ],
+        "remoteTurnActive": true
+      }
+    },
+    {
+      "intent": "reject",
+      "reason": "Escape declines, and the turn it stops is cleared at once."
+    }
+  ],
+  "expect": {
+    "injectorCalls": [
+      { "type": "key", "key": "enter" },
+      { "type": "key", "key": "escape" }
+    ],
+    "transcript": [
+      { "kind": "system", "text": "Approved (Enter)." },
+      { "kind": "system", "text": "Rejected (Esc)." }
+    ],
+    "harnessCalls": [],
+    "remoteTurnActive": false,
+    "status": "idle",
+    "errorShown": false
+  }
+}

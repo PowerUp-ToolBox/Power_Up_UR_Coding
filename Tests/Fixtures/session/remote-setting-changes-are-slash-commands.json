@@ -1,0 +1,40 @@
+{
+  "formatVersion": 1,
+  "name": "remote-setting-changes-are-slash-commands",
+  "description": "In remote mode Cycle Model types /model with the new alias, Cycle Effort types /effort with the new level, and New Session types /clear, each submitted with Enter. No harness of PowerUp's own is touched.",
+  "reason": "PowerUp does not own the remote session, so it can only change its settings the way a person at the keyboard would: with slash commands. They are always submitted, whatever the auto-submit setting says, because a half-typed /model line does nothing.",
+  "source": "DESIGN.md v1.8 remote mode; AppState.cycleModel / cycleEffort / newSession (remote branches)",
+  "verifiedBy": ["swift"],
+  "config": {
+    "controlMode": "remote"
+  },
+  "script": [
+    {
+      "intent": "cycleModel",
+      "reason": "The default model is not in the cycle, so the first alias is next."
+    },
+    {
+      "intent": "cycleEffort",
+      "reason": "The default effort is not in the cycle, so the first level is next. Remote mode skips the harness's effort capability: the remote CLI decides."
+    },
+    {
+      "intent": "newSession",
+      "reason": "A new session in remote mode clears the conversation the remote session holds."
+    }
+  ],
+  "expect": {
+    "injectorCalls": [
+      { "type": "text", "text": "/model sonnet", "submit": true },
+      { "type": "text", "text": "/effort low", "submit": true },
+      { "type": "text", "text": "/clear", "submit": true }
+    ],
+    "transcript": [
+      { "kind": "system", "text": "Model → sonnet" },
+      { "kind": "system", "text": "Effort → Low" },
+      { "kind": "system", "text": "Clearing the remote session." }
+    ],
+    "modelChip": "sonnet",
+    "harnessCalls": [],
+    "errorShown": false
+  }
+}

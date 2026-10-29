@@ -1,0 +1,34 @@
+{
+  "formatVersion": 1,
+  "name": "remote-focus-breaks-name-ties-by-session-id",
+  "description": "Two remote sessions work in different folders with the same name. Cycle Session Focus orders them by session id when their folder names tie, so every press steps the same way: the lower id, the higher id, then all sessions.",
+  "reason": "The focus cycle is ordered by folder name for a stable order. Without a tiebreak two folders with the same name would be ordered by whatever the dictionary did that time, and a press could visit the same session twice.",
+  "source": "AppState.cycleFocus (sorted by folder name, then session id)",
+  "verifiedBy": ["swift"],
+  "config": {
+    "controlMode": "remote"
+  },
+  "script": [
+    {
+      "hookEvent": { "type": "userPromptSubmit", "sessionID": "session-2", "cwd": "/work/one/app", "text": "Fix the build." },
+      "reason": "A session in one folder named app."
+    },
+    {
+      "hookEvent": { "type": "userPromptSubmit", "sessionID": "session-1", "cwd": "/work/two/app", "text": "Write the docs." },
+      "reason": "A session in another folder named app."
+    },
+    { "intent": "cycleFocus", "reason": "The names tie: the lower id first.", "expect": { "remoteFocus": "session-1" } },
+    { "intent": "cycleFocus", "reason": "Then the higher id.", "expect": { "remoteFocus": "session-2" } },
+    { "intent": "cycleFocus", "reason": "Then all sessions." }
+  ],
+  "expect": {
+    "remoteFocus": null,
+    "transcript": [
+      { "kind": "system", "text": "Focus → app — only this session is spoken now." },
+      { "kind": "system", "text": "Focus → app — only this session is spoken now." },
+      { "kind": "system", "text": "Focus → all sessions." }
+    ],
+    "injectorCalls": [],
+    "errorShown": false
+  }
+}

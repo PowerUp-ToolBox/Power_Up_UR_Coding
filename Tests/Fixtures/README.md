@@ -335,6 +335,7 @@ drops it at once, as the ACP adapter does.
 | `modelChip` | the model chip's label: the configured model when it is an explicit alias, otherwise `liveModel`, otherwise `"default"` |
 | `remoteTurnActive` | remote mode: a remote turn is in flight (the focused session's, when a focus is set). This is what lights the working status in remote mode |
 | `remoteFocus` | remote mode: the focused session id, or `null` when every session is heard |
+| `lastAssistantReply` | the reply Replay Last Reply speaks (a string, or `null` when there is none yet): a successful built-in turn's result text, or a focused remote session's Stop reply without its folder label |
 | `injectorCalls` | everything remote mode delivered into the remote session, in order and with an exact count: `text {text, submit}` (text after line breaks are flattened; `submit` presses Enter after it) or `key {key}`, where key is `enter`, `escape` or `shiftTab` |
 
 A failure names the scenario and its first mismatched expectation. For

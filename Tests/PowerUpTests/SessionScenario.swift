@@ -186,6 +186,9 @@ struct SessionScenario {
         /// The session id the running harness owns (sent to protocol clients
         /// as `sessionID`). `.some(nil)` asserts there is none.
         var liveSessionID: String??
+        /// The reply Replay Last Reply speaks. `.some(nil)` asserts there is
+        /// none yet.
+        var lastAssistantReply: String??
     }
 
     static let formatVersion = 1
@@ -499,6 +502,7 @@ struct SessionScenario {
             "harnessCalls", "transcript", "errorShown", "lastSessionID", "pendingPermission",
             "pendingPermissionArmed", "status", "liveModel", "modelChip",
             "remoteTurnActive", "remoteFocus", "injectorCalls", "permissionMode", "liveSessionID",
+            "lastAssistantReply",
         ])
         guard !fields.isEmpty else { throw reader.error(root, "expects nothing") }
         var expect = Expectations()
@@ -558,6 +562,9 @@ struct SessionScenario {
         expect.permissionMode = try reader.optionalString(fields["permissionMode"], at: "\(root).permissionMode")
         if let id = fields["liveSessionID"] {
             expect.liveSessionID = .some(try reader.optionalString(id, at: "\(root).liveSessionID"))
+        }
+        if let reply = fields["lastAssistantReply"] {
+            expect.lastAssistantReply = .some(try reader.optionalString(reply, at: "\(root).lastAssistantReply"))
         }
         if let calls = fields["injectorCalls"] {
             guard case .array(let items) = calls else { throw reader.error("\(root).injectorCalls", "must be an array") }
@@ -845,6 +852,7 @@ enum SessionScenarioRunner {
         var injectorCalls: [[String: ScenarioJSON]]
         var permissionMode: String
         var liveSessionID: String?
+        var lastAssistantReply: String?
     }
 
     /// The two scripted adapters and their shared, ordered call log.
@@ -941,7 +949,8 @@ enum SessionScenarioRunner {
             remoteFocus: app.remoteFocusSessionID,
             injectorCalls: injector.calls.map(describe),
             permissionMode: app.configStore.config.permissionMode,
-            liveSessionID: app.harness.sessionID)
+            liveSessionID: app.harness.sessionID,
+            lastAssistantReply: app.lastAssistantReply)
     }
 
     private static func describe(_ call: RecordingInjector.Call) -> [String: ScenarioJSON] {
@@ -1039,6 +1048,9 @@ enum SessionScenarioRunner {
         if before.liveSessionID != after.liveSessionID {
             return "liveSessionID (\(before.liveSessionID ?? "null") → \(after.liveSessionID ?? "null"))"
         }
+        if before.lastAssistantReply != after.lastAssistantReply {
+            return "lastAssistantReply (\(before.lastAssistantReply ?? "null") → \(after.lastAssistantReply ?? "null"))"
+        }
         if before.injectorCalls != after.injectorCalls {
             let added = after.injectorCalls.dropFirst(before.injectorCalls.count).map { ScenarioJSON.object($0).description }
             return "injectorCalls (recorded \(added.joined(separator: ", ")))"
@@ -1117,6 +1129,10 @@ enum SessionScenarioRunner {
         if let wanted = expect.liveSessionID, wanted != actual.liveSessionID {
             failures.append("\(root).liveSessionID: expected \(wanted.map { "\"\($0)\"" } ?? "null"), "
                             + "got \(actual.liveSessionID.map { "\"\($0)\"" } ?? "null")")
+        }
+        if let wanted = expect.lastAssistantReply, wanted != actual.lastAssistantReply {
+            failures.append("\(root).lastAssistantReply: expected \(wanted.map { "\"\($0)\"" } ?? "null"), "
+                            + "got \(actual.lastAssistantReply.map { "\"\($0)\"" } ?? "null")")
         }
         return failures
     }

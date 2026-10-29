@@ -1,0 +1,27 @@
+{
+  "formatVersion": 1,
+  "name": "interrupt-without-a-session-reports-nothing-to-interrupt",
+  "description": "Interrupt in built-in mode with no session running says there is nothing to interrupt, with an error entry, and asks the harness for nothing.",
+  "reason": "The Claude adapter silently drops an interrupt when no process is running. Confirming 'Interrupt sent.' would tell the person something happened when nothing did.",
+  "source": "AppState.interruptClaude (comment: 'ClaudeService.interrupt() silently no-ops without a live process')",
+  "verifiedBy": ["swift"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "builtin",
+    "project": true
+  },
+  "script": [
+    {
+      "intent": "interrupt",
+      "reason": "No session has been started yet."
+    }
+  ],
+  "expect": {
+    "harnessCalls": [],
+    "transcript": [
+      { "kind": "error", "text": "No Claude session is running — nothing to interrupt." }
+    ],
+    "errorShown": true,
+    "status": "noController"
+  }
+}

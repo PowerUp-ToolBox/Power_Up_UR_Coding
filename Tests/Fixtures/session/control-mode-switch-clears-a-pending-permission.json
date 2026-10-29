@@ -1,0 +1,49 @@
+{
+  "formatVersion": 1,
+  "name": "control-mode-switch-clears-a-pending-permission",
+  "description": "An ACP agent is waiting for a permission answer when the person switches to remote mode. The request is dropped unanswered and PowerUp's own session is stopped.",
+  "reason": "In remote mode Approve and Reject press Enter and Escape in the person's real session. A banner left over from the built-in session would invite a press that lands in the wrong place.",
+  "source": "AppState.syncControlMode (comment: 'A pending harness permission request belongs to the mode being left')",
+  "verifiedBy": ["swift"],
+  "config": {
+    "harnessKind": "acp",
+    "acpAgent": "custom",
+    "acpCustomCommand": "scripted-agent --acp",
+    "controlMode": "builtin",
+    "project": true
+  },
+  "script": [
+    { "call": "startSessionIfNeeded", "reason": "App launch starts the agent." },
+    {
+      "harnessEvent": { "type": "sessionReady", "sessionID": "acp-session-1", "model": "scripted-model" },
+      "reason": "The agent is up."
+    },
+    { "call": "sendUserText", "text": "Tidy the repo.", "reason": "A turn is running." },
+    {
+      "harnessEvent": { "type": "permissionRequest", "id": "perm-1", "name": "Edit", "kind": "edit", "detail": "README.md" },
+      "reason": "The agent asks to edit a file.",
+      "expect": { "pendingPermission": true }
+    },
+    {
+      "intent": "toggleControlMode",
+      "reason": "Switch to remote mode with the request still waiting."
+    }
+  ],
+  "expect": {
+    "pendingPermission": false,
+    "pendingPermissionArmed": false,
+    "harnessCalls": [
+      { "adapter": "acp", "type": "start" },
+      { "adapter": "acp", "type": "send", "text": "Tidy the repo." },
+      { "adapter": "acp", "type": "stop" }
+    ],
+    "transcript": [
+      { "kind": "system", "text": "Session started (scripted-model)" },
+      { "kind": "user", "text": "Tidy the repo." },
+      { "kind": "system", "text": "The agent wants to: Edit — README.md. Press ✕ to allow or ○ to deny." },
+      { "kind": "system", "text": "Remote control mode — buttons and voice now drive your existing Claude session." }
+    ],
+    "injectorCalls": [],
+    "errorShown": false
+  }
+}

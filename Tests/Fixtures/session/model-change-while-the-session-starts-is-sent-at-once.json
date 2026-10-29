@@ -1,0 +1,33 @@
+{
+  "formatVersion": 1,
+  "name": "model-change-while-the-session-starts-is-sent-at-once",
+  "description": "Cycle Model pressed while the session is still starting (before the CLI's system/init) sends the live model switch at once rather than waiting for the session to be ready.",
+  "reason": "The CLI buffers stdin while it boots and answers the request right after init, so writing now puts the change ahead of any turn sent before init. Waiting for ready let a first turn run on the old command-line model.",
+  "source": "AppState.cycleModel (comment on the .starting case); DESIGN.md v1.1 A set_model",
+  "verifiedBy": ["swift"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "builtin",
+    "project": true
+  },
+  "script": [
+    {
+      "call": "startSessionIfNeeded",
+      "reason": "App launch: the session is starting, no init yet."
+    },
+    {
+      "intent": "cycleModel",
+      "reason": "The default model is not in the cycle, so the first alias is next."
+    }
+  ],
+  "expect": {
+    "harnessCalls": [
+      { "type": "start", "model": "default" },
+      { "type": "setModel", "model": "sonnet" }
+    ],
+    "transcript": [ { "kind": "system", "text": "Model → sonnet" } ],
+    "modelChip": "sonnet",
+    "liveModel": null,
+    "errorShown": false
+  }
+}

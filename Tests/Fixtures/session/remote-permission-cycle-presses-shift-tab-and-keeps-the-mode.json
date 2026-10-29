@@ -1,0 +1,25 @@
+{
+  "formatVersion": 1,
+  "name": "remote-permission-cycle-presses-shift-tab-and-keeps-the-mode",
+  "description": "In remote mode Cycle Permission Mode presses Shift+Tab in the remote session and leaves the configured permission mode as it was.",
+  "reason": "Interactive Claude Code cycles its modes with Shift+Tab, and which mode it lands on depends on where it already was. Nothing reports that back, so PowerUp must not claim a mode it cannot see.",
+  "source": "AppState.cyclePermissionMode (remote branch comment); MainView permission chip shows a dash in remote mode",
+  "verifiedBy": ["swift"],
+  "config": {
+    "controlMode": "remote",
+    "permissionMode": "plan"
+  },
+  "script": [
+    {
+      "intent": "cyclePermissionMode",
+      "reason": "One press in remote mode."
+    }
+  ],
+  "expect": {
+    "injectorCalls": [ { "type": "key", "key": "shiftTab" } ],
+    "transcript": [ { "kind": "system", "text": "Permission mode cycled (see session)" } ],
+    "permissionMode": "plan",
+    "harnessCalls": [],
+    "errorShown": false
+  }
+}

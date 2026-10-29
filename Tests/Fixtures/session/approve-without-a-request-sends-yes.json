@@ -1,0 +1,37 @@
+{
+  "formatVersion": 1,
+  "name": "approve-without-a-request-sends-yes",
+  "description": "In built-in mode with no permission request waiting, Approve sends the word Yes to the harness as an ordinary user turn, logged as the person's own message.",
+  "reason": "The built-in Claude adapter never asks for permission through PowerUp: Claude asks in its reply, and Approve answers it in words. Only a waiting permission request (built-in) or remote mode (Enter) turns Approve into something else.",
+  "source": "DESIGN.md v1.0 '✕ → approve: \"Yes\" as a user turn'; AppState.approve",
+  "verifiedBy": ["swift"],
+  "config": {
+    "harnessKind": "claude",
+    "controlMode": "builtin",
+    "project": true
+  },
+  "script": [
+    { "call": "startSessionIfNeeded", "reason": "App launch." },
+    {
+      "harnessEvent": { "type": "sessionReady", "sessionID": "session-1", "model": "claude-sonnet-4-5" },
+      "reason": "The CLI's system/init."
+    },
+    {
+      "intent": "approve",
+      "reason": "Nothing is waiting for an answer, so Approve says Yes."
+    }
+  ],
+  "expect": {
+    "harnessCalls": [
+      { "type": "start" },
+      { "type": "send", "text": "Yes" }
+    ],
+    "transcript": [
+      { "kind": "system", "text": "Session started (claude-sonnet-4-5)" },
+      { "kind": "user", "text": "Yes" }
+    ],
+    "pendingPermission": false,
+    "injectorCalls": [],
+    "errorShown": false
+  }
+}
