@@ -3240,8 +3240,10 @@ sends one `cmux send -- <segment>` per segment; `refreshStatus` and the
 send-time target choice read `list-workspaces` through `parseWorkspaces`;
 every failed cmux command is reported through `failureMessage`.
 `parseWorkspaces` already strips the glyph and `failureMessage` already
-condenses, so only the tests call those two wrappers directly. They run on
-the service's background queue; `CoreBridge` is safe from any thread.
+condenses, so only the tests call those two wrappers directly.
+`flattenLineBreaks` runs on the main actor, inside `sendText`; the other
+calls run on the service's background queue; `CoreBridge` is safe from
+either.
 
 Failure policy for remote text: a failed call never lets raw text through,
 since a line break typed into a terminal is Enter. No flattened text or no

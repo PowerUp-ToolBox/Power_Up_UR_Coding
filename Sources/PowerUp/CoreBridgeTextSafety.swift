@@ -9,8 +9,9 @@ import PowerUpCore
 /// separator, the pauses, the deadlines, the socket password), the route
 /// choice and the Accessibility typing.
 ///
-/// These run on RemoteControlService's background queue; like every
-/// `CoreBridge` function, they are safe from any thread. A failed flatten or
+/// `flattenLineBreaks` runs on the main actor, inside RemoteControlService's
+/// `sendText`; the others run on its background queue; like every
+/// `CoreBridge` function, they are safe from either. A failed flatten or
 /// segmentation must never let the raw text through, since a line break
 /// typed into a terminal is Enter: those wrappers answer nil and the caller
 /// sends nothing and tells the person.
