@@ -120,3 +120,16 @@ pub enum HarnessEvent {
         exit_code: i32,
     },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_acp_selects_the_acp_harness() {
+        assert_eq!(HarnessKind::from_setting("acp"), HarnessKind::Acp);
+        for raw in ["claude", "", "ACP", "x"] {
+            assert_eq!(HarnessKind::from_setting(raw), HarnessKind::Claude, "{raw}");
+        }
+    }
+}

@@ -1,6 +1,6 @@
 {
   "description": "The line ClaudeService writes on the claude CLI's stdin for one call, compared as JSON (key order and escaping are the writer's; HK-395). A user turn is {type: user, message: {role: user, content: [{type: text, text}]}, parent_tool_use_id: null} with the text trimmed; a control request is always the nested envelope {type: control_request, request_id, request: {subtype, …}}, never the flat shape, which makes the CLI exit 1 (DESIGN.md v1.1 A). interrupt carries no value, set_model carries model and set_permission_mode carries mode, trimmed. A call whose text or value trims to nothing writes nothing (null). Every line ends with one newline. An unknown subtype (set_effort) is not a call the app makes; verified live, the CLI answers it with an error and keeps running.",
-  "function": "What ClaudeService writes on stdin for one call (ClaudeService.userTurnLine / controlRequestLine) ↔ powerup_core::harness::claude::stdin — input {call: \"send\"|\"interrupt\"|\"setModel\"|\"setPermissionMode\", text?|model?|mode?, requestID?}; expected: the JSON object of the line, or null when nothing is written",
+  "function": "What ClaudeService writes on stdin for one call (CoreBridge.claudeUserTurnLine / claudeControlRequestLine) ↔ powerup_core::harness::claude::stdin — input {call: \"send\"|\"interrupt\"|\"setModel\"|\"setPermissionMode\", text?|model?|mode?, requestID?}; expected: the JSON object of the line, or null when nothing is written",
   "verifiedBy": "DESIGN.md v1.1 A (verified live against claude CLI v2.1.243); Tests/PowerUpTests/HarnessFixtureTests.swift testClaudeStdinTable plays it through CoreBridge.claudeUserTurnLine and claudeControlRequestLine, the writers behind ClaudeService since slice 2.3. Rust: rust/powerup-core/tests/harness.rs claude_stdin_cases runs user_turn_line and control_request_line.",
   "capturedAgainst": "The Swift parser (JSONSerialization) of PowerUp at 7404080, built with Swift 5.9.2 (Xcode 15.2) and run on macOS 27.2; the wire shapes themselves were verified live against claude CLI v2.1.243 (DESIGN.md v1.1 A)",
   "cases": [
@@ -77,6 +77,15 @@
       "reason": "An empty turn would start a turn about nothing (HK-069)."
     },
     {
+      "name": "a zero-width-space turn sends nothing",
+      "input": {
+        "call": "send",
+        "text": "\u200b \u200b"
+      },
+      "expected": null,
+      "reason": "Swift's trim removes U+200B ZERO WIDTH SPACE too (Foundation's whitespacesAndNewlines, measured on macOS 27.2), so an invisible turn is an empty one (HK-069)."
+    },
+    {
       "name": "an empty turn sends nothing",
       "input": {
         "call": "send",
@@ -143,6 +152,16 @@
       },
       "expected": null,
       "reason": "An empty value sends no request (HK-068)."
+    },
+    {
+      "name": "a zero-width-space model sends nothing",
+      "input": {
+        "call": "setModel",
+        "model": "\u200b",
+        "requestID": "R-4"
+      },
+      "expected": null,
+      "reason": "The model is trimmed with the same set as a turn, U+200B included (HK-068)."
     },
     {
       "name": "a whitespace mode sends nothing",

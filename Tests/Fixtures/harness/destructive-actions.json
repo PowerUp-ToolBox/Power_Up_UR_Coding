@@ -1,8 +1,8 @@
 {
-  "description": "Whether a harness permission request is destructive and needs a second Approve (HK-093..097). The kind, lowercased, equal to \"delete\" is always destructive. Otherwise the haystack is title + \" \" + detail + \" \", lowercased, and the request is destructive when it contains any of 32 substring patterns, each lowercased (\"git branch -D\" lowercases to a duplicate of \"git branch -d\" and stays in the list as written). Patterns keep their own trailing spaces (\"rm -r \", \"push -f \", \"git checkout -- \", \"killall \", \"chown -r \", \"delete from \"); the haystack's trailing space lets them match a command that ends there. Matching is pure substring: a false positive costs one extra press, a false negative a branch.",
+  "description": "Whether a harness permission request is destructive and needs a second Approve (HK-093..097). The kind, lowercased, equal to \"delete\" is always destructive. Otherwise the haystack is title + \" \" + detail + \" \", lowercased, and the request is destructive when it contains any of 32 substring patterns, each lowercased and matched as whole Characters (extended grapheme clusters), as Swift's String.contains matches: a combining mark after a pattern hides it (\"git branch -D\" lowercases to a duplicate of \"git branch -d\" and stays in the list as written). Patterns keep their own trailing spaces (\"rm -r \", \"push -f \", \"git checkout -- \", \"killall \", \"chown -r \", \"delete from \"); the haystack's trailing space lets them match a command that ends there. Matching is pure substring: a false positive costs one extra press, a false negative a branch.",
   "function": "DestructiveActionClassifier.isDestructive(kind:title:detail:) ↔ powerup_core::harness::destructive::is_destructive — input {kind, title, detail}; expected: Bool",
   "verifiedBy": "DESIGN.md v2.1 (destructive confirmation, issue #47) and docs/protocol.md invariants; Tests/PowerUpTests/DestructiveActionClassifierTests.swift testDestructiveTable plays it through DestructiveActionClassifier.isDestructive. Rust: rust/powerup-core/tests/harness.rs destructive_action_cases runs harness::destructive::is_destructive.",
-  "capturedAgainst": "The Swift app (DestructiveActionClassifier) of PowerUp at cb85a5b, built with Swift 5.9.2 (Xcode 15.2) and run on macOS 27.2.",
+  "capturedAgainst": "The Swift app (DestructiveActionClassifier) of PowerUp at cb85a5b, built with Swift 5.9.2 (Xcode 15.2) and run on macOS 27.2; the three combining-mark cases from the same classifier at 67fded0, the last Swift version.",
   "cases": [
     {
       "name": "delete kind",
@@ -673,6 +673,36 @@
       },
       "expected": true,
       "reason": "U+212A KELVIN SIGN lowercases to an ASCII k in both Swift and Rust, so 'killall ' still matches; pins that both lowercasings agree where it can make a pattern match."
+    },
+    {
+      "name": "a combining mark after a pattern hides it",
+      "input": {
+        "kind": "execute",
+        "title": "rm -rf\u0301",
+        "detail": ""
+      },
+      "expected": false,
+      "reason": "Swift searched by Character: the f and its accent are one cluster, which is not the pattern's f (HK-096; captured from the Swift classifier at 67fded0)."
+    },
+    {
+      "name": "a space carrying a combining mark ends no pattern",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "rm -r \u0301x"
+      },
+      "expected": false,
+      "reason": "The space and the mark are one cluster, so 'rm -r ' with its trailing space is not there (HK-096; captured from the Swift classifier at 67fded0)."
+    },
+    {
+      "name": "a pattern after a combining mark still matches",
+      "input": {
+        "kind": "execute",
+        "title": "Run command",
+        "detail": "a\u0301rm -rf x"
+      },
+      "expected": true,
+      "reason": "The mark joins the cluster before the pattern, which still starts on a cluster of its own (HK-096; captured from the Swift classifier at 67fded0)."
     }
   ]
 }

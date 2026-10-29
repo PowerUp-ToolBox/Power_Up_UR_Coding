@@ -46,6 +46,14 @@ impl LineBuffer {
     pub fn ingest(&mut self, chunk: &[u8]) -> Vec<Vec<u8>> {
         // Only the new bytes can hold a newline: the tail never does.
         let searched_from = self.pending.len();
+        // A chunk that takes the buffer past the limit grows it by exactly
+        // that chunk, so even while the guard is crossed the buffer never
+        // holds more than the limit plus one chunk; amortized growth would
+        // double it there.
+        let needed = searched_from.saturating_add(chunk.len());
+        if needed > self.limit && needed > self.pending.capacity() {
+            self.pending.reserve_exact(chunk.len());
+        }
         self.pending.extend_from_slice(chunk);
         let mut lines = Vec::new();
         let mut start = 0;
@@ -95,6 +103,17 @@ mod tests {
     const MIB: usize = 1024 * 1024;
 
     #[test]
+    fn crossing_the_limit_grows_by_one_chunk_not_by_doubling() {
+        let mut buffer = LineBuffer::with_limit(16);
+        assert!(buffer.ingest(&[b'x'; 16]).is_empty());
+        assert_eq!(buffer.buffered_capacity(), 16);
+        // The crossing chunk ends a line, so the buffer that held it stays.
+        let lines = buffer.ingest(b"x\n");
+        assert_eq!(lines, vec![vec![b'x'; 17]]);
+        assert_eq!(buffer.buffered_capacity(), 18, "the limit plus the chunk");
+    }
+
+    #[test]
     fn a_runaway_line_is_discarded_without_growing() {
         let mut buffer = LineBuffer::new();
         let chunk = vec![b'x'; MIB];
@@ -106,10 +125,10 @@ mod tests {
         assert_eq!(buffer.buffered_len(), 0);
         assert!(buffer.buffered_capacity() <= MIB, "the memory is released");
 
-        // The buffer never holds more than the limit plus one chunk.
+        // After each chunk the buffer holds no more than the limit.
         for _ in 0..40 {
             assert!(buffer.ingest(&chunk).is_empty());
-            assert!(buffer.buffered_capacity() <= 17 * MIB + MIB);
+            assert!(buffer.buffered_capacity() <= 16 * MIB);
         }
 
         let init = br#"{"type":"system","subtype":"init","session_id":"s","model":"m"}"#;

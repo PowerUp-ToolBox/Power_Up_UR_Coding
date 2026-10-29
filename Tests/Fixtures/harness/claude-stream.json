@@ -1,5 +1,5 @@
 {
-  "description": "One stdout line of the claude CLI's stream-json output (without its newline) and the events it gives, before the adapter applies them. Anything unrecognized gives no events: an unknown type, a field of the wrong type, a line that is not a JSON object. The line is read as Foundation's JSONSerialization reads it (HK-393; rust/powerup-core/src/harness/claude/json.rs lists every rule): valid UTF-8 with one optional leading byte order mark, first of two equal keys wins, one trailing comma accepted, a number that overflows a double rejects the line, a value may begin only while at most 512 containers are open. Fields are read as Swift reads them through NSNumber (HK-394): a bool is the number 1 or 0, the numbers 0 and 1 are bools. Text lengths count extended grapheme clusters (HK-063). In a controlResult, action is the raw request_id and value is null; the adapter swaps in the recorded subtype and value.",
+  "description": "One stdout line of the claude CLI's stream-json output (without its newline) and the events it gives, before the adapter applies them. Anything unrecognized gives no events: an unknown type, a field of the wrong type, a line that is not a JSON object. The line is read as Foundation's JSONSerialization reads it (HK-393; rust/powerup-core/src/harness/claude/json.rs lists every rule): valid UTF-8 with one optional leading byte order mark (a stray 0xA9 byte inside a string reads as U+FFFD), one U+FEFF at the start of any string dropped, first of two equal keys wins, one trailing comma accepted, a number that overflows a double rejects the line, a value may begin only while at most 512 containers are open. Fields are read as Swift reads them through NSNumber (HK-394): a bool is the number 1 or 0, the numbers 0 and 1 are bools. Text lengths count extended grapheme clusters (HK-063). In a controlResult, action is the raw request_id and value is null; the adapter swaps in the recorded subtype and value.",
   "function": "ClaudeService.events(fromLine:) ↔ powerup_core::harness::claude::parse::events_from_line — input: a line input (a string, the line as UTF-8, or {\"hex\": <bytes>} for bytes that are not text); expected: a list of claude event descriptors",
   "verifiedBy": "DESIGN.md v1.1 A (verified live against claude CLI v2.1.243); Tests/PowerUpTests/HarnessFixtureTests.swift testClaudeStreamTable plays it through ClaudeService.events(fromLine:), which parses through the bridge since slice 2.3. Rust: rust/powerup-core/tests/harness.rs claude_stream_cases runs events_from_line.",
   "capturedAgainst": "The Swift parser (JSONSerialization) of PowerUp at 7404080, built with Swift 5.9.2 (Xcode 15.2) and run on macOS 27.2; the wire shapes themselves were verified live against claude CLI v2.1.243 (DESIGN.md v1.1 A)",
@@ -110,6 +110,45 @@
       "input": "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"\"}}}",
       "expected": [],
       "reason": "An empty delta adds nothing to the live reply (HK-056)."
+    },
+    {
+      "name": "a leading U+FEFF of a string is dropped",
+      "input": "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"\ufeffhi\"}}}",
+      "expected": [
+        {
+          "event": "textDelta",
+          "text": "hi"
+        }
+      ],
+      "reason": "Foundation drops one U+FEFF at the start of every string it reads, measured on macOS 27.2 (HK-393)."
+    },
+    {
+      "name": "an escaped leading U+FEFF is dropped too",
+      "input": "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"\\ufeffhi\"}}}",
+      "expected": [
+        {
+          "event": "textDelta",
+          "text": "hi"
+        }
+      ],
+      "reason": "The escape reads as the same character, and Foundation drops it the same way (HK-393)."
+    },
+    {
+      "name": "a text delta of one U+FEFF is ignored",
+      "input": "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"\ufeff\"}}}",
+      "expected": [],
+      "reason": "With its U+FEFF dropped the delta is empty (HK-393, HK-056)."
+    },
+    {
+      "name": "a U+FEFF later in a string is kept",
+      "input": "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"a\ufeffb\"}}}",
+      "expected": [
+        {
+          "event": "textDelta",
+          "text": "a\ufeffb"
+        }
+      ],
+      "reason": "Only the first character of a string is dropped, and only when it is U+FEFF (HK-393)."
     },
     {
       "name": "a thinking_delta is ignored",
@@ -725,6 +764,34 @@
       "reason": "Surrounding whitespace is never part of the result (HK-065)."
     },
     {
+      "name": "zero-width spaces around the result text are trimmed",
+      "input": "{\"type\":\"result\",\"subtype\":\"success\",\"result\":\"\u200bDone.\u200b\"}",
+      "expected": [
+        {
+          "event": "turnCompleted",
+          "resultText": "Done.",
+          "costUSD": null,
+          "isError": false,
+          "subtype": "success"
+        }
+      ],
+      "reason": "Foundation's whitespacesAndNewlines holds U+200B ZERO WIDTH SPACE, measured on macOS 27.2, so Swift's trim removes it (HK-065, HK-063)."
+    },
+    {
+      "name": "a zero-width-space result text becomes null",
+      "input": "{\"type\":\"result\",\"subtype\":\"success\",\"result\":\"\u200b \u200b\"}",
+      "expected": [
+        {
+          "event": "turnCompleted",
+          "resultText": null,
+          "costUSD": null,
+          "isError": false,
+          "subtype": "success"
+        }
+      ],
+      "reason": "An invisible result is no result, so Replay Last Reply keeps the real previous reply (HK-065)."
+    },
+    {
       "name": "a non-string result becomes null",
       "input": "{\"type\":\"result\",\"subtype\":\"success\",\"result\":{\"text\":\"x\"}}",
       "expected": [
@@ -1284,6 +1351,28 @@
       },
       "expected": [],
       "reason": "The line must be valid UTF-8; a stray byte makes Foundation refuse the whole line (HK-393)."
+    },
+    {
+      "name": "a stray 0xA9 byte in a string reads as U+FFFD",
+      "input": {
+        "hex": "7b2274797065223a2273797374656d222c2273756274797065223a22696e6974222c2273657373696f6e5f6964223a2273a978222c226d6f64656c223a226d227d"
+      },
+      "expected": [
+        {
+          "event": "ready",
+          "sessionID": "s\ufffdx",
+          "model": "m"
+        }
+      ],
+      "reason": "The one stray byte Foundation reads instead of refusing the line, measured on macOS 27.2 for every byte from 0x80 to 0xFF (HK-393)."
+    },
+    {
+      "name": "a stray 0xA9 byte outside a string is rejected",
+      "input": {
+        "hex": "7b2274797065223a2273797374656d222c2273756274797065223a22696e6974222c2273657373696f6e5f6964223a2273222c226d6f64656c223a226d227da9"
+      },
+      "expected": [],
+      "reason": "Outside a string Foundation refuses it like any other stray byte (HK-393)."
     },
     {
       "name": "an encoded surrogate is rejected",

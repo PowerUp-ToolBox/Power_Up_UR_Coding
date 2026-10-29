@@ -12,7 +12,9 @@
 //! Measured on macOS 27.2 (Tests/Fixtures/harness/claude-stream.json pins
 //! each rule):
 //! - the line must be valid UTF-8, after one optional leading UTF-8 byte
-//!   order mark;
+//!   order mark, with one exception: a stray byte 0xA9 inside a string
+//!   (where a character should begin) reads as U+FFFD. No other stray byte
+//!   is read, and 0xA9 outside a string rejects the line too;
 //! - the root is an object or an array, with space, tab, LF and CR around
 //!   it and nothing else;
 //! - of two equal keys the first wins;
@@ -24,7 +26,9 @@
 //!   number that overflows rejects the line and one that underflows reads
 //!   as zero;
 //! - strings reject raw control characters below U+0020, unknown escapes
-//!   and unpaired surrogates; `\u0000` is an ordinary character.
+//!   and unpaired surrogates; `\u0000` is an ordinary character;
+//! - one U+FEFF at the start of a string (a key included), raw or escaped,
+//!   is dropped; a second one, or one later in the string, is kept.
 //!
 //! Recorded differences, none of which a claude CLI line can show (it
 //! writes UTF-8 JSON whose numbers have at most 17 significant digits):
@@ -135,8 +139,8 @@ enum Open {
 /// where Foundation would throw.
 pub(crate) fn read(bytes: &[u8]) -> Option<JsonValue> {
     let bytes = bytes.strip_prefix(BYTE_ORDER_MARK).unwrap_or(bytes);
-    let text = std::str::from_utf8(bytes).ok()?;
-    let mut reader = Reader { text, at: 0 };
+    let text = decode(bytes)?;
+    let mut reader = Reader { text: &text, at: 0 };
     reader.skip_whitespace();
     if !matches!(reader.peek(), Some(b'{' | b'[')) {
         return None;
@@ -144,6 +148,58 @@ pub(crate) fn read(bytes: &[u8]) -> Option<JsonValue> {
     let root = reader.read_root()?;
     reader.skip_whitespace();
     (reader.at == text.len()).then_some(root)
+}
+
+/// The byte a measured Foundation reads as U+FFFD inside a string where a
+/// character should begin, instead of rejecting the line. Every other
+/// stray byte from 0x80 to 0xFF, and every invalid two-byte sequence, is
+/// rejected (all measured on macOS 27.2).
+const READ_AS_REPLACEMENT: u8 = 0xA9;
+
+/// The line as text: valid UTF-8 as it is, and otherwise the same text
+/// with each stray 0xA9 inside a string replaced by U+FFFD, or `None` when
+/// any other invalid byte remains. A string is tracked by its quotes and
+/// backslash escapes, as the reader will find it; a stray byte right after
+/// a backslash is not replaced, since no escape could read it anyway.
+fn decode(bytes: &[u8]) -> Option<std::borrow::Cow<'_, str>> {
+    if let Ok(text) = std::str::from_utf8(bytes) {
+        return Some(std::borrow::Cow::Borrowed(text));
+    }
+    let mut out = String::with_capacity(bytes.len() + 2);
+    let mut rest = bytes;
+    let mut in_string = false;
+    let mut escaped = false;
+    loop {
+        let (valid, stray) = match std::str::from_utf8(rest) {
+            Ok(text) => (text, None),
+            Err(error) => {
+                let (head, tail) = rest.split_at(error.valid_up_to());
+                (std::str::from_utf8(head).ok()?, Some(tail))
+            }
+        };
+        for byte in valid.bytes() {
+            if !in_string {
+                in_string = byte == b'"';
+            } else if escaped {
+                escaped = false;
+            } else if byte == b'\\' {
+                escaped = true;
+            } else if byte == b'"' {
+                in_string = false;
+            }
+        }
+        out.push_str(valid);
+        let Some(stray) = stray else {
+            return Some(std::borrow::Cow::Owned(out));
+        };
+        match stray.split_first() {
+            Some((&READ_AS_REPLACEMENT, after)) if in_string && !escaped => {
+                out.push('\u{FFFD}');
+                rest = after;
+            }
+            _ => return None,
+        }
+    }
 }
 
 struct Reader<'a> {
@@ -308,7 +364,8 @@ impl Reader<'_> {
         (self.at > start).then_some(())
     }
 
-    /// A string from its opening quote.
+    /// A string from its opening quote. Foundation drops one U+FEFF at the
+    /// start of the string it reads, whether written raw or as `\ufeff`.
     fn read_string(&mut self) -> Option<String> {
         self.at += 1;
         let mut out = String::new();
@@ -318,6 +375,9 @@ impl Reader<'_> {
                 b'"' => {
                     out.push_str(&self.text[run..self.at]);
                     self.at += 1;
+                    if out.starts_with('\u{FEFF}') {
+                        out.drain(..'\u{FEFF}'.len_utf8());
+                    }
                     return Some(out);
                 }
                 b'\\' => {
@@ -502,6 +562,65 @@ mod tests {
         ] {
             assert!(read_str(rejected).is_none(), "{rejected}");
         }
+    }
+
+    #[test]
+    fn one_leading_feff_of_a_string_is_dropped() {
+        let string = |text: &str| {
+            read_str(&format!(r#"{{"s":{text}}}"#))
+                .and_then(|v| v.get("s").and_then(JsonValue::as_str).map(str::to_owned))
+        };
+        assert_eq!(string("\"\u{FEFF}hi\"").as_deref(), Some("hi"));
+        assert_eq!(string(r#""\ufeffhi""#).as_deref(), Some("hi"));
+        assert_eq!(
+            string("\"\u{FEFF}\u{FEFF}hi\"").as_deref(),
+            Some("\u{FEFF}hi")
+        );
+        assert_eq!(string(r#""\ufeff\ufeffhi""#).as_deref(), Some("\u{FEFF}hi"));
+        assert_eq!(string(r#""\ufeff""#).as_deref(), Some(""));
+        assert_eq!(string("\"\u{FEFF}\\u0041\"").as_deref(), Some("A"));
+        assert_eq!(string("\"a\u{FEFF}b\"").as_deref(), Some("a\u{FEFF}b"));
+        assert_eq!(string("\"\\\\\u{FEFF}x\"").as_deref(), Some("\\\u{FEFF}x"));
+        let key = read_str("{\"\u{FEFF}type\":\"t\"}").unwrap();
+        assert_eq!(key.get("type").and_then(JsonValue::as_str), Some("t"));
+        let empty = read_str("{\"\u{FEFF}\":1}").unwrap();
+        assert!(empty.get("").is_some());
+    }
+
+    #[test]
+    fn a_stray_a9_inside_a_string_reads_as_a_replacement() {
+        let string = |bytes: &[u8]| {
+            let mut line = br#"{"s":""#.to_vec();
+            line.extend_from_slice(bytes);
+            line.extend_from_slice(br#""}"#);
+            read(&line).map(|v| v.get("s").and_then(JsonValue::as_str).map(str::to_owned))
+        };
+        assert_eq!(string(b"s\xA9x"), Some(Some("s\u{FFFD}x".to_owned())));
+        assert_eq!(
+            string(b"\xA9\xA9"),
+            Some(Some("\u{FFFD}\u{FFFD}".to_owned()))
+        );
+        assert_eq!(
+            string(b"\xC3\xA9\xA9"),
+            Some(Some("\u{E9}\u{FFFD}".to_owned()))
+        );
+        assert_eq!(string(b"\\n\xA9"), Some(Some("\n\u{FFFD}".to_owned())));
+        // A string's leading U+FEFF is still dropped; A9 in a key reads too.
+        assert_eq!(
+            string(b"\xEF\xBB\xBF\xA9"),
+            Some(Some("\u{FFFD}".to_owned()))
+        );
+        let key = read(b"{\"s\xA9\":1}").unwrap();
+        assert!(key.get("s\u{FFFD}").is_some());
+        // Every other stray byte, and A9 outside a string, rejects the line.
+        assert_eq!(string(b"s\xA8x"), None);
+        assert_eq!(string(b"\xE2\xA9x"), None);
+        assert_eq!(string(b"\\\xA9"), None);
+        assert!(read(b"{\"s\":1\xA9}").is_none());
+        assert!(read(b"\xA9{}").is_none());
+        // A quote inside a string does not end it after a backslash.
+        assert!(read(b"{\"s\":\"\\\"\xA9\"}").is_some());
+        assert!(read(b"{\"s\":\"\\\\\"\xA9}").is_none());
     }
 
     #[test]

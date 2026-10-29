@@ -2782,11 +2782,18 @@ are `"<UUID>-<n>"` per `ClaudeService` instead of one UUID per request
 - The stream-json line is read exactly as `JSONSerialization` reads it:
   first of two equal keys wins, one leading BOM, one trailing comma, the
   512-container depth rule, overflow rejects the line and underflow reads
-  as 0 (HK-393); fields are read through Swift's NSNumber bridging (HK-394).
-- Text rules copy Swift's `String`: trimming is Unicode whitespace, counts
-  and cuts are extended grapheme clusters (`unicode-segmentation` pinned to
-  match macOS's rules), and `condense` keeps a line break that a combining
-  mark extends (HK-062, HK-063).
+  as 0, one U+FEFF at the start of any string is dropped, and a stray 0xA9
+  byte inside a string reads as U+FFFD where every other invalid byte
+  rejects the line (HK-393); fields are read through Swift's NSNumber
+  bridging (HK-394).
+- Text rules copy Swift's `String`: trimming is Foundation's
+  `whitespacesAndNewlines`, which is Unicode whitespace plus U+200B ZERO
+  WIDTH SPACE; counts and cuts are extended grapheme clusters
+  (`unicode-segmentation` pinned to match macOS's rules), and `condense`
+  keeps a line break that a combining mark extends (HK-062, HK-063).
+- The destructive classifier matches its patterns as whole Characters, as
+  Swift's `String.contains` did: a combining mark right after a pattern
+  hides it (HK-096).
 - Strings are compared by scalar value in the core where Swift compares
   canonical equivalence; every compared value is an ASCII id, alias or
   mode, a standardized path, or a folder name that only orders the focus

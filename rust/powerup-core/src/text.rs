@@ -10,11 +10,13 @@
 use unicode_segmentation::UnicodeSegmentation;
 
 /// Swift's `trimmingCharacters(in: .whitespacesAndNewlines)`. Foundation's
-/// set and `char::is_whitespace` are the same scalars (Z* plus U+0009 to
-/// U+000D and U+0085): U+00A0 and U+2028 are trimmed, U+200B and U+180E are
-/// not. Trimming works on scalars, not clusters.
+/// set is `char::is_whitespace` (Z* plus U+0009 to U+000D and U+0085) plus
+/// U+200B ZERO WIDTH SPACE, which Unicode dropped from Zs long ago and
+/// Foundation still trims (every scalar compared on macOS 27.2): U+00A0,
+/// U+2028 and U+200B are trimmed, U+180E and U+FEFF are not. Trimming works
+/// on scalars, not clusters.
 pub fn trim(text: &str) -> &str {
-    text.trim_matches(char::is_whitespace)
+    text.trim_matches(|scalar: char| scalar.is_whitespace() || scalar == '\u{200B}')
 }
 
 /// Swift's `String.count`: the number of extended grapheme clusters.
@@ -28,6 +30,27 @@ pub fn grapheme_prefix(text: &str, n: usize) -> &str {
         Some((end, _)) => &text[..end],
         None => text,
     }
+}
+
+/// Swift's `String.contains(_:)` on two Strings: whether `needle`'s
+/// clusters appear as consecutive clusters of `haystack`. A match never
+/// starts or ends inside a cluster, so a combining mark (or a ZWJ, or a
+/// spacing mark) after the needle's last character hides it, as it did for
+/// the Swift classifier (measured with Swift 5.9.2). An empty needle is
+/// found anywhere.
+///
+/// Swift compares the clusters by canonical equivalence; this compares
+/// their text. The two agree whenever the needle is ASCII apart from `;`
+/// and `` ` ``, whose canonical singletons (U+037E, U+1FEF) are not ASCII.
+pub fn contains_clusters(haystack: &str, needle: &str) -> bool {
+    let wanted: Vec<&str> = needle.graphemes(true).collect();
+    if wanted.is_empty() {
+        return true;
+    }
+    let clusters: Vec<&str> = haystack.graphemes(true).collect();
+    clusters
+        .windows(wanted.len())
+        .any(|window| window == wanted.as_slice())
 }
 
 /// Tool and status text as one short line (HK-062, HK-063): CR, LF and tab
@@ -118,9 +141,26 @@ mod tests {
     #[test]
     fn trim_matches_swifts_whitespace_set() {
         assert_eq!(trim("\u{00A0} x \u{2028}\u{85}"), "x");
-        assert_eq!(trim("\u{200B}x"), "\u{200B}x");
+        assert_eq!(trim("\u{200B}x\u{200B}"), "x");
+        assert_eq!(trim("\u{200B} \u{200B}"), "");
+        assert_eq!(trim("a\u{200B}b"), "a\u{200B}b");
         assert_eq!(trim("\u{180E}x"), "\u{180E}x");
+        assert_eq!(trim("\u{FEFF}x"), "\u{FEFF}x");
+        assert_eq!(trim("\u{2060}x"), "\u{2060}x");
         assert_eq!(trim(" \u{301}x"), "\u{301}x");
+    }
+
+    #[test]
+    fn contains_clusters_never_matches_part_of_a_cluster() {
+        assert!(contains_clusters("x rm -rf y", "rm -rf"));
+        assert!(contains_clusters("a\u{301}rm -rf", "rm -rf"));
+        assert!(!contains_clusters("rm -rf\u{301}", "rm -rf"));
+        assert!(!contains_clusters("rm -rf\u{200D}", "rm -rf"));
+        assert!(!contains_clusters("rm -rf\u{903}", "rm -rf"));
+        assert!(!contains_clusters("\u{600}rm -rf", "rm -rf"));
+        assert!(!contains_clusters("rm -r \u{308}x", "rm -r "));
+        assert!(!contains_clusters("rm", "rm -rf"));
+        assert!(contains_clusters("", ""));
     }
 
     #[test]

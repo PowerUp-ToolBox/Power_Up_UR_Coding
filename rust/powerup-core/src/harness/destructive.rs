@@ -7,6 +7,8 @@
 //! substring on purpose, so a path that merely contains a token
 //! (`./rmdir-notes`) asks for the extra press too.
 
+use crate::text;
+
 /// The tool kind an ACP agent reports for deleting, destructive by
 /// definition. Compared lowercased, never trimmed.
 const DESTRUCTIVE_KIND: &str = "delete";
@@ -61,6 +63,11 @@ pub const PATTERNS: [&str; 32] = [
 /// end-anchored pattern ("push -f ") match a command that ends with the
 /// flag (HK-094); the joining space means a pattern can span the title and
 /// the detail, which errs to the safe side.
+///
+/// Swift searched the haystack by `Character`, so a pattern matches only
+/// whole extended grapheme clusters: a combining mark right after it
+/// ("rm -rf\u{301}") hides it, as it did in the Swift classifier
+/// (HK-096). A byte search would ask for the extra press there.
 pub fn is_destructive(kind: &str, title: &str, detail: &str) -> bool {
     if kind.to_lowercase() == DESTRUCTIVE_KIND {
         return true;
@@ -68,5 +75,5 @@ pub fn is_destructive(kind: &str, title: &str, detail: &str) -> bool {
     let haystack = format!("{title} {detail} ").to_lowercase();
     PATTERNS
         .iter()
-        .any(|pattern| haystack.contains(&pattern.to_lowercase()))
+        .any(|pattern| text::contains_clusters(&haystack, &pattern.to_lowercase()))
 }
