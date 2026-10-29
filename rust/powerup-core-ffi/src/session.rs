@@ -14,12 +14,13 @@ use powerup_core::intent::Intent;
 use powerup_core::session::cycles;
 use powerup_core::session::{
     ConfigChange, HarnessSnapshot, HookEvent, HookKind, PendingPermission, PlacedPath, RemoteKey,
-    SessionContext, SessionEffect, SessionMachine, SessionSettings, TranscriptKind,
+    SessionContext, SessionEffect, SessionMachine, SessionSettings,
 };
 use powerup_core::status::{self, AppStatus};
 
 use crate::harness::{CoreHarnessConfiguration, CoreHarnessEvent, CoreHarnessState};
 use crate::mapping::CoreIntent;
+use crate::transcript::CoreTranscriptKind;
 use crate::{contain, locked, CoreBridgeError};
 
 /// Which adapter runs the built-in session.
@@ -189,28 +190,6 @@ impl From<CoreHookEvent> for HookEvent {
             session_id: hook.session_id,
             cwd: hook.cwd,
             cwd_place: hook.cwd_place.map(Into::into),
-        }
-    }
-}
-
-/// The transcript entry kinds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
-pub enum CoreTranscriptKind {
-    User,
-    Assistant,
-    Tool,
-    System,
-    Error,
-}
-
-impl From<TranscriptKind> for CoreTranscriptKind {
-    fn from(kind: TranscriptKind) -> Self {
-        match kind {
-            TranscriptKind::User => CoreTranscriptKind::User,
-            TranscriptKind::Assistant => CoreTranscriptKind::Assistant,
-            TranscriptKind::Tool => CoreTranscriptKind::Tool,
-            TranscriptKind::System => CoreTranscriptKind::System,
-            TranscriptKind::Error => CoreTranscriptKind::Error,
         }
     }
 }
@@ -852,6 +831,7 @@ pub fn harness_kind_from_setting(raw: String) -> Result<CoreHarnessKind, CoreBri
 #[cfg(test)]
 mod tests {
     use powerup_core::harness::HarnessConfiguration;
+    use powerup_core::session::TranscriptKind;
 
     use super::*;
 
@@ -921,13 +901,7 @@ mod tests {
                 })
             }
             CoreSessionEffect::AppendTranscript { kind, text } => SessionEffect::AppendTranscript {
-                kind: match kind {
-                    CoreTranscriptKind::User => TranscriptKind::User,
-                    CoreTranscriptKind::Assistant => TranscriptKind::Assistant,
-                    CoreTranscriptKind::Tool => TranscriptKind::Tool,
-                    CoreTranscriptKind::System => TranscriptKind::System,
-                    CoreTranscriptKind::Error => TranscriptKind::Error,
-                },
+                kind: kind.into(),
                 text,
             },
             CoreSessionEffect::ShowProjectTranscript {

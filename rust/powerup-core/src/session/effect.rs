@@ -3,15 +3,8 @@
 
 use crate::harness::{HarnessConfiguration, HarnessKind};
 
-/// The transcript entry kinds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TranscriptKind {
-    User,
-    Assistant,
-    Tool,
-    System,
-    Error,
-}
+/// The transcript entry kinds, the ones a transcript line stores.
+pub use crate::transcript::TranscriptKind;
 
 /// A key remote mode presses in the remote session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

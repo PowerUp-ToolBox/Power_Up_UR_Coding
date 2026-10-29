@@ -449,7 +449,9 @@ extension CoreBridge.ConfigChange {
 }
 
 extension TranscriptEntry.Kind {
-    fileprivate init(_ core: CoreTranscriptKind) {
+    /// Shared with CoreBridgeTranscript.swift, whose loaded entries carry
+    /// the same kind.
+    init(_ core: CoreTranscriptKind) {
         switch core {
         case .user: self = .user
         case .assistant: self = .assistant

@@ -17,6 +17,7 @@ mod device;
 mod harness;
 mod mapping;
 mod session;
+mod transcript;
 
 /// An error a core call reports to Swift.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Error)]
