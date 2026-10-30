@@ -23,8 +23,10 @@
 //!   are open, so 513 nested empty arrays read but a value inside them
 //!   does not;
 //! - a number is the RFC 8259 grammar; it reads as the nearest double, a
-//!   number that overflows rejects the line and one that underflows reads
-//!   as zero;
+//!   number that underflows reads as zero, and one that overflows rejects
+//!   the line, except a negative one of at most 17 significant digits
+//!   (`-1e400`), which reads as minus infinity (`intValue` `Int.min`); with
+//!   more digits Foundation reads an NSDecimalNumber and refuses it;
 //! - strings reject raw control characters below U+0020, unknown escapes
 //!   and unpaired surrogates; `\u0000` is an ordinary character;
 //! - one U+FEFF at the start of a string (a key included), raw or escaped,
@@ -54,7 +56,8 @@
 //! differences above mean that a UTF-16 or UTF-32 settings.json is refused
 //! as invalid JSON instead of read, and that a file holding a number
 //! Decimal cannot hold reads here; the macOS writer still refuses to write
-//! it back.
+//! it back. A negative overflow (`-1e400`) reads as Foundation reads it,
+//! and the macOS writer refuses to write it, as the Swift installer did.
 //!
 //! config.json is read by the app's other Foundation reader, `JSONDecoder`,
 //! whose tolerances differ; [`decoder`] reads it that way, and [`encoder`]
@@ -105,6 +108,25 @@ impl JsonNumber {
             literal: value.to_string().into_boxed_str(),
         }
     }
+}
+
+/// Foundation reads a number literal with a fraction or an exponent and at
+/// most this many significant digits ([`significant_digits`]) as a double;
+/// a longer one is an NSDecimalNumber (measured on macOS 27.2, HK-430).
+pub(crate) const DOUBLE_DIGITS: usize = 17;
+
+/// The significant digits of a number literal as Foundation counts them to
+/// choose between a double and an NSDecimalNumber: the integer part's
+/// leading zeros are not counted, every digit of the fraction is (its
+/// zeros included), the exponent's never.
+pub(crate) fn significant_digits(literal: &str) -> usize {
+    let mantissa = literal
+        .trim_start_matches('-')
+        .split(['e', 'E'])
+        .next()
+        .unwrap_or("");
+    let (integer, fraction) = mantissa.split_once('.').unwrap_or((mantissa, ""));
+    integer.trim_start_matches('0').len() + fraction.len()
 }
 
 /// A value may begin only while at most this many containers are open.
@@ -244,7 +266,8 @@ enum Write<'a> {
 /// Compact JSON text of `value`: members in order, strings escaped as Swift
 /// escapes them (`wire::to_swift_json`, so `/` is `\/`), an integral number
 /// below 2^53 in magnitude as an integer and any other number as serde
-/// writes a double (`-1.5`, `1e+20`, as Swift writes them). Of two members
+/// writes a double (`-1.5`, `1e+20`, as Swift writes them); an infinite
+/// number is an error, as `JSONSerialization` refused it. Of two members
 /// with the same key only the first is written, as a Swift dictionary read
 /// from the line would hold it. Iterative: an explicit stack, never
 /// recursion.
@@ -266,6 +289,13 @@ pub(crate) fn write(value: &JsonValue) -> Result<String, CoreError> {
                         // Exact: integral and below 2^53.
                         #[allow(clippy::cast_possible_truncation)]
                         out.push_str(&(*number as i64).to_string());
+                    } else if !number.is_finite() {
+                        // Minus infinity, which `read` keeps as Foundation
+                        // does: JSONSerialization refuses to write it
+                        // (isValidJSONObject is false), so neither does this.
+                        return Err(CoreError::Failed {
+                            message: "could not write JSON: a number is not finite".to_owned(),
+                        });
                     } else {
                         out.push_str(&wire::to_swift_json(number)?);
                     }
@@ -600,7 +630,9 @@ impl Reader<'_> {
     }
 
     /// `-? (0 | [1-9][0-9]*) (. [0-9]+)? ([eE] [+-]? [0-9]+)?`, read as the
-    /// nearest double and kept as written; `None` when it overflows.
+    /// nearest double and kept as written; `None` when it overflows, except
+    /// that a negative overflow of at most 17 significant digits reads as
+    /// minus infinity, as Foundation reads it.
     fn read_number(&mut self) -> Option<JsonNumber> {
         let start = self.at;
         self.eat(b'-');
@@ -621,7 +653,14 @@ impl Reader<'_> {
         }
         let literal = &self.text[start..self.at];
         let value: f64 = literal.parse().ok()?;
-        value.is_finite().then(|| JsonNumber {
+        // Foundation reads a literal of at most 17 significant digits
+        // through strtod, which overflows to an infinity: it keeps minus
+        // infinity and refuses plus infinity. A longer literal is an
+        // NSDecimalNumber, whose exponent never reaches a double's overflow,
+        // so it is refused (measured on macOS 27.2).
+        let kept = value.is_finite()
+            || (value == f64::NEG_INFINITY && significant_digits(literal) <= DOUBLE_DIGITS);
+        kept.then(|| JsonNumber {
             value,
             literal: literal.into(),
         })
@@ -925,6 +964,57 @@ mod tests {
     }
 
     #[test]
+    fn a_negative_overflow_reads_as_minus_infinity() {
+        // Measured with Swift 5.9.2 on macOS 27.2: JSONSerialization reads
+        // a negative overflow of at most 17 significant digits as -inf and
+        // refuses every positive overflow and every longer literal.
+        for (literal, read_as_minus_infinity) in [
+            ("-1e400", true),
+            ("-2e308", true),
+            ("-1E869", true),
+            ("-1.5e309", true),
+            ("-1.7976931348623159e308", true),
+            ("-12345678901234567e300", true),
+            ("-0.00000000000000001e330", true),
+            ("-1e9999", true),
+            ("1e400", false),
+            ("2e308", false),
+            ("-123456789012345678e300", false),
+            ("-0.000000000000000001e330", false),
+            ("-1.00000000000000000001e400", false),
+            ("-0.0000000000000000000000001e400", false),
+        ] {
+            let read = read_str(&format!(r#"{{"p":{literal}}}"#));
+            let value = read
+                .as_ref()
+                .and_then(|root| root.get("p")?.as_swift_number());
+            if read_as_minus_infinity {
+                assert_eq!(value, Some(f64::NEG_INFINITY), "{literal}");
+            } else {
+                assert!(read.is_none(), "{literal}");
+            }
+        }
+        let overflow = format!("-{}", "1".repeat(400));
+        assert!(read_str(&format!(r#"{{"p":{overflow}}}"#)).is_none());
+        // The negative overflow that does not overflow: the nearest double.
+        assert_eq!(
+            field("-1.7976931348623158e308").as_swift_number(),
+            Some(-f64::MAX)
+        );
+        // Recorded difference (Foundation's exponent quirk, HK-393): it also
+        // refuses -1e+1000 and -1e10000, which read as -inf here.
+        assert_eq!(field("-1e+1000").as_swift_number(), Some(f64::NEG_INFINITY));
+        // JSONSerialization does not write -inf (isValidJSONObject is
+        // false), so write refuses it; write_verbatim keeps the literal for
+        // the macOS writer, which refuses it in turn (HK-417).
+        assert!(write(&field("-1e400")).is_err());
+        assert_eq!(
+            write_verbatim(&read_str(r#"{"p":-1e400}"#).unwrap()).unwrap(),
+            r#"{"p":-1e400}"#
+        );
+    }
+
+    #[test]
     fn swift_int_reads_like_nsnumber() {
         // Measured with Swift 5.9.2 on macOS 27.2 (`as? Int`).
         for (text, int) in [
@@ -940,6 +1030,7 @@ mod tests {
             ("null", None),
             ("-9223372036854775808", Some(i64::MIN)),
             ("100000000000000000000", None),
+            ("-1e400", None),
             ("[1]", None),
         ] {
             assert_eq!(field(text).as_swift_int(), int, "{text}");
@@ -958,6 +1049,7 @@ mod tests {
             ("false", Some(0)),
             ("1e19", Some(i64::MAX)),
             ("-1e19", Some(i64::MIN)),
+            ("-1e400", Some(i64::MIN)),
             ("\"5\"", None),
             ("null", None),
             ("{}", None),

@@ -161,6 +161,16 @@ mod tests {
     }
 
     #[test]
+    fn an_echoed_id_of_minus_infinity_is_not_written() {
+        // Swift read -1e400 as -inf and, as isValidJSONObject was false,
+        // wrote no response at all; the adapter drops a line it cannot write.
+        let message = json::read(br#"{"id":-1e400}"#).unwrap();
+        let echoed = message.get("id").unwrap();
+        assert!(result_line(ResponseId::Echo(echoed), JsonValue::Null).is_err());
+        assert!(error_line(ResponseId::Echo(echoed), METHOD_NOT_FOUND, "x").is_err());
+    }
+
+    #[test]
     fn a_deep_echoed_id_is_written_without_the_call_stack() {
         let depth = 512;
         let line = format!("{{\"id\":{}{}}}", "[".repeat(depth), "]".repeat(depth));

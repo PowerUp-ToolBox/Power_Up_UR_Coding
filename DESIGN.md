@@ -4064,10 +4064,18 @@ post and an exact 403 for an Origin.
   `protocol` through `NSNumber.intValue`, including the NSDecimalNumber
   Foundation reads for an integer past `UInt64` or a literal of more than
   17 significant digits with a fraction or exponent (a 128-bit mantissa,
-  wrapped to 64 bits). All measured on macOS 27.2. Recorded: a literal
-  whose decimal exponent leaves -128...127, which Foundation refuses as
-  malformed, is read here (the HK-393 reader's difference); no client
-  sends one.
+  wrapped to 64 bits). All measured on macOS 27.2. A number that
+  overflows a double is malformed only when it is positive or has more
+  than 17 significant digits: Foundation reads `-1e400` as minus infinity
+  (a ping holding it is answered pong, a hello's `protocol` of `-1e400` is
+  `Int.min`, a hook body holding it is delivered), so the reader keeps it,
+  for every caller (this supersedes v2.12 E's "overflow rejects the
+  line"); `json::write` refuses to write it, as `JSONSerialization` did, so
+  an ACP id of `-1e400` is answered by no line, and the macOS settings
+  writer refuses a merge that holds one (HK-393, HK-417). Recorded: a
+  literal whose decimal exponent leaves -128...127, which Foundation
+  refuses as malformed, is read here (the HK-393 reader's difference); no
+  client sends one.
 - A server message's members come in a fixed order and doubles are
   written as `%.17g`, with Foundation's string escaping and the transcript
   id uppercased (HK-431); Swift's order changed from launch to launch, so

@@ -635,6 +635,51 @@
           "connection": 15
         }
       ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 16 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 16
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 16,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 16,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 69\r\n\r\n{\"hook_event_name\":\"Stop\",\"last_assistant_message\":\"done\",\"x\":-1e400}"
+        }
+      },
+      "reason": "a negative overflowing number reads as minus infinity, as Foundation read it: answered 204, then delivered.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 16,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 16
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "done",
+            "sessionID": null,
+            "cwd": null
+          }
+        }
+      ]
     }
   ]
 }

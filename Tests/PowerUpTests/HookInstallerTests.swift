@@ -196,6 +196,23 @@ final class HookInstallerTests: XCTestCase {
             atPath: tempDir.appendingPathComponent("settings.json.powerup-backup-1").path))
     }
 
+    func testANegativeOverflowReadsButIsNeverWritten() throws {
+        // Foundation reads -1e400 as minus infinity, and so does the core;
+        // JSONSerialization cannot write it, so the old installer refused
+        // the write as unexpectedShape, and so does the writer now (HK-417).
+        let original = #"{"n": -1e400}"#
+        try writeSettings(original)
+
+        XCTAssertThrowsError(try HookInstaller.install(port: 1, token: "t", settingsURL: settingsURL)) { error in
+            guard case HookInstaller.HookError.unexpectedShape? = error as? HookInstaller.HookError else {
+                return XCTFail("expected unexpectedShape, got \(error)")
+            }
+        }
+        XCTAssertEqual(try String(contentsOf: settingsURL, encoding: .utf8), original)
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: tempDir.appendingPathComponent("settings.json.powerup-backup-1").path))
+    }
+
     func testAnUnchangedInstallTakesNoBackup() throws {
         try HookInstaller.install(port: 48738, token: "tok", settingsURL: settingsURL)
         let written = try Data(contentsOf: settingsURL)

@@ -445,6 +445,17 @@
       "reason": "NSNumber.intValue of a double below Int64 saturates: the message names -9223372036854775808."
     },
     {
+      "name": "protocol -1e400 saturates at the smallest Int64",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":-1e400}"
+      },
+      "expected": {
+        "error": "unsupported_protocol",
+        "message": "This server speaks protocol 0; you asked for -9223372036854775808."
+      },
+      "reason": "Foundation reads a negative overflow of at most 17 significant digits as minus infinity, whose NSNumber.intValue saturates: unsupported_protocol, not malformed."
+    },
+    {
       "name": "hello keeps a Unicode token exactly",
       "input": {
         "text": "{\"type\":\"hello\",\"token\":\"tökén🔑\"}"
@@ -1136,6 +1147,27 @@
         "message": "Messages must be single JSON objects with a \"type\" field."
       },
       "reason": "A number past Double's range rejects the whole message, even in a field nobody reads."
+    },
+    {
+      "name": "a negative overflowing number is read",
+      "input": {
+        "text": "{\"type\":\"ping\",\"n\":-1e400}"
+      },
+      "expected": {
+        "type": "ping"
+      },
+      "reason": "Foundation refuses only a positive overflow: a negative one of at most 17 significant digits reads as minus infinity, so the ping stands."
+    },
+    {
+      "name": "a negative overflow of 18 digits is malformed",
+      "input": {
+        "text": "{\"type\":\"ping\",\"n\":-123456789012345678e300}"
+      },
+      "expected": {
+        "error": "malformed",
+        "message": "Messages must be single JSON objects with a \"type\" field."
+      },
+      "reason": "With more than 17 significant digits Foundation reads an NSDecimalNumber, whose exponent cannot hold the value, and refuses the message."
     },
     {
       "name": "a field nested 600 levels deep is malformed",

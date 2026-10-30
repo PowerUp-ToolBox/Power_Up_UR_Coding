@@ -189,23 +189,15 @@ fn requested_version(value: Option<&JsonValue>) -> i64 {
 /// rules). An integer literal inside `Int` is itself; one inside `UInt64`
 /// only (2^63 up) is an unsigned NSNumber whose `intValue` wraps, so 2^63
 /// reads as `Int.min`. A literal with a fraction or an exponent and at most
-/// 17 significant digits (the integer part's leading zeros not counted, the
-/// fraction's counted) is a double, truncated toward zero and saturated at
-/// `Int`'s bounds (0.5 is 0, 1.9 is 1, 1e30 is `Int.max`). Every other
+/// 17 significant digits ([`json::significant_digits`]: the integer part's
+/// leading zeros not counted, the fraction's counted) is a double, truncated
+/// toward zero and saturated at `Int`'s bounds (0.5 is 0, 1.9 is 1, 1e30 is
+/// `Int.max`, and -1e400, minus infinity, is `Int.min`). Every other
 /// literal is an NSDecimalNumber, read by [`decimal_int_value`].
 fn int_value(number: &JsonNumber) -> i64 {
     let literal = &*number.literal;
     if literal.contains(['.', 'e', 'E']) {
-        let integer_part = literal
-            .trim_start_matches('-')
-            .split(['.', 'e', 'E'])
-            .next()
-            .unwrap_or("");
-        let fraction = literal
-            .split_once('.')
-            .map_or("", |(_, rest)| rest.split(['e', 'E']).next().unwrap_or(""));
-        let significant = integer_part.trim_start_matches('0').len() + fraction.len();
-        if significant <= 17 {
+        if json::significant_digits(literal) <= json::DOUBLE_DIGITS {
             // `as` truncates toward zero and saturates, as intValue does
             // with a double.
             #[allow(clippy::cast_possible_truncation)]

@@ -1389,6 +1389,20 @@
       "reason": "Foundation refuses a number that overflows a double, and with it the whole line (HK-393)."
     },
     {
+      "name": "a negative overflowing number is read",
+      "input": "{\"type\":\"result\",\"subtype\":\"success\",\"total_cost_usd\":0.5,\"x\":-1e400}",
+      "expected": [
+        {
+          "event": "turnCompleted",
+          "resultText": null,
+          "costUSD": 0.5,
+          "isError": false,
+          "subtype": "success"
+        }
+      ],
+      "reason": "Foundation refuses only a positive overflow: a negative one of at most 17 significant digits reads as minus infinity, so the line stands (HK-393)."
+    },
+    {
       "name": "a cost too small for a double reads as 0",
       "input": "{\"type\":\"result\",\"subtype\":\"success\",\"total_cost_usd\":1e-400}",
       "expected": [

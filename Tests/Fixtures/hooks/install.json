@@ -874,6 +874,17 @@
       "reason": "A number past Double's range makes the file invalid JSON for Foundation."
     },
     {
+      "name": "a negative overflowing number reads",
+      "input": {
+        "settings": "{\"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"UserPromptSubmit\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"Notification\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"SessionEnd\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"PostToolUse\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}]}, \"n\": -1e400}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh"
+      },
+      "expected": {
+        "outcome": "unchanged"
+      },
+      "reason": "Foundation reads a negative overflow of at most 17 significant digits as minus infinity, so the file is a JSON object that is already installed: nothing is written (HK-190). A write would be refused by the macOS writer, as JSONSerialization cannot write minus infinity (HK-417)."
+    },
+    {
       "name": "a byte order mark is skipped",
       "input": {
         "settings": {

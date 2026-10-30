@@ -427,6 +427,26 @@
       "reason": "A file that is not JSON reads as not installed."
     },
     {
+      "name": "installed beside a negative overflowing number",
+      "input": {
+        "settings": "{\"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"UserPromptSubmit\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"Notification\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"SessionEnd\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}], \"PostToolUse\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook Fixture/support/powerup-hook.sh'\"}]}]}, \"n\": -1e400}",
+        "scriptPath": "/tmp/PowerUp Hook Fixture/support/powerup-hook.sh",
+        "scriptOnDisk": {
+          "scriptFor": {
+            "port": 48738,
+            "token": "tok"
+          }
+        },
+        "port": 48738,
+        "token": "tok"
+      },
+      "expected": {
+        "installState": "installed",
+        "isInstalled": true
+      },
+      "reason": "Foundation reads a negative overflow of at most 17 significant digits as minus infinity, so the file reads and the hooks are installed."
+    },
+    {
       "name": "installed for a path with a single quote",
       "input": {
         "settings": "{\"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook'\\\\''s Fixture/support/powerup-hook.sh'\"}]}], \"UserPromptSubmit\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook'\\\\''s Fixture/support/powerup-hook.sh'\"}]}], \"Notification\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook'\\\\''s Fixture/support/powerup-hook.sh'\"}]}], \"SessionEnd\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook'\\\\''s Fixture/support/powerup-hook.sh'\"}]}], \"PostToolUse\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"'/tmp/PowerUp Hook'\\\\''s Fixture/support/powerup-hook.sh'\"}]}]}}",
