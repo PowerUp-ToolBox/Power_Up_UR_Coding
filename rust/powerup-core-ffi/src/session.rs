@@ -171,6 +171,18 @@ impl From<CoreHookKind> for HookKind {
     }
 }
 
+impl From<HookKind> for CoreHookKind {
+    fn from(kind: HookKind) -> Self {
+        match kind {
+            HookKind::UserPromptSubmit => CoreHookKind::UserPromptSubmit,
+            HookKind::PostToolUse => CoreHookKind::PostToolUse,
+            HookKind::Notification => CoreHookKind::Notification,
+            HookKind::Stop => CoreHookKind::Stop,
+            HookKind::SessionEnd => CoreHookKind::SessionEnd,
+        }
+    }
+}
+
 /// One Claude Code hook as the remote listener delivers it.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct CoreHookEvent {
@@ -485,6 +497,18 @@ impl From<AppStatus> for CoreAppStatus {
             AppStatus::Listening => CoreAppStatus::Listening,
             AppStatus::Thinking => CoreAppStatus::Thinking,
             AppStatus::Speaking => CoreAppStatus::Speaking,
+        }
+    }
+}
+
+impl From<CoreAppStatus> for AppStatus {
+    fn from(status: CoreAppStatus) -> Self {
+        match status {
+            CoreAppStatus::NoController => AppStatus::NoController,
+            CoreAppStatus::Idle => AppStatus::Idle,
+            CoreAppStatus::Listening => AppStatus::Listening,
+            CoreAppStatus::Thinking => AppStatus::Thinking,
+            CoreAppStatus::Speaking => AppStatus::Speaking,
         }
     }
 }

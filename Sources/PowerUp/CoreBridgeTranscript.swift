@@ -75,7 +75,11 @@ fileprivate extension TranscriptEntry {
         self.init(id: id, kind: Kind(core.kind), text: core.text,
                   date: Date(timeIntervalSince1970: core.dateSeconds))
     }
+}
 
+/// Internal rather than fileprivate: a transcript message carries an entry
+/// too (CoreBridgeProtocol.swift).
+extension TranscriptEntry {
     var core: CoreTranscriptEntry {
         CoreTranscriptEntry(id: id.uuidString, kind: kind.core, text: text,
                             dateSeconds: date.timeIntervalSince1970)

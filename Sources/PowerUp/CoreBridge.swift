@@ -222,7 +222,9 @@ fileprivate extension ControlPhase {
     }
 }
 
-fileprivate extension Intent {
+/// Internal rather than fileprivate: the listener delivers intents too
+/// (CoreBridgeListener.swift).
+extension Intent {
     init(_ core: CoreIntent) {
         switch core {
         case .beginVoiceCapture(let mode): self = .beginVoiceCapture(VoiceCaptureMode(mode))

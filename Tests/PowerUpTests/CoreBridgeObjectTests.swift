@@ -1,10 +1,10 @@
 import XCTest
 @testable import PowerUp
 
-/// The app-side wrappers over the slice 2.3 bridge objects
-/// (`CoreBridgeHarness.swift`, `CoreBridgeSession.swift`): the app's own
-/// types go in, the app's own types come out, and the state lives in the
-/// core object between calls.
+/// The app-side wrappers over the bridge objects (`CoreBridgeHarness.swift`,
+/// `CoreBridgeSession.swift`, `CoreBridgeACP.swift`,
+/// `CoreBridgeListener.swift`): the app's own types go in, the app's own
+/// types come out, and the state lives in the core object between calls.
 @MainActor
 final class CoreBridgeObjectTests: XCTestCase {
 
@@ -168,5 +168,104 @@ final class CoreBridgeObjectTests: XCTestCase {
         XCTAssertEqual(place.standardized, "/usr/bin")
         XCTAssertEqual(place.name, "bin")
         XCTAssertEqual(place.components.first, "/")
+    }
+
+    // MARK: Listener policy
+
+    /// A masked client text frame (a zero key, so the payload reads as
+    /// written).
+    private func clientText(_ text: String) -> Data {
+        Data([0x81, 0x80 | UInt8(text.utf8.count), 0, 0, 0, 0]) + Data(text.utf8)
+    }
+
+    func testTheListenerWrapperSpeaksTheAppsTypes() throws {
+        let policy = CoreBridge.ListenerPolicy()
+        XCTAssertEqual(policy.status, .stopped)
+        XCTAssertEqual(policy.start(port: 48738, token: "secret"), [.listen(generation: 2, port: 48738)])
+        XCTAssertEqual(policy.bindReady(generation: 2), [.publish(.init(isRunning: true, lastError: nil))])
+        XCTAssertEqual(policy.accepted(generation: 2), [.admit(connection: 1), .armIdleDeadline(connection: 1, seconds: 15)])
+
+        let body = #"{"hook_event_name":"Stop","last_assistant_message":"Done.","session_id":"s1","cwd":"/work"}"#
+        let post = "POST /event HTTP/1.1\r\nX-PowerUp-Token: secret\r\nContent-Length: \(body.utf8.count)\r\n\r\n\(body)"
+        let hook = RemoteHookEvent(kind: .stop, text: "Done.", sessionID: "s1", cwd: "/work")
+        XCTAssertEqual(policy.received(connection: 1, bytes: Data(post.utf8)), [
+            .send(connection: 1, bytes: Data("HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n".utf8)),
+            .close(connection: 1),
+            .deliverHook(generation: 2, hook)
+        ])
+        XCTAssertEqual(policy.closed(connection: 1), [.cancel(connection: 1)])
+
+        _ = policy.accepted(generation: 2)
+        let upgrade = "GET /ws HTTP/1.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+            + "Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"
+        let effects = policy.received(connection: 2,
+                                      bytes: Data(upgrade.utf8) + clientText(#"{"type":"hello","token":"secret"}"#))
+        XCTAssertEqual(effects.last, .welcome(connection: 2))
+        XCTAssertEqual(policy.authenticatedCount, 1)
+        XCTAssertEqual(policy.connectionCount, 1)
+
+        let snapshot: [CoreBridge.ServerMessage] = [
+            .status(.idle),
+            .session(.init(model: "default", liveModel: nil, effort: "high", permissionMode: "plan",
+                           controlMode: "local", sessionID: nil, costUSD: 0, tokens: 0)),
+        ]
+        let welcome = policy.welcome(connection: 2, appVersion: "1.0", snapshot: snapshot)
+        let texts = welcome.map { effect -> String in
+            guard case .send(2, let bytes) = effect, bytes.count > 2 else {
+                XCTFail("not a send to the client: \(effect)")
+                return ""
+            }
+            return String(decoding: bytes.dropFirst(2), as: UTF8.self)
+        }
+        XCTAssertEqual(texts, [
+            #"{"type":"welcome","protocol":0,"app":"PowerUp","version":"1.0"}"#,
+            #"{"type":"status","status":"idle"}"#,
+            #"{"type":"session","model":"default","effort":"high","permissionMode":"plan","controlMode":"local","costUSD":0}"#,
+        ])
+        XCTAssertEqual(policy.received(connection: 2, bytes: clientText(#"{"type":"intent","intent":"sendPrompt","text":" hi "}"#)),
+                       [.deliverIntent(generation: 2, .sendPrompt("hi"))])
+        let entry = TranscriptEntry(id: try XCTUnwrap(UUID(uuidString: "3F2504E0-4F89-41D3-9A0C-0305E82C3301")), kind: .user,
+                                    text: "hi", date: Date(timeIntervalSince1970: 2))
+        let text = #"{"type":"transcript","entry":{"id":"3F2504E0-4F89-41D3-9A0C-0305E82C3301","kind":"user","text":"hi","date":2}}"#
+        XCTAssertEqual(CoreBridge.protocolEncode(.transcript(entry)), text)
+        XCTAssertEqual(policy.broadcast(.transcript(entry)),
+                       [.broadcast(connections: [2], bytes: try XCTUnwrap(CoreBridge.encodeText(Data(text.utf8))))])
+        XCTAssertEqual(policy.deadlineFired(connection: 2), [], "an authenticated client is spared")
+
+        XCTAssertEqual(policy.bindFailed(generation: 2, error: .addressInUse), [
+            .publish(.init(isRunning: false,
+                           lastError: "Port 48738 is already in use — pick a different port in Settings → Remote.")),
+            .stopListening,
+            .cancel(connection: 2),
+            .scheduleBindRetry(generation: 3, seconds: 2),
+        ])
+        XCTAssertEqual(policy.generation, 3)
+        _ = policy.stop()
+        XCTAssertEqual(policy.retryFired(generation: 3), [], "a stop invalidates the retry")
+    }
+
+    func testTheProtocolWrappersSpeakTheAppsTypes() {
+        XCTAssertEqual(CoreBridge.clientMessage(Data(#"{"type":"hello","token":"t"}"#.utf8)), .success(.hello(token: "t")))
+        XCTAssertEqual(CoreBridge.clientMessage(Data(#"{"type":"intent","intent":"approve"}"#.utf8)),
+                       .success(.intent(.approve)))
+        XCTAssertEqual(CoreBridge.clientMessage(Data(#"{"type":"hello"}"#.utf8)),
+                       .failure(.init(code: "bad_hello", message: #"hello must carry a non-empty "token"."#)))
+        XCTAssertEqual(CoreBridge.protocolIntent(name: "cycleFocus", text: nil), .cycleFocus)
+        XCTAssertNil(CoreBridge.protocolIntent(name: "setPermissionMode", text: "bypassPermissions"))
+        XCTAssertEqual(CoreBridge.handshake(Data("GET /ws HTTP/1.1\n\n".utf8)),
+                       .refuse(method: "GET", path: "/ws", status: 400, reason: "Bad Request"))
+        XCTAssertEqual(CoreBridge.acceptKey(forClientKey: "dGhlIHNhbXBsZSBub25jZQ=="), "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")
+        XCTAssertEqual(CoreBridge.decodeFrames(clientText("hi") + Data([0x81]), maxPayload: 1024),
+                       .frames([.init(opcode: .text, payload: Data("hi".utf8))], consumed: 8))
+        XCTAssertEqual(CoreBridge.decodeFrames(clientText("hi"), maxPayload: 1), .violation)
+        XCTAssertEqual(CoreBridge.encodeFrame(opcode: .ping, payload: Data()), Data([0x89, 0x00]))
+        XCTAssertEqual(CoreBridge.encodeClose(code: 1013), Data([0x88, 0x02, 0x03, 0xF5]))
+        XCTAssertEqual(CoreBridge.protocolEncode(.error(code: "auth_failed", message: "a/b")),
+                       #"{"type":"error","code":"auth_failed","message":"a\/b"}"#)
+    }
+
+    func testTheListenerLimitsFallbackIsTheCores() {
+        XCTAssertEqual(CoreBridge.listenerLimits, .fallback)
+        XCTAssertEqual(CoreBridge.listenerLimits.receiveChunkBytes, 32 * 1024)
     }
 }
