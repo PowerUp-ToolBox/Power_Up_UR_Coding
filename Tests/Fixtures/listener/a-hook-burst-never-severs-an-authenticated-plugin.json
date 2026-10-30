@@ -4,7 +4,7 @@
   "description": "With 32 connections held, accepting one more cancels the oldest connection that is not an authenticated protocol client. A burst of hook posts therefore evicts its own posts (already answered) and never the device plugin, however old it is.",
   "reason": "The hook-burst rule: a busy Claude Code session fires hooks in bursts, and a plugin dropped by them would lose its session mid-use (HK-261, DESIGN.md v1.7).",
   "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:288-358 (ConnectionRegistry)",
-  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: ProtocolServerTests drives the same rules over a real loopback socket.",
+  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
   "steps": [
     {
       "start": {

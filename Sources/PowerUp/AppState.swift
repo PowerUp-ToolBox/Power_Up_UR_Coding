@@ -576,19 +576,19 @@ final class AppState: ObservableObject {
     }
 
     /// What a freshly authenticated protocol client is told first.
-    private func protocolSnapshot() -> [[String: Any]] {
-        [PowerUpProtocol.status(status), currentSessionMessage()]
+    private func protocolSnapshot() -> [CoreBridge.ServerMessage] {
+        [.status(status), currentSessionMessage()]
     }
 
-    private func currentSessionMessage() -> [String: Any] {
-        PowerUpProtocol.session(model: configStore.config.model,
-                                liveModel: harness.modelName,
-                                effort: configStore.config.effort,
-                                permissionMode: configStore.config.permissionMode,
-                                controlMode: AppState.normalizedControlMode(configStore.config.controlMode),
-                                sessionID: harness.sessionID,
-                                costUSD: harness.totalCostUSD,
-                                tokens: harness.totalTokens)
+    private func currentSessionMessage() -> CoreBridge.ServerMessage {
+        .session(CoreBridge.SessionMessage(model: configStore.config.model,
+                                           liveModel: harness.modelName,
+                                           effort: configStore.config.effort,
+                                           permissionMode: configStore.config.permissionMode,
+                                           controlMode: AppState.normalizedControlMode(configStore.config.controlMode),
+                                           sessionID: harness.sessionID,
+                                           costUSD: harness.totalCostUSD,
+                                           tokens: harness.totalTokens))
     }
 
     /// Session facts protocol clients last heard, so `scheduleDerivedUpdate`
@@ -1554,7 +1554,7 @@ final class AppState: ObservableObject {
         let entry = TranscriptEntry(kind: kind, text: trimmed)
         transcript.append(entry)
         transcriptStore.append(entry)
-        listener.broadcast(PowerUpProtocol.transcript(entry))
+        listener.broadcast(.transcript(entry))
         let overflow = transcript.count - AppState.maxTranscriptEntries
         if overflow > 0 {
             transcript.removeFirst(overflow)
@@ -1614,7 +1614,7 @@ final class AppState: ObservableObject {
 
         if newStatus != status {
             status = newStatus
-            listener.broadcast(PowerUpProtocol.status(newStatus))
+            listener.broadcast(.status(newStatus))
         }
         applyLight(for: newStatus)
     }

@@ -4,7 +4,7 @@
   "description": "A hook post with the right token is answered 204 and closed, and only then handed to the app: the reply effects come before the deliver effect, whether the body arrives with the head or after it. Bytes after the answer are not read, and the connection is forgotten once its close has run.",
   "reason": "The hook script's curl gives up after one second (--max-time 1). Answering first means a slow hand-off to the app can never make a hook look failed (HK-247).",
   "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:553-597 (complete: respond(204) before onEvent), 599-609 (respond); DESIGN.md v1.4",
-  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: ProtocolServerTests drives the same rules over a real loopback socket.",
+  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
   "steps": [
     {
       "start": {

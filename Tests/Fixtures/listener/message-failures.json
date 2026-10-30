@@ -4,7 +4,7 @@
   "description": "How an authenticated client's refused messages are answered: an unknown type, an unknown intent, an escalation, a voice intent and a blank prompt each get their error and keep the connection; a malformed message, invalid UTF-8 included, a bad hello and an unsupported version get theirs and close with 1002, never 1007.",
   "reason": "Unknown wire input is answered, never partially executed; close codes are contract (HK-224 to HK-229).",
   "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:668-677 (handleProtocolText); PowerUpProtocol.swift:93-125",
-  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: ProtocolServerTests drives the same rules over a real loopback socket.",
+  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
   "steps": [
     {
       "start": {

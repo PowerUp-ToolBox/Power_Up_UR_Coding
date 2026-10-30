@@ -1,7 +1,7 @@
 {
   "description": "Server → client RFC 6455 frames (docs/protocol.md, \"Framing\"): the first byte is 0x80 (FIN, no RSV) plus the opcode; the frame is never masked; a payload under 126 bytes has its length in the second byte, up to 65535 bytes the marker 126 and a 2-byte big-endian length, beyond that 127 and an 8-byte big-endian length (HK-243). A close frame the server sends carries its code as a 2-byte big-endian payload and no reason (HK-244); the codes in use are 1000, 1002, 1003, 1009, 1013, 4001 and 4003.",
   "function": "WebSocketFraming.encodeFrame(opcode:payload:) (encodeText(_:) for text) and encodeClose(code:) — input {opcode, payload} (payload a bytes descriptor) or {close: <code>}, expected the frame's bytes (a bytes descriptor)",
-  "verifiedBy": "DESIGN.md v1.7; RFC 6455 section 5; Tests/PowerUpTests/ProtocolFixtureTests.swift testFrameEncodeTable plays it through WebSocketFraming.encodeText(_:), encodeFrame(opcode:payload:) and encodeClose(code:). Rust: rust/powerup-core/tests/protocol.rs frame_encode_cases runs protocol::framing::encode_text, encode_frame and encode_close.",
+  "verifiedBy": "DESIGN.md v1.7; RFC 6455 section 5; Tests/PowerUpTests/ProtocolFixtureTests.swift testFrameEncodeTable plays it through the bridge (CoreBridge.encodeText(_:), encodeFrame(opcode:payload:) and encodeClose(code:)). Rust: rust/powerup-core/tests/protocol.rs frame_encode_cases runs protocol::framing::encode_text, encode_frame and encode_close.",
   "capturedAgainst": "Swift 5.9.2 Foundation and CryptoKit (Xcode 15.2) on macOS 27.2, PowerUp at 2d20afb",
   "cases": [
     {

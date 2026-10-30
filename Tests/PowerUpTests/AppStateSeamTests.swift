@@ -115,8 +115,13 @@ final class AppStateSeamTests: XCTestCase {
 
         // The listener holds AppState weakly, so keep it alive for the call.
         let snapshot = try withExtendedLifetime(app) { try XCTUnwrap(listener.welcomeSnapshot?()) }
-        XCTAssertEqual(snapshot.first?["type"] as? String, "status")
-        XCTAssertEqual(snapshot.first?["status"] as? String, "noController")
+        XCTAssertEqual(snapshot.first, .status(.noController))
+        guard case .session(let session)? = snapshot.last, snapshot.count == 2 else {
+            return XCTFail("the snapshot is the status, then the session: \(snapshot)")
+        }
+        XCTAssertEqual(session.model, app.configStore.config.model)
+        XCTAssertEqual(session.costUSD, 0)
+        XCTAssertEqual(session.tokens, 0)
     }
 
     // MARK: Hermetic storage

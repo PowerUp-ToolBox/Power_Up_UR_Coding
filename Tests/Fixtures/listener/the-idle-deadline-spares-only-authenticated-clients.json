@@ -4,7 +4,7 @@
   "description": "Fifteen seconds after its accept a connection is cancelled, with no reply and no close frame, unless it is an authenticated protocol client: a silent socket, an upgraded one that never said hello and a hook post still uploading are all dropped, and an authenticated client lives on. A deadline for a connection already gone does nothing.",
   "reason": "A client that opens a socket and says nothing must not pin resources, and one that has not authenticated by now never will (HK-255).",
   "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:427-433 (start)",
-  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: ProtocolServerTests drives the same rules over a real loopback socket.",
+  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
   "steps": [
     {
       "start": {

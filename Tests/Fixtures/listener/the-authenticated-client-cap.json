@@ -4,7 +4,7 @@
   "description": "At most 16 protocol clients are authenticated at once. One more hello with the right token is answered server_busy and closed with 1013; once a client leaves there is room again.",
   "reason": "Long-lived clients get their own, smaller ceiling so they cannot crowd out the hook posts (HK-229, HK-261).",
   "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:233-237 (onProtocolAuth), 323-328 (markAuthed), 707-712 (refuseForCapacity)",
-  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: ProtocolServerTests drives the same rules over a real loopback socket.",
+  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
   "steps": [
     {
       "start": {

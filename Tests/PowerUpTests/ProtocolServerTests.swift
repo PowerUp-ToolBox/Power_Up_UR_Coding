@@ -1,9 +1,14 @@
 import XCTest
+import Network
 @testable import PowerUp
 
 /// End-to-end tests against a real listener on 127.0.0.1, using
-/// URLSessionWebSocketTask as an independent client implementation.
-/// Environments that forbid loopback binds (some sandboxes) skip cleanly.
+/// URLSessionWebSocketTask as an independent client implementation. The only
+/// tests that open a loopback port: RemoteListener's sockets carry out the
+/// Rust core's connection policy (DESIGN v2.15), so every rule here runs
+/// through the bridge. Each test binds its own random high port, never the
+/// configured default, so a running PowerUp is never reached. Environments
+/// that forbid loopback binds (some sandboxes) skip cleanly.
 @MainActor
 final class ProtocolServerTests: XCTestCase {
 
@@ -16,7 +21,9 @@ final class ProtocolServerTests: XCTestCase {
         // A few attempts on random high ports avoids collisions with anything
         // already running on the machine.
         for _ in 0..<5 {
-            port = UInt16.random(in: 20000...60000)
+            repeat {
+                port = UInt16.random(in: 20000...60000)
+            } while Int(port) == AppConfig.defaultListenerPort
             listener.start(port: port, token: token)
             try await Task.sleep(nanoseconds: 200_000_000)
             if listener.isRunning { break }
@@ -50,17 +57,28 @@ final class ProtocolServerTests: XCTestCase {
         return root
     }
 
+    /// Writes `request` on a raw TCP connection and reads until the server
+    /// closes it (or 5 s pass): what a hook script or a hand-written plugin
+    /// sees, bytes URLSession would never send included.
+    private func exchange(_ request: Data) async throws -> Data {
+        let endpointPort = try XCTUnwrap(NWEndpoint.Port(rawValue: port))
+        let client = RawClient(NWConnection(host: .ipv4(.loopback), port: endpointPort, using: .tcp))
+        return await withCheckedContinuation { continuation in
+            client.exchange(request) { continuation.resume(returning: $0) }
+        }
+    }
+
     // MARK: Handshake + auth
 
     func testHelloWithCorrectTokenGetsWelcomeAndSnapshot() async throws {
-        listener.welcomeSnapshot = { [PowerUpProtocol.status(.idle)] }
+        listener.welcomeSnapshot = { [.status(.idle)] }
 
         let socket = openSocket()
         try await sendJSON(#"{"type":"hello","token":"\#(token)","protocol":0}"#, over: socket)
 
         let welcome = try await receiveJSON(over: socket)
         XCTAssertEqual(welcome["type"] as? String, "welcome")
-        XCTAssertEqual(welcome["protocol"] as? Int, PowerUpProtocol.version)
+        XCTAssertEqual(welcome["protocol"] as? Int, 0)
         XCTAssertEqual(welcome["app"] as? String, "PowerUp")
 
         let snapshot = try await receiveJSON(over: socket)
@@ -114,7 +132,7 @@ final class ProtocolServerTests: XCTestCase {
         await fulfillment(of: [gotIntent], timeout: 5)
         XCTAssertEqual(received, [.sendPrompt("run the tests")])
 
-        listener.broadcast(PowerUpProtocol.status(.thinking))
+        listener.broadcast(.status(.thinking))
         let status = try await receiveJSON(over: socket)
         XCTAssertEqual(status["type"] as? String, "status")
         XCTAssertEqual(status["status"] as? String, "thinking")
@@ -197,6 +215,33 @@ final class ProtocolServerTests: XCTestCase {
         await fulfillment(of: [gotHook], timeout: 5)
     }
 
+    func testABareLFHookPostIsAnsweredAndDelivered() async throws {
+        // A real hook script once sent bare-LF lines (HK-254).
+        let gotHook = expectation(description: "bare-LF hook delivered")
+        listener.onEvent = { event in
+            XCTAssertEqual(event.kind, .userPromptSubmit)
+            XCTAssertEqual(event.text, "Run the tests")
+            XCTAssertEqual(event.sessionID, "s-2")
+            gotHook.fulfill()
+        }
+        let body = #"{"hook_event_name":"UserPromptSubmit","session_id":"s-2","prompt":"Run the tests"}"#
+        let request = "POST /event HTTP/1.1\nHost: 127.0.0.1\nX-PowerUp-Token: \(token)\n"
+            + "Content-Type: application/json\nContent-Length: \(body.utf8.count)\n\n\(body)"
+
+        let response = try await exchange(Data(request.utf8))
+        XCTAssertEqual(String(decoding: response, as: UTF8.self), "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n")
+        await fulfillment(of: [gotHook], timeout: 5)
+    }
+
+    func testABrowserOriginIsRefusedBeforeTheUpgrade() async throws {
+        let request = "GET /ws HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+            + "Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+            + "Origin: https://evil.example\r\n\r\n"
+        let response = try await exchange(Data(request.utf8))
+        XCTAssertEqual(String(decoding: response, as: UTF8.self),
+                       "HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n")
+    }
+
     func testWrongHookTokenIs403() async throws {
         var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/event")!)
         request.httpMethod = "POST"
@@ -205,5 +250,42 @@ final class ProtocolServerTests: XCTestCase {
 
         let (_, response) = try await URLSession.shared.data(for: request)
         XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 403)
+    }
+}
+
+/// One raw TCP exchange; its state lives on its own queue.
+private final class RawClient: @unchecked Sendable {
+    private let connection: NWConnection
+    private let queue = DispatchQueue(label: "ProtocolServerTests.RawClient")
+    private var received = Data()
+    private var done: ((Data) -> Void)?
+
+    init(_ connection: NWConnection) { self.connection = connection }
+
+    func exchange(_ request: Data, done: @escaping (Data) -> Void) {
+        queue.async { [self] in
+            self.done = done
+            connection.stateUpdateHandler = { [self] state in
+                if case .failed = state { finish() }
+            }
+            connection.start(queue: queue)
+            connection.send(content: request, completion: .contentProcessed { _ in })
+            read()
+            queue.asyncAfter(deadline: .now() + 5) { [self] in finish() }
+        }
+    }
+
+    private func read() {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 65_536) { [self] data, _, isComplete, error in
+            if let data { received.append(data) }
+            if isComplete || error != nil { finish() } else { read() }
+        }
+    }
+
+    private func finish() {
+        guard let done else { return }
+        self.done = nil
+        connection.cancel()
+        done(received)
     }
 }

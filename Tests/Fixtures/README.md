@@ -554,10 +554,12 @@ takes `{opcode, payload}` or `{close: <code>}` and expects the frame's
 bytes.
 
 The Swift runner is `Tests/PowerUpTests/ProtocolFixtureTests.swift`, which
-plays every table against `PowerUpProtocol`, `IntentMapper`, `RequestHead`
-and `WebSocketFraming` and checks that the tables cover every message
-type, error code, status, entry kind, handshake outcome, refusal status,
-opcode and close code in use.
+plays every table through the bridge (`CoreBridgeProtocol.swift`, since the
+swap of #163; the tables were captured from the Swift `PowerUpProtocol`,
+`IntentMapper`, `RequestHead` and `WebSocketFraming` before they were
+deleted), compares `server-message.json` byte for byte, and checks that the
+tables cover every message type, error code, status, entry kind, handshake
+outcome, refusal status, opcode and close code in use.
 The Rust runner is `rust/powerup-core/tests/protocol.rs`, one test per
 table, against `protocol::message`, `protocol::handshake` and
 `protocol::framing`; the core writes a server message's members in the
@@ -638,8 +640,12 @@ zero mask key followed by the payload's text, so the message stays
 readable. The Rust runner is `rust/powerup-core/tests/listener.rs`
 (`listener_scenarios`), which also checks the spec constants and, on random
 input, that no accept ever cancels an authenticated client and nothing
-panics. No Swift runner plays these files yet; `ProtocolServerTests` drives
-the same rules over a real loopback socket.
+panics. The Swift runner is `Tests/PowerUpTests/ListenerScenarioTests.swift`
+(`testEveryListenerScenario`), which plays every step through the bridge
+(`CoreBridge.ListenerPolicy`, the object `RemoteListener` runs on), compares
+the effects in the app's types the same way, and checks that every input
+and every effect appears; `ProtocolServerTests` drives the same policy over
+a real loopback socket.
 
 ## `session/`: session scenarios (format 1)
 

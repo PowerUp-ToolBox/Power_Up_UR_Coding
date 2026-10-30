@@ -1,12 +1,12 @@
 import XCTest
 @testable import PowerUp
 
-/// Plays the seven `Tests/Fixtures/protocol/` tables against the Swift
-/// protocol code: how a client message reads (`PowerUpProtocol`), the
-/// protocol name table (`IntentMapper`), every server message as encoded,
-/// the handshake from the request bytes (`RequestHead` and
-/// `PowerUpProtocol.upgradeDecision`), the accept key and frame decoding and
-/// encoding (`WebSocketFraming`). Everything is pure: no socket is opened
+/// Plays the seven `Tests/Fixtures/protocol/` tables through the bridge
+/// (CoreBridgeProtocol.swift, slice 2.6): how a client message reads, the
+/// protocol name table, every server message as encoded (byte for byte),
+/// the handshake from the request bytes, the accept key and frame decoding
+/// and encoding. `rust/powerup-core/tests/protocol.rs` plays the same tables
+/// against the core directly. Everything is pure: no socket is opened
 /// (ProtocolServerTests drives the same rules over a real loopback port).
 final class ProtocolFixtureTests: XCTestCase {
 
@@ -121,7 +121,7 @@ final class ProtocolFixtureTests: XCTestCase {
         return file
     }
 
-    /// What the Swift code returns for one case's input, as a fixture value.
+    /// What the bridge returns for one case's input, as a fixture value.
     static func actual(_ fileName: String, _ input: JSONValue) throws -> JSONValue {
         switch fileName {
         case "client-message.json": return clientMessage(try FixtureBytes.data(input))
@@ -130,23 +130,17 @@ final class ProtocolFixtureTests: XCTestCase {
         case "handshake.json": return handshake(try FixtureBytes.data(input))
         case "accept-key.json":
             guard let key = input.stringValue else { throw FixtureValueError(description: "not a key: \(input)") }
-            return .string(WebSocketFraming.acceptKey(forClientKey: key))
+            return CoreBridge.acceptKey(forClientKey: key).map(JSONValue.string) ?? .null
         case "frame-decode.json": return try frameDecode(input)
         case "frame-encode.json": return try frameEncode(input)
         default: throw FixtureValueError(description: "no runner for \(fileName)")
         }
     }
 
-    /// Bytes descriptors compare by the bytes they stand for, and a server
-    /// message member by member at every level: Swift writes the members of
-    /// a dictionary in a hash order that changes from launch to launch.
+    /// Bytes descriptors compare by the bytes they stand for; everything
+    /// else, a server message's text included, exactly.
     static func matches(_ fileName: String, actual: JSONValue, expected: JSONValue) throws -> Bool {
         switch fileName {
-        case "server-message.json":
-            guard case .string(let written) = actual, case .string(let fixed) = expected else {
-                return actual == expected
-            }
-            return JSONMembers.canonical(written) == JSONMembers.canonical(fixed)
         case "frame-decode.json":
             return actual == (try decodedBytes(expected))
         case "frame-encode.json":
@@ -159,7 +153,9 @@ final class ProtocolFixtureTests: XCTestCase {
     // MARK: Runners
 
     private static func clientMessage(_ payload: Data) -> JSONValue {
-        switch PowerUpProtocol.parseClientMessage(payload) {
+        switch CoreBridge.clientMessage(payload) {
+        case nil:
+            return .null
         case .success(.hello(let token)):
             return .object(["type": .string("hello"), "token": .string(token)])
         case .success(.intent(let intent)):
@@ -183,71 +179,75 @@ final class ProtocolFixtureTests: XCTestCase {
         case .null?, nil: text = nil
         default: throw FixtureValueError(description: "text must be a string or null: \(input)")
         }
-        return IntentMapper.intent(forProtocolName: name, text: text)?.fixtureDescriptor ?? .null
+        return CoreBridge.protocolIntent(name: name, text: text)?.fixtureDescriptor ?? .null
     }
 
     private static func serverMessage(_ input: JSONValue) throws -> JSONValue {
-        let message: [String: Any]
+        CoreBridge.protocolEncode(try serverMessageValue(input)).map(JSONValue.string) ?? .null
+    }
+
+    /// A server message as `server-message.json` writes its input; the
+    /// listener scenarios write their broadcasts and snapshots the same way.
+    static func serverMessageValue(_ input: JSONValue) throws -> CoreBridge.ServerMessage {
         switch input["type"]?.stringValue {
         case "welcome":
-            message = PowerUpProtocol.welcome(appVersion: try string(input, "appVersion"))
+            return .welcome(appVersion: try string(input, "appVersion"))
         case "status":
-            message = PowerUpProtocol.status(try status(try string(input, "status")))
+            return .status(try status(try string(input, "status")))
         case "transcript":
-            message = PowerUpProtocol.transcript(try entry(input["entry"]))
+            return .transcript(try entry(input["entry"]))
         case "session":
-            message = PowerUpProtocol.session(model: try string(input, "model"),
-                                              liveModel: try optionalString(input, "liveModel"),
-                                              effort: try string(input, "effort"),
-                                              permissionMode: try string(input, "permissionMode"),
-                                              controlMode: try string(input, "controlMode"),
-                                              sessionID: try optionalString(input, "sessionID"),
-                                              costUSD: try double(input["costUSD"]),
-                                              tokens: try integer(input["tokens"]))
+            return .session(CoreBridge.SessionMessage(model: try string(input, "model"),
+                                                      liveModel: try optionalString(input, "liveModel"),
+                                                      effort: try string(input, "effort"),
+                                                      permissionMode: try string(input, "permissionMode"),
+                                                      controlMode: try string(input, "controlMode"),
+                                                      sessionID: try optionalString(input, "sessionID"),
+                                                      costUSD: try double(input["costUSD"]),
+                                                      tokens: try integer(input["tokens"])))
         case "pong":
-            message = PowerUpProtocol.pong()
+            return .pong
         case "error":
-            message = PowerUpProtocol.error(code: try string(input, "code"), message: try string(input, "message"))
+            return .error(code: try string(input, "code"), message: try string(input, "message"))
         default:
             throw FixtureValueError(description: "unknown server message \(input)")
         }
-        guard let data = PowerUpProtocol.encode(message) else { return .null }
-        return .string(String(decoding: data, as: UTF8.self))
     }
 
     private static func handshake(_ request: Data) -> JSONValue {
-        guard let boundary = RequestHead.headerBoundary(in: request) else {
-            return .object(["outcome": .string("incomplete")])
-        }
-        let headData = request.subdata(in: request.startIndex..<(request.startIndex + boundary.headerEnd))
-        guard let head = RequestHead(headData) else {
-            return .object(["outcome": .string("unparseable")])
-        }
-        var fields: [String: JSONValue] = ["method": .string(head.method), "path": .string(head.path)]
-        switch PowerUpProtocol.upgradeDecision(method: head.method, path: head.path, header: { head.value(for: $0) }) {
+        switch CoreBridge.handshake(request) {
         case nil:
-            fields["outcome"] = .string("notWebSocket")
-        case .reject(let status, let reason)?:
-            fields["outcome"] = .string("refuse")
-            fields["status"] = .integer(Int64(status))
-            fields["reason"] = .string(reason)
-        case .accept(let acceptKey)?:
-            fields["outcome"] = .string("accept")
-            fields["acceptKey"] = .string(acceptKey)
+            return .null
+        case .incomplete?:
+            return .object(["outcome": .string("incomplete")])
+        case .unparseable?:
+            return .object(["outcome": .string("unparseable")])
+        case .notWebSocket(let method, let path)?:
+            return .object(["outcome": .string("notWebSocket"), "method": .string(method), "path": .string(path)])
+        case .refuse(let method, let path, let status, let reason)?:
+            return .object(["outcome": .string("refuse"), "method": .string(method), "path": .string(path),
+                            "status": .integer(Int64(status)), "reason": .string(reason)])
+        case .accept(let method, let path, let acceptKey)?:
+            return .object(["outcome": .string("accept"), "method": .string(method), "path": .string(path),
+                            "acceptKey": .string(acceptKey)])
         }
-        return .object(fields)
     }
 
     private static func frameDecode(_ input: JSONValue) throws -> JSONValue {
-        var buffer = try FixtureBytes.data(try XCTUnwrap(input["buffer"]))
+        let buffer = try FixtureBytes.data(try XCTUnwrap(input["buffer"]))
         let maxPayload = try integer(input["maxPayload"])
-        let frames: [WebSocketFraming.Frame]
-        do {
-            frames = try WebSocketFraming.decodeFrames(from: &buffer, maxPayload: maxPayload)
-        } catch {
+        switch CoreBridge.decodeFrames(buffer, maxPayload: maxPayload) {
+        case nil:
+            return .null
+        case .violation?:
             return .object(["error": .string("protocolViolation")])
+        case .frames(let frames, let consumed)?:
+            return decoded(frames, remaining: Data(buffer.dropFirst(consumed)))
         }
-        return .object([
+    }
+
+    private static func decoded(_ frames: [CoreBridge.Frame], remaining buffer: Data) -> JSONValue {
+        .object([
             "frames": .array(frames.map { frame in
                 .object(["opcode": .string(opcodeNames[frame.opcode] ?? "?"),
                          "payload": FixtureBytes.descriptor(frame.payload)])
@@ -259,16 +259,16 @@ final class ProtocolFixtureTests: XCTestCase {
     private static func frameEncode(_ input: JSONValue) throws -> JSONValue {
         if case .integer(let code)? = input["close"] {
             guard let code = UInt16(exactly: code) else { throw FixtureValueError(description: "bad close code \(code)") }
-            return FixtureBytes.descriptor(WebSocketFraming.encodeClose(code: code))
+            return CoreBridge.encodeClose(code: code).map(FixtureBytes.descriptor) ?? .null
         }
         let payload = try FixtureBytes.data(try XCTUnwrap(input["payload"]))
         let name = try string(input, "opcode")
         guard let opcode = opcodeNames.first(where: { $0.value == name })?.key else {
             throw FixtureValueError(description: "unknown opcode \(name)")
         }
-        let frame = WebSocketFraming.encodeFrame(opcode: opcode, payload: payload)
+        guard let frame = CoreBridge.encodeFrame(opcode: opcode, payload: payload) else { return .null }
         if opcode == .text {
-            XCTAssertEqual(WebSocketFraming.encodeText(payload), frame, "encodeText is encodeFrame(opcode: .text)")
+            XCTAssertEqual(CoreBridge.encodeText(payload), frame, "encodeText is encodeFrame(opcode: .text)")
         }
         return FixtureBytes.descriptor(frame)
     }
@@ -295,7 +295,7 @@ final class ProtocolFixtureTests: XCTestCase {
         "cycleProject", "cycleFocus", "toggleControlMode",
     ]
 
-    static let opcodeNames: [WebSocketFraming.Opcode: String] = [
+    static let opcodeNames: [CoreBridge.FrameOpcode: String] = [
         .continuation: "continuation", .text: "text", .binary: "binary",
         .close: "close", .ping: "ping", .pong: "pong",
     ]
@@ -359,78 +359,5 @@ final class ProtocolFixtureTests: XCTestCase {
         case .string("-0")?: return -0.0
         default: throw FixtureValueError(description: "not a number: \(String(describing: value))")
         }
-    }
-}
-
-/// The members of a JSON object's text, compared without their order: each
-/// object's members are sorted as text, at every level, and nothing else is
-/// changed, so strings and numbers still compare byte for byte.
-enum JSONMembers {
-    static func canonical(_ text: String) -> String? {
-        let scalars = Array(text.unicodeScalars)
-        var index = 0
-        let result = value(scalars, &index)
-        return index == scalars.count ? result : nil
-    }
-
-    private static func value(_ scalars: [Unicode.Scalar], _ index: inout Int) -> String? {
-        guard index < scalars.count else { return nil }
-        if scalars[index] == "{" { return object(scalars, &index) }
-        if scalars[index] == "[" { return array(scalars, &index) }
-        if scalars[index] == "\"" { return string(scalars, &index) }
-        var token = ""
-        while index < scalars.count, !",}]".unicodeScalars.contains(scalars[index]) {
-            token.unicodeScalars.append(scalars[index])
-            index += 1
-        }
-        return token.isEmpty ? nil : token
-    }
-
-    private static func string(_ scalars: [Unicode.Scalar], _ index: inout Int) -> String? {
-        var text = "\""
-        index += 1
-        var escaped = false
-        while index < scalars.count {
-            let scalar = scalars[index]
-            text.unicodeScalars.append(scalar)
-            index += 1
-            if escaped {
-                escaped = false
-            } else if scalar == "\\" {
-                escaped = true
-            } else if scalar == "\"" {
-                return text
-            }
-        }
-        return nil
-    }
-
-    private static func object(_ scalars: [Unicode.Scalar], _ index: inout Int) -> String? {
-        index += 1
-        var members: [String] = []
-        while index < scalars.count, scalars[index] != "}" {
-            guard scalars[index] == "\"", let key = string(scalars, &index),
-                  index < scalars.count, scalars[index] == ":" else { return nil }
-            index += 1
-            guard let member = value(scalars, &index) else { return nil }
-            members.append(key + ":" + member)
-            if index < scalars.count, scalars[index] == "," { index += 1 }
-        }
-        guard index < scalars.count else { return nil }
-        index += 1
-        return "{" + members.sorted().joined(separator: ",") + "}"
-    }
-
-    private static func array(_ scalars: [Unicode.Scalar], _ index: inout Int) -> String? {
-        index += 1
-        var items: [String] = []
-        while index < scalars.count, scalars[index] != "]" {
-            guard let item = value(scalars, &index) else { return nil }
-            items.append(item)
-            if index < scalars.count, scalars[index] == "," { index += 1 }
-        }
-        guard index < scalars.count else { return nil }
-        index += 1
-        return "[" + items.joined(separator: ",") + "]"
     }
 }

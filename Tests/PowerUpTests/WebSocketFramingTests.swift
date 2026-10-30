@@ -1,23 +1,29 @@
 import XCTest
 @testable import PowerUp
 
+/// RFC 6455 framing through the bridge (slice 2.6, DESIGN v2.15): the core
+/// computes the accept key and decodes and encodes every frame.
 final class WebSocketFramingTests: XCTestCase {
 
     // MARK: Handshake
 
     func testAcceptKeyMatchesRFC6455Example() {
         // The worked example from RFC 6455 §1.3.
-        XCTAssertEqual(WebSocketFraming.acceptKey(forClientKey: "dGhlIHNhbXBsZSBub25jZQ=="),
+        XCTAssertEqual(CoreBridge.acceptKey(forClientKey: "dGhlIHNhbXBsZSBub25jZQ=="),
                        "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")
     }
 
     // MARK: Round trips
 
+    private static let opcodeBits: [CoreBridge.FrameOpcode: UInt8] = [
+        .continuation: 0x0, .text: 0x1, .binary: 0x2, .close: 0x8, .ping: 0x9, .pong: 0xA,
+    ]
+
     /// Client-style masking so server-side decode accepts our test frames.
-    private func maskedFrame(opcode: WebSocketFraming.Opcode, payload: Data,
+    private func maskedFrame(opcode: CoreBridge.FrameOpcode, payload: Data,
                              mask: [UInt8] = [0x11, 0x22, 0x33, 0x44]) -> Data {
         var data = Data()
-        data.append(0x80 | opcode.rawValue)
+        data.append(0x80 | (Self.opcodeBits[opcode] ?? 0))
         let length = payload.count
         if length < 126 {
             data.append(0x80 | UInt8(length))
@@ -37,9 +43,22 @@ final class WebSocketFramingTests: XCTestCase {
         return data
     }
 
-    private func decodeAll(_ input: Data, maxPayload: Int = 1024 * 1024) throws -> [WebSocketFraming.Frame] {
-        var buffer = input
-        return try WebSocketFraming.decodeFrames(from: &buffer, maxPayload: maxPayload)
+    /// The frames at the head of `input` and what is left of it; a violation
+    /// fails the test.
+    private func decode(_ input: Data, maxPayload: Int = 1024 * 1024) throws -> (frames: [CoreBridge.Frame], rest: Data) {
+        guard case .frames(let frames, let consumed)? = CoreBridge.decodeFrames(input, maxPayload: maxPayload) else {
+            XCTFail("expected frames from \(input as NSData)")
+            return ([], input)
+        }
+        return (frames, Data(input.dropFirst(consumed)))
+    }
+
+    private func decodeAll(_ input: Data, maxPayload: Int = 1024 * 1024) throws -> [CoreBridge.Frame] {
+        try decode(input, maxPayload: maxPayload).frames
+    }
+
+    private func assertViolation(_ buffer: Data, maxPayload: Int, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(CoreBridge.decodeFrames(buffer, maxPayload: maxPayload), .violation, file: file, line: line)
     }
 
     func testSmallTextFrameRoundTrip() throws {
@@ -69,25 +88,25 @@ final class WebSocketFramingTests: XCTestCase {
 
     func testPartialFrameWaitsForMoreBytes() throws {
         let whole = maskedFrame(opcode: .text, payload: Data("hello world".utf8))
-        var buffer = whole.prefix(5)
-        XCTAssertEqual(try WebSocketFraming.decodeFrames(from: &buffer, maxPayload: 1024), [])
+        var (frames, buffer) = try decode(whole.prefix(5), maxPayload: 1024)
+        XCTAssertEqual(frames, [])
         XCTAssertEqual(buffer.count, 5, "an incomplete frame must stay buffered")
 
         buffer.append(whole.suffix(whole.count - 5))
-        let frames = try WebSocketFraming.decodeFrames(from: &buffer, maxPayload: 1024)
+        (frames, buffer) = try decode(buffer, maxPayload: 1024)
         XCTAssertEqual(frames.first.map { String(decoding: $0.payload, as: UTF8.self) }, "hello world")
         XCTAssertTrue(buffer.isEmpty)
     }
 
     func testServerFramesAreUnmaskedAndFinal() throws {
-        let encoded = WebSocketFraming.encodeText(Data("reply".utf8))
+        let encoded = try XCTUnwrap(CoreBridge.encodeText(Data("reply".utf8)))
         XCTAssertEqual(encoded[0], 0x81)                          // FIN + text
         XCTAssertEqual(encoded[1], 5)                             // unmasked, length 5
         XCTAssertEqual(Data(encoded.suffix(5)), Data("reply".utf8))
     }
 
-    func testEncodeCloseCarriesBigEndianCode() {
-        let encoded = WebSocketFraming.encodeClose(code: 1002)
+    func testEncodeCloseCarriesBigEndianCode() throws {
+        let encoded = try XCTUnwrap(CoreBridge.encodeClose(code: 1002))
         XCTAssertEqual(encoded[0], 0x88)                          // FIN + close
         XCTAssertEqual(encoded[1], 2)
         XCTAssertEqual([UInt8](encoded.suffix(2)), [0x03, 0xEA]) // 1002
@@ -95,41 +114,34 @@ final class WebSocketFramingTests: XCTestCase {
 
     // MARK: Violations
 
-    func testUnmaskedClientFrameIsRejected() {
-        var buffer = WebSocketFraming.encodeText(Data("nope".utf8))  // server-style, no mask
-        XCTAssertThrowsError(try WebSocketFraming.decodeFrames(from: &buffer, maxPayload: 1024))
+    func testUnmaskedClientFrameIsRejected() throws {
+        let frame = try XCTUnwrap(CoreBridge.encodeText(Data("nope".utf8)))  // server-style, no mask
+        assertViolation(frame, maxPayload: 1024)
     }
 
     func testReservedBitsAreRejected() {
         var frame = maskedFrame(opcode: .text, payload: Data("x".utf8))
         frame[0] |= 0x40                                          // RSV1
-        var buffer = frame
-        XCTAssertThrowsError(try WebSocketFraming.decodeFrames(from: &buffer, maxPayload: 1024))
+        assertViolation(frame, maxPayload: 1024)
     }
 
     func testFragmentedDataFramesAreRejected() {
         var frame = maskedFrame(opcode: .text, payload: Data("x".utf8))
         frame[0] &= 0x7F                                          // clear FIN
-        var buffer = frame
-        XCTAssertThrowsError(try WebSocketFraming.decodeFrames(from: &buffer, maxPayload: 1024))
+        assertViolation(frame, maxPayload: 1024)
     }
 
     func testOversizedPayloadIsRejected() {
-        let frame = maskedFrame(opcode: .text, payload: Data(repeating: 0, count: 2048))
-        var buffer = frame
-        XCTAssertThrowsError(try WebSocketFraming.decodeFrames(from: &buffer, maxPayload: 1024))
+        assertViolation(maskedFrame(opcode: .text, payload: Data(repeating: 0, count: 2048)), maxPayload: 1024)
     }
 
     func testUnknownOpcodeIsRejected() {
         var frame = maskedFrame(opcode: .text, payload: Data())
         frame[0] = 0x83                                           // FIN + reserved opcode 0x3
-        var buffer = frame
-        XCTAssertThrowsError(try WebSocketFraming.decodeFrames(from: &buffer, maxPayload: 1024))
+        assertViolation(frame, maxPayload: 1024)
     }
 
     func testControlFramePayloadCapIsEnforced() {
-        let frame = maskedFrame(opcode: .ping, payload: Data(repeating: 0, count: 200))
-        var buffer = frame
-        XCTAssertThrowsError(try WebSocketFraming.decodeFrames(from: &buffer, maxPayload: 1024 * 1024))
+        assertViolation(maskedFrame(opcode: .ping, payload: Data(repeating: 0, count: 200)), maxPayload: 1024 * 1024)
     }
 }

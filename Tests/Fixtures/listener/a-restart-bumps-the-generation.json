@@ -4,7 +4,7 @@
   "description": "A start with the same port and token while the bind is ready does nothing; any other start stops first, cancelling every connection, and binds with a new generation. Bind reports, accepts and bytes of the old listener are dropped; deliveries carry the generation they belong to. A start before the bind is ready restarts it.",
   "reason": "A settings refresh must not drop connected devices (HK-289), and nothing from a torn-down listener may be attributed to its successor (HK-291).",
   "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:79-152 (start, stop), 154-156, 259-275 (generation checks)",
-  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: ProtocolServerTests drives the same rules over a real loopback socket.",
+  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
   "steps": [
     {
       "start": {

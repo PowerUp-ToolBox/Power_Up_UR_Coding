@@ -4,7 +4,7 @@
   "description": "Only POST /event with the listener's token in X-PowerUp-Token is a hook post. A wrong or missing token is 403; another method or path is 404 (GET /event too, not 405); the query string is dropped, the method uppercased and the token header value trimmed.",
   "reason": "The token keeps other local processes from feeding the app hooks (HK-246); the routing keeps the one port's two jobs apart (HK-218, HK-254).",
   "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:570-581 (complete), 812-853 (RequestHead)",
-  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: ProtocolServerTests drives the same rules over a real loopback socket.",
+  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
   "steps": [
     {
       "start": {

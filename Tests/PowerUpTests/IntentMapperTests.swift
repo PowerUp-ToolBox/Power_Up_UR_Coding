@@ -43,26 +43,26 @@ final class IntentMapperTests: XCTestCase {
         XCTAssertNil(IntentMapper.intent(for: .none, phase: .ended))
     }
 
-    // MARK: Protocol wire names → intents
+    // MARK: Protocol wire names → intents (the core's name table, through the bridge)
 
     func testProtocolNamesMapToIntents() {
-        XCTAssertEqual(IntentMapper.intent(forProtocolName: "approve", text: nil), .approve)
-        XCTAssertEqual(IntentMapper.intent(forProtocolName: "interrupt", text: nil), .interrupt)
-        XCTAssertEqual(IntentMapper.intent(forProtocolName: "cycleModel", text: nil), .cycleModel)
-        XCTAssertEqual(IntentMapper.intent(forProtocolName: "cycleProject", text: nil), .cycleProject)
-        XCTAssertEqual(IntentMapper.intent(forProtocolName: "cycleFocus", text: nil), .cycleFocus)
-        XCTAssertEqual(IntentMapper.intent(forProtocolName: "sendPrompt", text: "run tests"),
+        XCTAssertEqual(CoreBridge.protocolIntent(name: "approve", text: nil), .approve)
+        XCTAssertEqual(CoreBridge.protocolIntent(name: "interrupt", text: nil), .interrupt)
+        XCTAssertEqual(CoreBridge.protocolIntent(name: "cycleModel", text: nil), .cycleModel)
+        XCTAssertEqual(CoreBridge.protocolIntent(name: "cycleProject", text: nil), .cycleProject)
+        XCTAssertEqual(CoreBridge.protocolIntent(name: "cycleFocus", text: nil), .cycleFocus)
+        XCTAssertEqual(CoreBridge.protocolIntent(name: "sendPrompt", text: "run tests"),
                        .sendPrompt("run tests"))
     }
 
     func testSendPromptRequiresNonEmptyText() {
-        XCTAssertNil(IntentMapper.intent(forProtocolName: "sendPrompt", text: nil))
-        XCTAssertNil(IntentMapper.intent(forProtocolName: "sendPrompt", text: "   "))
+        XCTAssertNil(CoreBridge.protocolIntent(name: "sendPrompt", text: nil))
+        XCTAssertNil(CoreBridge.protocolIntent(name: "sendPrompt", text: "   "))
     }
 
     func testVoiceCaptureIsNotReachableOverTheProtocol() {
         for name in ["beginVoiceCapture", "endVoiceCapture", "pushToTalk", "pushToTalkDraft"] {
-            XCTAssertNil(IntentMapper.intent(forProtocolName: name, text: nil),
+            XCTAssertNil(CoreBridge.protocolIntent(name: name, text: nil),
                          "\(name) must not be a protocol intent — the mic is local")
         }
     }
@@ -71,14 +71,14 @@ final class IntentMapperTests: XCTestCase {
         // Safety invariant (docs/protocol.md): the only permission-related
         // wire intent is the cycle, whose fixed order excludes bypass.
         for name in ["setPermissionMode", "bypassPermissions", "permissionMode", "setModel", "sudo"] {
-            XCTAssertNil(IntentMapper.intent(forProtocolName: name, text: "bypassPermissions"))
+            XCTAssertNil(CoreBridge.protocolIntent(name: name, text: "bypassPermissions"))
         }
         XCTAssertFalse(AppConfig.permissionModeCycle.contains("bypassPermissions"))
     }
 
     func testUnknownNamesReturnNil() {
-        XCTAssertNil(IntentMapper.intent(forProtocolName: "", text: nil))
-        XCTAssertNil(IntentMapper.intent(forProtocolName: "definitelyNotAThing", text: nil))
+        XCTAssertNil(CoreBridge.protocolIntent(name: "", text: nil))
+        XCTAssertNil(CoreBridge.protocolIntent(name: "definitelyNotAThing", text: nil))
     }
 }
 

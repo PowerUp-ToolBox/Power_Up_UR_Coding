@@ -4,7 +4,7 @@
   "description": "A hook post whose lines end in a bare LF, and whose header block ends in LF LF, is read like a CRLF one; so is a CRLF head that ends in CR LF LF. A bare-LF head followed by a CRLF blank line (LF CR LF) is never recognised: the request waits, and a peer that then closes is cancelled unanswered.",
   "reason": "A real hook script produced bare-LF requests; dropping them would silently lose hooks (HK-254). The LF CR LF case is pinned so a port does not change it by accident.",
   "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:795-810 (RequestHead.headerBoundary), 487-503 (handleEndOfStream)",
-  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: ProtocolServerTests drives the same rules over a real loopback socket.",
+  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
   "steps": [
     {
       "start": {

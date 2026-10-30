@@ -1,7 +1,7 @@
 {
   "description": "Sec-WebSocket-Accept for a client's Sec-WebSocket-Key (RFC 6455 section 4.2.2, HK-235): the standard base64 (with = padding) of the SHA-1 digest of the key's UTF-8 bytes followed by the GUID 258EAFA5-E914-47DA-95CA-C5AB0DC85B11. The key is hashed as given (the handshake trims it first, handshake.json); it is never checked as base64 or for length. The lengths around 55, 56 and 64 bytes cover SHA-1's padding.",
   "function": "WebSocketFraming.acceptKey(forClientKey:) — input the key, expected the accept value",
-  "verifiedBy": "DESIGN.md v1.7; RFC 6455; Tests/PowerUpTests/ProtocolFixtureTests.swift testAcceptKeyTable plays it through WebSocketFraming.acceptKey(forClientKey:). Rust: rust/powerup-core/tests/protocol.rs accept_key_cases runs protocol::handshake::accept_key.",
+  "verifiedBy": "DESIGN.md v1.7; RFC 6455; Tests/PowerUpTests/ProtocolFixtureTests.swift testAcceptKeyTable plays it through the bridge (CoreBridge.acceptKey(forClientKey:)). Rust: rust/powerup-core/tests/protocol.rs accept_key_cases runs protocol::handshake::accept_key.",
   "capturedAgainst": "Swift 5.9.2 Foundation and CryptoKit (Xcode 15.2) on macOS 27.2, PowerUp at 2d20afb",
   "cases": [
     {

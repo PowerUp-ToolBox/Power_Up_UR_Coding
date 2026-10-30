@@ -45,10 +45,11 @@ enum ControlPhase: Equatable {
     case began, ended
 }
 
-/// Pure translation from mapping vocabulary (through the Rust core) and from
-/// protocol wire names (still here until slice 2.6) into intents. Stateless
-/// by design — the "one hold at a time" bookkeeping stays with the caller,
-/// which knows which physical control it belongs to.
+/// Pure translation from mapping vocabulary (through the Rust core) into
+/// intents. Stateless by design — the "one hold at a time" bookkeeping stays
+/// with the caller, which knows which physical control it belongs to. The
+/// protocol's wire names are the core's name table since slice 2.6
+/// (`CoreBridge.protocolIntent(name:text:)`).
 enum IntentMapper {
 
     /// The intent a mapped action produces for a press (`.began`) or release
@@ -57,40 +58,5 @@ enum IntentMapper {
     /// Rust core (`powerup-core` `intent::intent_for`, slice 2.2).
     static func intent(for action: Action, phase: ControlPhase) -> Intent? {
         CoreBridge.intent(for: action, phase: phase)
-    }
-
-    /// The intents a *protocol client* may send, by wire name (see
-    /// docs/protocol.md). Deliberately a subset:
-    /// - No voice-capture intents — the microphone is local to the app; remote
-    ///   clients send text via `sendPrompt` instead.
-    /// - No name grants anything the controller can't already do: permission
-    ///   mode is only reachable via `cyclePermissionMode`, whose fixed cycle
-    ///   excludes `bypassPermissions` (see AppConfig.permissionModeCycle) —
-    ///   the protocol can never escalate to auto-approve-everything.
-    /// Unknown names return nil; the server answers those with an error
-    /// message, never by acting.
-    static func intent(forProtocolName name: String, text: String?) -> Intent? {
-        switch name {
-        case "sendPrompt":
-            guard let text = text?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !text.isEmpty else { return nil }
-            return .sendPrompt(text)
-        case "sendDraft": return .sendDraft
-        case "approve": return .approve
-        case "reject": return .reject
-        case "interrupt": return .interrupt
-        case "stopSpeaking": return .stopSpeaking
-        case "replayLastReply": return .replayLastReply
-        case "toggleTTS": return .toggleTTS
-        case "newSession": return .newSession
-        case "showWindow": return .showWindow
-        case "cycleModel": return .cycleModel
-        case "cycleEffort": return .cycleEffort
-        case "cyclePermissionMode": return .cyclePermissionMode
-        case "cycleProject": return .cycleProject
-        case "cycleFocus": return .cycleFocus
-        case "toggleControlMode": return .toggleControlMode
-        default: return nil
-        }
     }
 }

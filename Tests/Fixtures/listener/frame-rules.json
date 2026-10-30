@@ -4,7 +4,7 @@
   "description": "What the WebSocket frame rules do to a connection: a binary frame closes with 1003; an unmasked or fragmented frame, or a length past 1 MB, closes with 1002 as soon as its header shows it; a violation discards the whole read, a hello before it included; more than 2 MB waiting to be decoded closes with 1009.",
   "reason": "v0 speaks text frames only, with no fragmentation and conservative limits (ADR 0003; HK-236 to HK-242, HK-259).",
   "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:465-475 (ingest), 640-666 (processWebSocketBuffer); WebSocketFraming.swift:45-106",
-  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: ProtocolServerTests drives the same rules over a real loopback socket.",
+  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
   "steps": [
     {
       "start": {

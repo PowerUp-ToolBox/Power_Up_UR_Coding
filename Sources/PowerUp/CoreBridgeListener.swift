@@ -243,14 +243,6 @@ extension CoreBridge {
     }
 }
 
-/// Written out rather than synthesized (the type is declared in
-/// RemoteListener.swift), so a `deliverHook` effect compares.
-extension RemoteHookEvent: Equatable {
-    static func == (lhs: RemoteHookEvent, rhs: RemoteHookEvent) -> Bool {
-        lhs.kind == rhs.kind && lhs.text == rhs.text && lhs.sessionID == rhs.sessionID && lhs.cwd == rhs.cwd
-    }
-}
-
 // MARK: - Conversions
 //
 // Exhaustive switches with no `default:`, as in CoreBridge.swift.

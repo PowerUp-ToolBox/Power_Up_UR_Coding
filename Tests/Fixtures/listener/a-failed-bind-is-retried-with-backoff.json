@@ -4,7 +4,7 @@
   "description": "A bind that fails stops the listener and, for up to three failures since the last bind that became ready, schedules a retry after 2, 4 and 6 seconds. Each retry clears the problem while it binds. A ready bind resets the count; an explicit start does not, and invalidates a pending retry. A waiting bind shows its problem but is left to the platform's own retries.",
   "reason": "Port contention arrives as a failed bind; without a retry one transient clash would leave the listener down for the session (HK-292).",
   "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:66-73, 154-196 (handleListenerState), 198-203 (describe)",
-  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: ProtocolServerTests drives the same rules over a real loopback socket.",
+  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
   "steps": [
     {
       "start": {

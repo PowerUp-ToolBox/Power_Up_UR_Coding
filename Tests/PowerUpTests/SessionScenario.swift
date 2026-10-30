@@ -335,7 +335,7 @@ struct SessionScenario {
             // non-pad source may send. Opening a window has no place in a test;
             // voice capture belongs to the speech-lifecycle suites (1.4).
             guard name != "showWindow",
-                  let parsed = IntentMapper.intent(forProtocolName: name, text: text) else {
+                  let parsed = CoreBridge.protocolIntent(name: name, text: text) else {
                 throw reader.error("\(path).intent", "unknown or unsupported intent \"\(name)\"")
             }
             if name != "sendPrompt" { try unused("text", text) }

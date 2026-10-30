@@ -4,7 +4,7 @@
   "description": "How a hook post's body is found. No Content-Length (and not chunked) is an empty body, answered at once; an unreadable Content-Length counts as none. A chunked body is not decoded: it is read to the end of the stream, so its framing makes it unreadable. A peer that closes before its declared length is answered with what came. Bytes past the declared length are ignored. Every one is answered 204; only a body that reads as a hook is delivered.",
   "reason": "Hook scripts and curl vary; whatever they send, the post is answered and never left hanging (HK-249, HK-251).",
   "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:487-503 (handleEndOfStream), 518-533, 543-548 (process), 583-596 (complete)",
-  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: ProtocolServerTests drives the same rules over a real loopback socket.",
+  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
   "steps": [
     {
       "start": {
