@@ -1,10 +1,10 @@
 //! Plays `Tests/Fixtures/protocol/` (spec #101, slice 2.6) against the
-//! core: the tables `ProtocolFixtureTests` plays through the Swift
-//! protocol code. Only fixture bytes are read; no socket is opened.
+//! core: the same tables `ProtocolFixtureTests` plays through the bridge
+//! (`CoreBridgeProtocol.swift`). Only fixture bytes are read; no socket is
+//! opened.
 //!
-//! The Swift runner compares a server message's members in any order,
-//! because Swift's order was a hash order; the core fixes the order the
-//! table shows, so this runner compares the text byte for byte.
+//! The core fixes the member order `server-message.json` shows, and both
+//! runners compare a server message's text byte for byte.
 
 mod support;
 

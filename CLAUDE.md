@@ -51,10 +51,12 @@ build links it, so Rust (rustup) and a full Xcode are build requirements;
 the Claude adapter's rules and AppState's session rules (DESIGN v2.12),
 since slice 2.4 the ACP adapter's rules (DESIGN v2.13), and since slice
 2.5 the config schema, the transcript's JSON Lines, the hooks merge,
-remote mode's text safety rules and the speech text rules (DESIGN v2.14);
-`cargo test` plays `Tests/Fixtures/harness/`, `session/`, `status/`,
-`config/`, `transcript/`, `hooks/`, `text-safety/` and `speech/`, and needs
-Python 3 for the mock ACP agent test (skipped without it, except on CI).
+remote mode's text safety rules and the speech text rules (DESIGN v2.14),
+and since slice 2.6 the PowerUp protocol, the WebSocket framing and the
+listener's connection policy (DESIGN v2.15; RemoteListener keeps only the
+sockets and timers); `cargo test` plays `Tests/Fixtures/harness/`,
+`session/`, `status/`, `config/`, `transcript/`, `hooks/`, `text-safety/`,
+`speech/`, `protocol/` and `listener/`, and needs Python 3 for the mock ACP agent test (skipped without it, except on CI).
 Rules (panic, fixtures, ledger, licenses) are in AGENTS.md, "The Rust
 core".
 
@@ -84,6 +86,10 @@ core".
   takes an injectable `settingsURL` and has a `supportDirectoryOverride` test
   seam — use both (see `HookInstallerTests`), so a live PowerUp installation
   is never touched.
+- **Never** connect to, signal or stop the user's running PowerUp or its
+  configured listener port. `ProtocolServerTests` starts its own listener
+  on a random port that is never the default; a live plugin check does the
+  same.
 - Orchestration (AppState) tests go through
   `AppStateTestEnvironment.makeAppState(...)` in
   `Tests/PowerUpTests/AppStateTestSupport.swift`: sandboxed config and
