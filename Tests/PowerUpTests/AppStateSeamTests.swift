@@ -124,6 +124,41 @@ final class AppStateSeamTests: XCTestCase {
         XCTAssertEqual(session.tokens, 0)
     }
 
+    /// The core's name table never yields voice capture (HK-226); AppState
+    /// drops it again if one ever arrives, while every other intent from a
+    /// protocol client reaches the same dispatcher a button does.
+    func testAVoiceIntentFromAProtocolClientIsDroppedAgain() throws {
+        let listener = RemoteListener()
+        let app = env.makeAppState(listener: listener)
+        let onIntent = try XCTUnwrap(listener.onIntent)
+
+        withExtendedLifetime(app) {
+            onIntent(.beginVoiceCapture(.send))
+            XCTAssertFalse(app.isPTTActive, "a protocol client can never open the microphone")
+            onIntent(.beginVoiceCapture(.draft))
+            XCTAssertFalse(app.isPTTActive)
+            XCTAssertFalse(app.isDraftDictation)
+            onIntent(.endVoiceCapture)
+            XCTAssertTrue(app.transcript.isEmpty, "a dropped intent leaves no trace")
+
+            let spoken = app.configStore.config.ttsEnabled
+            onIntent(.toggleTTS)
+            XCTAssertEqual(app.configStore.config.ttsEnabled, !spoken, "other intents are handled")
+        }
+    }
+
+    /// The port AppState binds (HK-245): a usable port as it is, anything
+    /// below 1024 or above 65535 the default, never a port that needs root.
+    func testSanitizedPortKeepsUsablePortsAndDefaultsTheRest() {
+        let fallback = UInt16(AppConfig.defaultListenerPort)
+        XCTAssertEqual(AppState.sanitizedPort(1024), 1024)
+        XCTAssertEqual(AppState.sanitizedPort(48738), 48738)
+        XCTAssertEqual(AppState.sanitizedPort(65535), 65535)
+        for unusable in [Int.min, -1, 0, 80, 1023, 65536, Int.max] {
+            XCTAssertEqual(AppState.sanitizedPort(unusable), fallback, "port \(unusable)")
+        }
+    }
+
     // MARK: Hermetic storage
 
     func testConfigStoreMintsItsTokenIntoTheInjectedFileOnly() throws {

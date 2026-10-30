@@ -129,7 +129,19 @@ clearly without them. CI runs the cargo job on macOS, Windows and Linux.
   and audio routing, SummaryService the summarizer process, and AppState
   the generation counter and the fallbacks to the full reply. A text the
   two detectors decide differently is recorded in
-  `language-agreement.json` and the ledger (HK-420 to HK-425).
+  `language-agreement.json` and the ledger (HK-420 to HK-425). Since slice
+  2.6 it also holds the PowerUp protocol (`protocol`: the client and server
+  messages, the error codes and the version rule, the protocol name table,
+  the request head with its bare-LF tolerance, the WebSocket upgrade and
+  framing, and the loopback listener's connection policy as a state
+  machine, `protocol::listener`, with the spec constants
+  `docs/protocol.md` documents), played against `Tests/Fixtures/protocol/`
+  and the `Tests/Fixtures/listener/` scenarios and reached through
+  `CoreBridgeProtocol.swift` and `CoreBridgeListener.swift` (DESIGN
+  v2.15); RemoteListener keeps the sockets (NWListener and NWConnection on
+  one serial queue), the timers and the order the effects run in.
+  `ProtocolServerTests` stays the only test that opens a real loopback
+  port, a random one that is never the default.
 - **Panic rule.** Every public core function is total: it returns its
   value, or a `Result` when it can fail, and never panics. Library code
   never calls `unwrap`, `expect` or `panic!` (clippy denies the first two).
@@ -191,10 +203,8 @@ contract change.
 | `ControllerPicker.swift` | Pure rows and caption for the Settings → Devices Controller picker |
 | `ViewLogic.swift` | Pure view rules extracted from MainView/ComponentViews (#126; DESIGN v2.7 §F) |
 | `RemoteControlService.swift` | Routes text/keys to cmux or keyboard injection: the route and target choice, running cmux, Accessibility typing; the text safety rules (flattening, escape-safe segments, the workspace list, failure messages) are the core's |
-| `RemoteListener.swift` | Localhost HTTP listener for Claude Code hook events |
+| `RemoteListener.swift` | The loopback listener's sockets for the Claude Code hook posts and the protocol (`/ws`): NWListener and NWConnection on one queue, the timers, carrying out the core's effects in order; the messages, framing and connection policy are the core's |
 | `HookInstaller.swift` | Installs/manages hooks in `~/.claude/settings.json`: paths and test seams, file reads, backup, the settings writer, the script file; the merge, command, script text and install state are the core's |
-| `PowerUpProtocol.swift` | WebSocket upgrade + JSON-RPC message handling |
-| `WebSocketFraming.swift` | Pure RFC 6455 frame codec |
 | `ConfigStore.swift` | Persistent config file: path, debounced atomic save, corrupt and pre-profiles backups; the schema and bytes are the core's |
 | `TranscriptStore.swift` | Per-project transcript persistence (JSON Lines): folder, append, atomic rewrite; the line format, loading and file name are the core's |
 | `MainView.swift` / `ComponentViews.swift` / `SettingsView.swift` / `MappingView.swift` | SwiftUI views |
@@ -207,6 +217,8 @@ contract change.
 | `CoreBridgeHooks.swift` | Bridge wrappers for the Claude Code hooks: the install and uninstall edits, the command, the script text, the install state (DESIGN v2.14) |
 | `CoreBridgeTextSafety.swift` | Bridge wrappers for remote mode's text safety: flattening line breaks, the escape-safe cmux segments, the workspace list and its glyphs, condensing, the failure message (DESIGN v2.14) |
 | `CoreBridgeSpeech.swift` | Bridge wrappers for the speech text rules: the spoken reply and its language, the language decision, the voice language, the summary threshold, prompt and check (DESIGN v2.14) |
+| `CoreBridgeProtocol.swift` | Bridge wrappers for the PowerUp protocol: client and server messages, the name table, the handshake, the accept key, frames (DESIGN v2.15) |
+| `CoreBridgeListener.swift` | Bridge wrappers for the listener's connection policy: the `ListenerPolicy` object and its effects, the spec constants (DESIGN v2.15) |
 
 The Rust core lives in `rust/` (see "The Rust core" above); its bridge tests
 are in `Tests/PowerUpCoreTests/`.
@@ -229,6 +241,10 @@ are in `Tests/PowerUpCoreTests/`.
   enforces this: it fails on `ConfigStore()`, `AppState()`, `= nil` resets
   or a `HookInstaller` call without `settingsURL:` anywhere in
   `Tests/PowerUpTests/`.
+- **Never** connect to, signal or stop the user's running PowerUp or its
+  configured listener port. `ProtocolServerTests` starts its own listener
+  on a random port that is never the default; a live plugin check does the
+  same.
 - Don't spawn real `claude` sessions from tests; the stream parser is
   testable via `ClaudeService.events(fromLine:)` (a wrapper over the core;
   `cargo test` plays `Tests/Fixtures/harness/`). An end-to-end test points

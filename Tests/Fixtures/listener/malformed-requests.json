@@ -3,8 +3,8 @@
   "name": "malformed-requests",
   "description": "A head with no request line of at least two parts is 400; a well-formed request for anything but /ws and POST /event is 404.",
   "reason": "Garbage on the port is answered and closed, never acted on (HK-254).",
-  "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:513-516 (process), 570-577 (complete), 812-827 (RequestHead.init)",
-  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
+  "source": "rust/powerup-core/src/protocol/listener.rs, ported from Sources/PowerUp/RemoteListener.swift at 4c7abe6:513-516 (process), 570-577 (complete), 812-827 (RequestHead.init)",
+  "verifiedBy": "DESIGN.md v1.4, v1.7, v2.15; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
   "steps": [
     {
       "start": {

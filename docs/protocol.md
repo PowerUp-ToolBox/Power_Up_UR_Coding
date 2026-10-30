@@ -6,7 +6,7 @@ The PowerUp protocol lets any local program — a device plugin, an alternative
 UI, a script — talk to a running PowerUp: receive live **status**,
 **transcript**, and **session** events, and send **intents** (approve,
 interrupt, send a prompt, …). It exists so new devices and surfaces can be
-built in any language without touching PowerUp's Swift internals
+built in any language without touching PowerUp's internals
 ([DEVELOPMENT.md §3.1](../DEVELOPMENT.md), [ADR 0003](adr/0003-protocol-transport-websocket-json.md)).
 
 **Scope note (2026-09-17).** This is the **local plugin API**: it binds to
@@ -28,8 +28,11 @@ mismatches fail loudly, not weirdly.
 - Messages are **single JSON objects as WebSocket text frames**, at most
   **1 MB**, **no fragmentation** (a non-final data frame closes the
   connection). Encoded messages never contain raw newlines.
-- WebSocket-level pings are answered with pongs; a JSON `{"type":"ping"}` is
-  answered with `{"type":"pong"}`.
+- WebSocket-level pings are answered with pongs carrying the same payload; a
+  JSON `{"type":"ping"}` is answered with `{"type":"pong"}`. Both are
+  answered before `hello` too. A close frame is answered with close 1000.
+- Text only: a binary frame closes the connection (1003). Text that is not
+  valid UTF-8 is a `malformed` message (close 1002, never 1007).
 - Upgrade requests carrying an **`Origin` header are refused (403)** — see
   Security below. Native clients don't send one.
 
@@ -52,11 +55,16 @@ The **first message** a client sends must be `hello`:
 - `token` — required; the listener token from Settings (also stored in
   `config.json`). Wrong token → `error` (`auth_failed`) and the connection
   closes (WebSocket code 4001).
+  A missing or empty token → `error` (`bad_hello`) and close (1002).
 - `protocol` — optional, defaults to the server's version. A version the
-  server doesn't speak → `error` (`unsupported_protocol`) and close.
-- A client that hasn't authenticated within **15 seconds** is disconnected.
-- Anything other than `hello` before authentication → `error`
-  (`not_authenticated`) and close (4003).
+  server doesn't speak → `error` (`unsupported_protocol`) and close (1002).
+- A client that hasn't authenticated **15 seconds** after it connected is
+  disconnected, without a reply or a close frame.
+- An `intent` before authentication → `error` (`not_authenticated`) and
+  close (4003). A `ping` is answered, and a message that can't be read gets
+  its error as it would after `hello` (unknown types and intents leave the
+  connection open, until the 15 seconds are up).
+- A second `hello` on an authenticated connection is ignored.
 
 On success the server replies with `welcome`, then a snapshot (current
 `status` and `session` messages), then live events as they happen:
@@ -117,10 +125,28 @@ connection stays open. Nothing is ever performed for an unrecognized name.
 |---|---|
 | `auth_failed` | Connection closes (4001) |
 | `not_authenticated` | Connection closes (4003) |
-| `unsupported_protocol` | Connection closes |
+| `unsupported_protocol` | Connection closes (1002) |
 | `bad_hello`, `malformed` | Connection closes (1002) |
 | `unknown_type`, `unknown_intent` | Connection stays open |
 | `server_busy` | Connection closes (1013) — client cap reached (16) |
+
+The `code` strings and their messages are contract: clients may branch on
+them.
+
+### Close codes
+
+| Code | Sent when |
+|---|---|
+| 1000 | The client sent a close frame |
+| 1002 | A frame breaks the rules (unmasked, fragmented, reserved bits, an unknown opcode, a payload over 1 MB), or `malformed`, `bad_hello`, `unsupported_protocol` |
+| 1003 | The client sent a binary frame |
+| 1009 | More than 2 MB is waiting to be decoded |
+| 1013 | `server_busy` |
+| 4001 | `auth_failed` |
+| 4003 | `not_authenticated` |
+
+A close carries its code and no reason text. Each error message is sent
+before its close frame.
 
 ## Security & threat model
 
@@ -139,19 +165,41 @@ so it is treated as an attack surface even though it never leaves the machine:
   `ws://127.0.0.1:…` — that's why upgrades bearing an `Origin` header are
   refused before any message is read, and why the token is required on top.
   A future browser-based UI needs an explicit Origin allowlist, designed then.
-- **Resource limits.** ≤ 32 concurrent connections (hook bursts can never
-  evict a protocol client), ≤ 16 authenticated clients, 1 MB frames, 2 MB
-  per-connection buffer, 15 s handshake deadline. Violations close the
+- **Resource limits.** The spec constants below. Violations close the
   connection; nothing is ever executed from a malformed message.
-- **The hook endpoint** (`POST /event`) is unchanged: token-checked,
-  answers 204, parses defensively, acts on nothing but the three known hook
-  shapes.
+- **The hook endpoint** (`POST /event`, with the token in
+  `X-PowerUp-Token`; a wrong or missing token is 403, and any request but
+  this one and `/ws` is 404) answers `204 No Content` *before* it hands the hook to the
+  app, so Claude Code's hook script (curl with a 1-second limit) is never
+  held up. It parses defensively, accepts bare-LF line endings (a real hook
+  script sent them), answers `Expect: 100-continue`, and acts on nothing
+  but the five hooks PowerUp installs (`Stop`, `UserPromptSubmit`,
+  `Notification`, `SessionEnd`, `PostToolUse`); anything else is answered
+  and dropped.
+
+### Spec constants
+
+These are part of the spec. The reference implementation keeps them as
+constants of `rust/powerup-core/src/protocol/listener.rs`.
+
+| Limit | Value | Past it |
+|---|---|---|
+| Connections at once | 32 | Accepting one more drops the oldest connection that is not an authenticated protocol client, unanswered. An authenticated client is never dropped this way, so a burst of hook posts can never sever a device plugin |
+| Authenticated protocol clients | 16 | `server_busy`, close 1013 |
+| Idle deadline | 15 s after the connection opened | Dropped unless it is an authenticated protocol client by then (hook posts included) |
+| Request header block | 16 KB | 431 |
+| Hook post body | 4 MB | 413 (also a negative `Content-Length`, or more than 16 KB + 4 MB received) |
+| Frame payload | 1 MB | close 1002, as soon as the frame's header shows the length |
+| Bytes waiting to be decoded | 2 MB | close 1009 |
+| Port | 1024–65535 | The listener doesn't start; Settings shows why |
+| Bind retries | 3, after 2, 4 and 6 s | A port that stays taken leaves the listener stopped, with the reason in Settings, until the next successful bind or a new start |
 
 ### Safety invariants
 
 These hold for every input source — buttons, protocol clients, and future
 devices — and are enforced by construction plus tests
-(`IntentMapperTests`, `AppConfigTests`):
+(`Tests/Fixtures/protocol/intent-names.json`, `IntentMapperTests`,
+`AppConfigTests`):
 
 1. **No input can silently escalate permissions.** The only permission
    intent is `cyclePermissionMode`; its fixed cycle
@@ -160,9 +208,11 @@ devices — and are enforced by construction plus tests
 2. **Unknown input is inert.** Unknown message types, intents, fields, and
    hook events are answered or ignored — never partially executed.
 3. **The protocol can't grow the attack surface quietly.** Adding a wire
-   intent requires touching `IntentMapper.intent(forProtocolName:)`, whose
-   test asserts the vocabulary — a new dangerous name is a reviewed decision,
-   not an accident.
+   intent requires touching the core's name table
+   (`intent_for_protocol_name` in `rust/powerup-core/src/protocol/message.rs`),
+   whose fixture `Tests/Fixtures/protocol/intent-names.json` asserts the
+   vocabulary — a new dangerous name is a reviewed decision, not an
+   accident.
 
 ## Versioning rules
 
@@ -174,8 +224,24 @@ devices — and are enforced by construction plus tests
 
 ## Reference implementation notes
 
-Server: `Sources/PowerUp/RemoteListener.swift` (connections),
-`WebSocketFraming.swift` (RFC 6455 framing), `PowerUpProtocol.swift`
-(messages — this spec and that file must change together),
-`Intent.swift` (the intent vocabulary). Tests:
-`ProtocolServerTests.swift` runs a live client against a real listener.
+The reference implementation is the Rust core's `protocol` module
+(`rust/powerup-core/src/protocol/`; DESIGN.md v2.15). This spec and that
+module must change together:
+
+- `message.rs` — every client and server message, the error codes and
+  their text, the version rule, and the intent vocabulary;
+- `handshake.rs` — the request head (bare LF included), the upgrade
+  decision and `Sec-WebSocket-Accept`;
+- `framing.rs` — RFC 6455 frames and the close codes;
+- `listener.rs` — the connection policy: the hook endpoint, the hello
+  gate, the caps, the idle deadline and the bind retry, as a state machine
+  that turns what happened on a socket into effects.
+
+Each platform keeps only its sockets: on macOS,
+`Sources/PowerUp/RemoteListener.swift` (Network.framework) feeds the core
+what happened and carries out its effects in order.
+
+Tests: the shared fixtures `Tests/Fixtures/protocol/` (messages, handshake,
+frames) and `Tests/Fixtures/listener/` (the policy, one scenario per rule)
+run in both the Rust core and the Swift app, and `ProtocolServerTests.swift`
+runs a live client against a real listener on a loopback port.

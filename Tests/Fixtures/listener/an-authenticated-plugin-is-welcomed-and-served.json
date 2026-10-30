@@ -3,8 +3,8 @@
   "name": "an-authenticated-plugin-is-welcomed-and-served",
   "description": "A protocol client upgrades, says hello with the token and is welcomed with the app version and the snapshot, each message in its own frame. Its intents reach the app, a ping message gets a pong message and a ping frame a pong frame with the same payload; a second hello does nothing; the idle deadline spares it. Its close frame is answered with 1000 and nothing after it is read. A hello split across reads waits for its frame.",
   "reason": "This is the local plugin API's happy path (docs/protocol.md); every later rule is a departure from it (HK-234, HK-256 to HK-258).",
-  "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:620-704 (acceptWebSocket, processWebSocketBuffer, handleProtocolText), 269-275 (welcomeAuthenticated), 427-433 (deadline)",
-  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
+  "source": "rust/powerup-core/src/protocol/listener.rs, ported from Sources/PowerUp/RemoteListener.swift at 4c7abe6:620-704 (acceptWebSocket, processWebSocketBuffer, handleProtocolText), 269-275 (welcomeAuthenticated), 427-433 (deadline)",
+  "verifiedBy": "DESIGN.md v1.4, v1.7, v2.15; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
   "steps": [
     {
       "start": {

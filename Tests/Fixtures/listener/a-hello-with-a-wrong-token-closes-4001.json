@@ -3,8 +3,8 @@
   "name": "a-hello-with-a-wrong-token-closes-4001",
   "description": "A hello whose token is not the listener's is answered auth_failed and closed with 4001; a right hello behind it in the same read is not read. A hello with no token is bad_hello and closes with 1002.",
   "reason": "The token is the only thing standing between a local process and the app's intents (HK-257).",
-  "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:679-689 (handleProtocolText), 668-677",
-  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
+  "source": "rust/powerup-core/src/protocol/listener.rs, ported from Sources/PowerUp/RemoteListener.swift at 4c7abe6:679-689 (handleProtocolText), 668-677",
+  "verifiedBy": "DESIGN.md v1.4, v1.7, v2.15; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
   "steps": [
     {
       "start": {

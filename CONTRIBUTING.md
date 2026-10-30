@@ -128,7 +128,19 @@ The rules for core work:
   and audio routing, SummaryService the summarizer process, and AppState
   the generation counter and the fallbacks to the full reply. A text the
   two detectors decide differently is recorded in
-  `language-agreement.json` and the ledger (HK-420 to HK-425).
+  `language-agreement.json` and the ledger (HK-420 to HK-425). Since slice
+  2.6 it also holds the PowerUp protocol (`protocol`: the client and server
+  messages, the error codes and the version rule, the protocol name table,
+  the request head with its bare-LF tolerance, the WebSocket upgrade and
+  framing, and the loopback listener's connection policy as a state
+  machine, `protocol::listener`, with the spec constants
+  `docs/protocol.md` documents), played against `Tests/Fixtures/protocol/`
+  and the `Tests/Fixtures/listener/` scenarios and reached through
+  `CoreBridgeProtocol.swift` and `CoreBridgeListener.swift` (DESIGN
+  v2.15); RemoteListener keeps the sockets (NWListener and NWConnection on
+  one serial queue), the timers and the order the effects run in.
+  `ProtocolServerTests` stays the only test that opens a real loopback
+  port, a random one that is never the default.
 - **Panic rule.** Every public core function is total: it returns its
   value, or a `Result` when it can fail, and never panics. Library code
   never calls `unwrap`, `expect` or `panic!` (clippy denies the first two).
@@ -179,6 +191,10 @@ category `core`) at launch.
   `= nil` resets and `HookInstaller` calls without `settingsURL:`.
 - **Never** run `cmux send`/`send-key` against real workspaces. Read-only cmux
   commands are fine; live round-trips go through a disposable workspace only.
+- **Never** connect to, signal or stop a running PowerUp or its configured
+  listener port from tests. `ProtocolServerTests` is the only test that
+  opens a loopback port, and it starts its own listener on a random port
+  that is never the default.
 - Don't spawn real `claude` processes in tests. The stream parser is testable
   directly via `ClaudeService.events(fromLine:)` (a wrapper over the core;
   `cargo test` plays `Tests/Fixtures/harness/`), and an end-to-end test

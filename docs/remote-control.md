@@ -215,7 +215,11 @@ switch back to PowerUp and try again.
 **You're sending text but not hearing voice replies.** Check:
 1. Look at the status dot in **Settings → Remote → Read-back** — does it say
    "Listener running"? If not, the listener isn't bound; click **Install
-   Claude Code Hooks** again to restart it.
+   Claude Code Hooks** again to restart it. If Settings says the port is
+   already in use, another program holds it: PowerUp tries again three
+   times (after 2, 4 and 6 seconds) and then stays stopped, so pick a
+   different port in **Settings → Remote**; PowerUp points the installed
+   hook script at the new port itself.
 2. Are the hooks actually installed? The status line next to the buttons
    should say "Hooks installed". If it says "Hooks not installed", click
    **Install Claude Code Hooks**; if it says "out of date — reinstall", the

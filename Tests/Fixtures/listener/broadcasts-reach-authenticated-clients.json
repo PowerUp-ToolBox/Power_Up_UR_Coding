@@ -3,8 +3,8 @@
   "name": "broadcasts-reach-authenticated-clients",
   "description": "A broadcast is encoded once and sent to every authenticated client that is not closing, in accept order. With none there is nothing to send; a message that cannot be encoded (a NaN cost) is not sent; a welcome for a client that is gone or closing sends nothing.",
   "reason": "Status, transcript and session events go to plugins only after they authenticate (HK-262, HK-260).",
-  "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:209-216 (broadcast), 269-275 (welcomeAuthenticated)",
-  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
+  "source": "rust/powerup-core/src/protocol/listener.rs, ported from Sources/PowerUp/RemoteListener.swift at 4c7abe6:209-216 (broadcast), 269-275 (welcomeAuthenticated)",
+  "verifiedBy": "DESIGN.md v1.4, v1.7, v2.15; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
   "steps": [
     {
       "start": {

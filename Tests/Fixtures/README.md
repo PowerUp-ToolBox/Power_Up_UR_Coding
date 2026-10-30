@@ -514,7 +514,7 @@ accepted kind.
 ## `protocol/`: the PowerUp protocol's messages and WebSocket framing
 
 The local plugin API of `docs/protocol.md` (spec v0; spec #101, slice 2.6,
-ticket #161): how a client message reads (`client-message.json`), the
+ticket #161, DESIGN v2.15): how a client message reads (`client-message.json`), the
 intents a client may name (`intent-names.json`), every server message as
 the bytes of its text frame (`server-message.json`), what the listener
 decides about a request head on its port (`handshake.json`, bare-LF heads
@@ -538,10 +538,9 @@ error it is answered with, `{"error": <code>, "message": <text>}`.
 expects an intent descriptor or `null` (refused). `server-message.json`
 takes `{type, ...}`, the message type and its builder's arguments
 (`costUSD` a number, or `"nan"`, `"infinity"` or `"-0"`), and expects the
-payload's exact text or `null` (not encoded); Swift writes an object's
-members in a hash order that changes from launch to launch, so its runner
-compares the members of every object in any order and everything else
-byte for byte. `handshake.json` takes the bytes received and expects
+payload's exact text or `null` (not encoded). The members are in the order
+the core writes them (Swift's own writer used a hash order that changed
+from launch to launch, so the table fixed one, HK-431). `handshake.json` takes the bytes received and expects
 `{"outcome"}`: `incomplete`, `unparseable`, `notWebSocket` (with `method`
 and `path`), `refuse` (with `method`, `path`, `status` and `reason`) or
 `accept` (with `method`, `path` and `acceptKey`). `accept-key.json` takes
@@ -569,14 +568,16 @@ byte.
 ## `listener/`: the listener's connection policy (format 1)
 
 The loopback listener's connection policy (spec #101, slice 2.6, ticket
-#162): what the listener does with its bind, the sockets it accepts, the
+#162, DESIGN v2.15): what the listener does with its bind, the sockets it accepts, the
 bytes each one sends, its closes and its timers. Each file is one policy,
 played step by step on one `protocol::listener::Listener`; every step is one
 input and the exact effects it returns, in order. The expected effects were
 written from the Swift listener (`Sources/PowerUp/RemoteListener.swift` at
-4c7abe6), whose policy had no seam to capture from; each step's `reason`
-cites the Swift lines, and a step that differs from Swift on purpose says
-so. The policies covered: reply before deliver for hook posts, bare-LF
+4c7abe6, before the swap of #163), whose policy had no seam to capture
+from; each file's `source` names the core module and those Swift lines,
+each step's `reason` cites them, and a step that differs from Swift on
+purpose says so (the differences are recorded in DESIGN v2.15 E and the
+ledger). The policies covered: reply before deliver for hook posts, bare-LF
 heads, the hook path's routing and token, `Expect: 100-continue`, how a
 body is found, the HTTP size limits, malformed requests, hook payloads, the
 upgrade and hello, the Origin refusal and the other upgrade refusals, a
@@ -591,7 +592,7 @@ backoff, and unusable ports and tokens.
   "name": "a-hook-post-is-answered-before-it-is-delivered",
   "description": "What the policy does, in a few sentences.",
   "reason": "Why the rule exists (the failure it prevents).",
-  "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:553-597; DESIGN.md v1.4",
+  "source": "rust/powerup-core/src/protocol/listener.rs, ported from Sources/PowerUp/RemoteListener.swift at 4c7abe6:553-597; DESIGN.md v1.4",
   "verifiedBy": "The tests that play it.",
   "steps": [
     { "start": { "port": 48738, "token": "secret" }, "reason": "...",

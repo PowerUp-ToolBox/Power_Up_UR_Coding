@@ -3,8 +3,8 @@
   "name": "an-intent-before-hello-closes-4003",
   "description": "An intent from a client that has not said hello is answered not_authenticated and closed with 4003. A message that fails to parse is answered before the hello too: an unknown intent or type leaves the connection open, and a ping message is answered; such a client is still dropped by the idle deadline.",
   "reason": "Nothing is acted on before authentication, and errors never act (HK-224, HK-257).",
-  "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:668-704 (handleProtocolText), 427-433",
-  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
+  "source": "rust/powerup-core/src/protocol/listener.rs, ported from Sources/PowerUp/RemoteListener.swift at 4c7abe6:668-704 (handleProtocolText), 427-433",
+  "verifiedBy": "DESIGN.md v1.4, v1.7, v2.15; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
   "steps": [
     {
       "start": {

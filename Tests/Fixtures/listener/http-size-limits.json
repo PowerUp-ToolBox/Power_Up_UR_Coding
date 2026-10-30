@@ -3,8 +3,8 @@
   "name": "http-size-limits",
   "description": "The HTTP limits: a header block that has not ended past 16 KB is 431 (one that ends within the same bytes is read however long it is); a Content-Length above 4 MB or below zero is 413, and exactly 4 MB is accepted; more than 16 KB plus 4 MB received is 413.",
   "reason": "A local client must not make the listener buffer without bound (HK-252).",
-  "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:395-396, 480-483 (ingest), 507-524 (process)",
-  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
+  "source": "rust/powerup-core/src/protocol/listener.rs, ported from Sources/PowerUp/RemoteListener.swift at 4c7abe6:395-396, 480-483 (ingest), 507-524 (process)",
+  "verifiedBy": "DESIGN.md v1.4, v1.7, v2.15; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
   "steps": [
     {
       "start": {

@@ -3,8 +3,8 @@
   "name": "hook-payloads",
   "description": "What each hook post body delivers: Stop's last_assistant_message, UserPromptSubmit's prompt, Notification's message, SessionEnd's reason and PostToolUse's tool_name, each with session_id and cwd. A blank or non-string value is absent; others stay untrimmed. Other hooks and bodies that are not a hook object are answered and dropped.",
   "reason": "The five hooks PowerUp installs drive the remote session; an error reply for anything else would make the hook log noise (HK-248, HK-249).",
-  "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:743-782 (event(from:), nonEmpty); RemoteListener.swift:5-25 (the verified shapes)",
-  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
+  "source": "rust/powerup-core/src/protocol/listener.rs, ported from Sources/PowerUp/RemoteListener.swift at 4c7abe6:743-782 (event(from:), nonEmpty); RemoteListener.swift:5-25 (the verified shapes)",
+  "verifiedBy": "DESIGN.md v1.4, v1.7, v2.15; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
   "steps": [
     {
       "start": {

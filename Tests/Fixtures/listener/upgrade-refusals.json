@@ -3,8 +3,8 @@
   "name": "upgrade-refusals",
   "description": "The other refusals of a request for /ws: a method other than GET is 405 (not the hook path's 404), missing upgrade headers 400, a version other than 13 is 426, a missing key 400. Each is answered and closed.",
   "reason": "A request for /ws is the protocol's whatever its method; only a valid upgrade switches protocols (HK-218, HK-220 to HK-222).",
-  "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:558-568 (complete); PowerUpProtocol.swift:26-50",
-  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
+  "source": "rust/powerup-core/src/protocol/listener.rs, ported from Sources/PowerUp/RemoteListener.swift at 4c7abe6:558-568 (complete); PowerUpProtocol.swift:26-50",
+  "verifiedBy": "DESIGN.md v1.4, v1.7, v2.15; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
   "steps": [
     {
       "start": {

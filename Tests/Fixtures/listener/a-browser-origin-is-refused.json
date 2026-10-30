@@ -3,8 +3,8 @@
   "name": "a-browser-origin-is-refused",
   "description": "An upgrade request carrying any Origin that is not blank is refused 403 and closed, \"null\" included; a blank Origin is no origin.",
   "reason": "Browsers always send Origin, and any web page could otherwise open the local plugin API (cross-site WebSocket hijacking). The door stays shut until an allowlist is designed (HK-219, ADR 0003).",
-  "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:558-568 (complete); PowerUpProtocol.swift:39-41 (upgradeDecision)",
-  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
+  "source": "rust/powerup-core/src/protocol/listener.rs, ported from Sources/PowerUp/RemoteListener.swift at 4c7abe6:558-568 (complete); PowerUpProtocol.swift:39-41 (upgradeDecision)",
+  "verifiedBy": "DESIGN.md v1.4, v1.7, v2.15; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
   "steps": [
     {
       "start": {
