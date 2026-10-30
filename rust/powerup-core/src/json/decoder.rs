@@ -76,8 +76,10 @@ pub(crate) fn read_document(bytes: &[u8]) -> Option<Decoded> {
 /// `FE FF` UTF-16 (so a UTF-32LE mark, `FF FE 00 00`, reads as UTF-16LE
 /// starting with U+0000, which then fails the scan, as measured); without
 /// a mark the zero bytes among the first four decide. `None` when UTF-16
-/// or UTF-32 text does not transcode.
-fn transcode(bytes: &[u8]) -> Option<Cow<'_, [u8]>> {
+/// or UTF-32 text does not transcode. The text is borrowed exactly when it
+/// is UTF-8, which [`super::read_any_encoding`] relies on: JSONSerialization
+/// detects encodings the same way.
+pub(super) fn transcode(bytes: &[u8]) -> Option<Cow<'_, [u8]>> {
     if bytes.len() >= 4 {
         if let Some(rest) = bytes.strip_prefix(b"\xEF\xBB\xBF") {
             return Some(Cow::Borrowed(rest));

@@ -185,27 +185,137 @@ fn requested_version(value: Option<&JsonValue>) -> i64 {
 }
 
 /// `NSNumber.intValue` of a number `JSONSerialization` read (measured on
-/// macOS 27.2, client-message.json): an integer literal inside `Int` is
-/// itself; one inside `UInt64` only (2^63 up) is an unsigned NSNumber whose
-/// `intValue` wraps, so 2^63 reads as `Int.min`; a longer one is an
-/// NSDecimalNumber whose `intValue` is 0 (2^64). A literal with a fraction
-/// or an exponent is a double, truncated toward zero and saturated at
-/// `Int`'s bounds (0.5 is 0, 1.9 is 1, 1e30 is `Int.max`). A literal of
-/// more than 17 significant digits with a fraction or exponent, which
-/// Foundation reads as an NSDecimalNumber, is read through its double here,
-/// an unmeasured difference no client sends.
+/// macOS 27.2 over about 2,000 literals; client-message.json pins the
+/// rules). An integer literal inside `Int` is itself; one inside `UInt64`
+/// only (2^63 up) is an unsigned NSNumber whose `intValue` wraps, so 2^63
+/// reads as `Int.min`. A literal with a fraction or an exponent and at most
+/// 17 significant digits (the integer part's leading zeros not counted, the
+/// fraction's counted) is a double, truncated toward zero and saturated at
+/// `Int`'s bounds (0.5 is 0, 1.9 is 1, 1e30 is `Int.max`). Every other
+/// literal is an NSDecimalNumber, read by [`decimal_int_value`].
 fn int_value(number: &JsonNumber) -> i64 {
     let literal = &*number.literal;
     if literal.contains(['.', 'e', 'E']) {
-        // `as` truncates toward zero and saturates, as intValue does with a
-        // double.
-        #[allow(clippy::cast_possible_truncation)]
-        return number.value as i64;
+        let integer_part = literal
+            .trim_start_matches('-')
+            .split(['.', 'e', 'E'])
+            .next()
+            .unwrap_or("");
+        let fraction = literal
+            .split_once('.')
+            .map_or("", |(_, rest)| rest.split(['e', 'E']).next().unwrap_or(""));
+        let significant = integer_part.trim_start_matches('0').len() + fraction.len();
+        if significant <= 17 {
+            // `as` truncates toward zero and saturates, as intValue does
+            // with a double.
+            #[allow(clippy::cast_possible_truncation)]
+            return number.value as i64;
+        }
+        return decimal_int_value(literal);
     }
     if let Ok(value) = literal.parse::<i64>() {
         return value;
     }
-    literal.parse::<u64>().map_or(0, u64::cast_signed)
+    if let Ok(value) = literal.parse::<u64>() {
+        return value.cast_signed();
+    }
+    decimal_int_value(literal)
+}
+
+/// `intValue` of the NSDecimalNumber Foundation reads from a JSON number
+/// literal, as measured: the digits fill a 128-bit mantissa until the next
+/// one would overflow it, and later digits are dropped (an integer digit
+/// raising the exponent instead); trailing zeros of the mantissa are then
+/// folded into the exponent. With an exponent of zero or more the value is
+/// the mantissa times ten to it, wrapped to 64 bits (2^64 + 1 reads as 1);
+/// with a negative one it is the mantissa's low 64 bits as a signed
+/// integer, divided by ten to the exponent's magnitude toward zero (so
+/// 922337203685477582.3 reads as -922337203685477579). A minus sign
+/// negates the result, wrapping. Foundation refuses a literal whose
+/// exponent leaves -128...127 as malformed; the reader keeps it, and it
+/// reads by the same arithmetic here (a recorded difference, HK-430).
+fn decimal_int_value(literal: &str) -> i64 {
+    let (negative, unsigned) = match literal.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, literal),
+    };
+    let (mantissa_text, exponent_text) = match unsigned.split_once(['e', 'E']) {
+        Some((mantissa, exponent)) => (mantissa, exponent),
+        None => (unsigned, ""),
+    };
+    let (integer_digits, fraction_digits) =
+        mantissa_text.split_once('.').unwrap_or((mantissa_text, ""));
+    let mut mantissa: u128 = 0;
+    let mut exponent: i64 = 0;
+    for digit in integer_digits.bytes().filter(u8::is_ascii_digit) {
+        match push_digit(mantissa, digit) {
+            Some(next) => mantissa = next,
+            None => exponent = exponent.saturating_add(1),
+        }
+    }
+    for digit in fraction_digits.bytes().filter(u8::is_ascii_digit) {
+        if let Some(next) = push_digit(mantissa, digit) {
+            mantissa = next;
+            exponent = exponent.saturating_sub(1);
+        }
+    }
+    exponent = exponent.saturating_add(literal_exponent(exponent_text));
+    while mantissa != 0 && mantissa.is_multiple_of(10) {
+        mantissa /= 10;
+        exponent = exponent.saturating_add(1);
+    }
+    // The low 64 bits, as intValue takes them.
+    #[allow(clippy::cast_possible_truncation)]
+    let low = mantissa as u64;
+    let value = if exponent >= 0 {
+        // 10^64 is a multiple of 2^64, so a larger power wraps to 0.
+        let scale = u32::try_from(exponent)
+            .ok()
+            .filter(|power| *power < 64)
+            .map_or(0, |power| 10_u64.wrapping_pow(power));
+        low.wrapping_mul(scale).cast_signed()
+    } else {
+        // 10^19 is past `Int.max`, so any larger divisor leaves 0.
+        u32::try_from(exponent.unsigned_abs())
+            .ok()
+            .and_then(|power| 10_i64.checked_pow(power))
+            .map_or(0, |divisor| low.cast_signed() / divisor)
+    };
+    if negative {
+        value.wrapping_neg()
+    } else {
+        value
+    }
+}
+
+/// The mantissa with one more decimal digit, or `None` when it would not
+/// fit 128 bits.
+fn push_digit(mantissa: u128, digit: u8) -> Option<u128> {
+    mantissa
+        .checked_mul(10)?
+        .checked_add(u128::from(digit.wrapping_sub(b'0')))
+}
+
+/// A literal's exponent digits (with their sign) as a number, saturating.
+fn literal_exponent(text: &str) -> i64 {
+    let (negative, digits) = match text.as_bytes().first() {
+        Some(b'-') => (true, text.get(1..).unwrap_or("")),
+        Some(b'+') => (false, text.get(1..).unwrap_or("")),
+        _ => (false, text),
+    };
+    let magnitude = digits
+        .bytes()
+        .filter(u8::is_ascii_digit)
+        .fold(0_i64, |total, digit| {
+            total
+                .saturating_mul(10)
+                .saturating_add(i64::from(digit.wrapping_sub(b'0')))
+        });
+    if negative {
+        -magnitude
+    } else {
+        magnitude
+    }
 }
 
 /// The intent a protocol client may send by this wire name (HK-226,
@@ -480,6 +590,73 @@ mod tests {
         assert_eq!(serialization_double(-0.0).as_deref(), Some("-0"));
         assert_eq!(serialization_double(f64::NAN), None);
         assert_eq!(serialization_double(f64::NEG_INFINITY), None);
+    }
+
+    #[test]
+    fn number_literals_read_as_ns_number_int_value() {
+        // Measured with Swift 5.9.2 on macOS 27.2, `(as? NSNumber)?.intValue`
+        // of what JSONSerialization read; client-message.json has more.
+        for (literal, int) in [
+            ("18446744073709551617.9", 1),
+            ("-18446744073709551617.9", -1),
+            ("9223372036854775807.5", 0),
+            ("12345678901234567890.123456789e-5", 50977),
+            (
+                "18429397846950140990310535166.934815675e25",
+                -4_500_918_582_267_674_624,
+            ),
+            (
+                "8392937235264676250642853642257889322e29",
+                7_850_955_293_356_720_128,
+            ),
+            (
+                "1234567890123456789012345678901234567890123",
+                -4_623_678_298_767_866_800,
+            ),
+            (
+                "999999999999999999999999999999999999999",
+                6_873_995_514_006_732_790,
+            ),
+            ("-18446744073709551616", 0),
+            ("-18446744073709551617", -1),
+            ("1e19", i64::MAX),
+            ("92233720368547758e2", i64::MAX),
+            ("9.22337203685477581e18", -9_223_372_036_854_775_806),
+            ("10000000000000000000.0", -8_446_744_073_709_551_616),
+            ("-0.288153253218705208305010854910329895", 0),
+            ("148019716310.4227729", 148_019_716_310),
+        ] {
+            let text = format!("{{\"type\":\"hello\",\"token\":\"t\",\"protocol\":{literal}}}");
+            let expected = if int == PROTOCOL_VERSION {
+                Ok(ClientMessage::Hello { token: "t".into() })
+            } else {
+                Err(ClientMessageFailure::UnsupportedProtocol(int))
+            };
+            assert_eq!(parse_client_message(text.as_bytes()), expected, "{literal}");
+        }
+    }
+
+    #[test]
+    fn odd_decimal_literals_never_panic() {
+        for literal in [
+            "",
+            "-",
+            ".",
+            "e",
+            "-e-",
+            "1e",
+            "1e-",
+            "1e+99999999999999999999999",
+            "1e-99999999999999999999999",
+            "0.0",
+            "-0e-0",
+            "1.e5",
+            "x1y2",
+        ] {
+            let _ = decimal_int_value(literal);
+        }
+        assert_eq!(decimal_int_value(&format!("1{}", "0".repeat(400))), 0);
+        assert_eq!(decimal_int_value(&format!("0.{}1", "0".repeat(400))), 0);
     }
 
     #[test]

@@ -49,7 +49,9 @@ enum ControlPhase: Equatable {
 /// intents. Stateless by design — the "one hold at a time" bookkeeping stays
 /// with the caller, which knows which physical control it belongs to. The
 /// protocol's wire names are the core's name table since slice 2.6
-/// (`CoreBridge.protocolIntent(name:text:)`).
+/// (`protocol::message::intent_for_protocol_name`, which the listener's
+/// machine runs; `CoreBridge.protocolIntent(name:text:)` is its view for
+/// tests).
 enum IntentMapper {
 
     /// The intent a mapped action produces for a press (`.began`) or release

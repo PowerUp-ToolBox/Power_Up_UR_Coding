@@ -4058,11 +4058,16 @@ post and an exact 403 for an Origin.
   that read (HK-242); 1009 is reachable only with reads larger than 32 KB
   (HK-259).
 - A client's frame and a hook body are read as JSONSerialization read them
-  (HK-430): encoding detection, the HK-393 tolerances, and a hello's
-  `protocol` through `NSNumber.intValue`. Unmeasured and recorded: UTF-32,
-  which follows the same detection rule, and a literal of more than 17
-  significant digits with a fraction or exponent, read through its double
-  where Foundation used an NSDecimalNumber. No client sends either.
+  (HK-430): encoding detection and transcoding shared with the JSONDecoder
+  port (HK-412: `FF FE` is UTF-16LE before any UTF-32LE mark, a trailing
+  partial unit is ignored), the HK-393 tolerances, and a hello's
+  `protocol` through `NSNumber.intValue`, including the NSDecimalNumber
+  Foundation reads for an integer past `UInt64` or a literal of more than
+  17 significant digits with a fraction or exponent (a 128-bit mantissa,
+  wrapped to 64 bits). All measured on macOS 27.2. Recorded: a literal
+  whose decimal exponent leaves -128...127, which Foundation refuses as
+  malformed, is read here (the HK-393 reader's difference); no client
+  sends one.
 - A server message's members come in a fixed order and doubles are
   written as `%.17g`, with Foundation's string escaping and the transcript
   id uppercased (HK-431); Swift's order changed from launch to launch, so

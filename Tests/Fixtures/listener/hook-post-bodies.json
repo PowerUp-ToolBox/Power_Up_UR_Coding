@@ -1,7 +1,7 @@
 {
   "formatVersion": 1,
   "name": "hook-post-bodies",
-  "description": "How a hook post's body is found. No Content-Length (and not chunked) is an empty body, answered at once; an unreadable Content-Length counts as none. A chunked body is not decoded: it is read to the end of the stream, so its framing makes it unreadable. A peer that closes before its declared length is answered with what came. Bytes past the declared length are ignored. Every one is answered 204; only a body that reads as a hook is delivered.",
+  "description": "How a hook post's body is found. No Content-Length (and not chunked) is an empty body, answered at once; an unreadable or overflowing Content-Length counts as none. A chunked body (Transfer-Encoding matched in any case) is not decoded: it is read to the end of the stream and handed over whole, so real chunk framing makes it unreadable while a raw JSON body still reads; a Content-Length wins over chunked. A peer that closes before its declared length is answered with what came. Bytes past the declared length are ignored. Every one is answered 204; only a body that reads as a hook is delivered.",
   "reason": "Hook scripts and curl vary; whatever they send, the post is answered and never left hanging (HK-249, HK-251).",
   "source": "rust/powerup-core/src/protocol/listener.rs, ported from Sources/PowerUp/RemoteListener.swift at 4c7abe6:487-503 (handleEndOfStream), 518-533, 543-548 (process), 583-596 (complete)",
   "verifiedBy": "DESIGN.md v1.4, v1.7, v2.15; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
@@ -323,6 +323,176 @@
         {
           "effect": "cancel",
           "connection": 7
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 8 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 8
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 8,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 8,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nX-PowerUp-Token: secret\r\nContent-Length: 26\r\nTransfer-Encoding: chunked\r\n\r\n{\"hook_event_name\":\"Stop\"}"
+        }
+      },
+      "reason": "A Content-Length wins over chunked: the 26 bytes complete the request at once, with no wait for the end of the stream (RemoteListener.swift:521-530).",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 8,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 8
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": null,
+            "sessionID": null,
+            "cwd": null
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 9 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 9
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 9,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 9,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nX-PowerUp-Token: secret\r\nTransfer-Encoding: chunked\r\n\r\n{\"hook_event_name\":\"Stop\"}"
+        }
+      },
+      "reason": "Chunked with a body that is not chunk framing: still waiting for the end of the stream.",
+      "effects": []
+    },
+    {
+      "endOfStream": 9,
+      "reason": "The end of the stream: everything after the head is the body, which here reads as a Stop hook and is delivered (RemoteListener.swift:495-498).",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 9,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 9
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": null,
+            "sessionID": null,
+            "cwd": null
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 10 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 10
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 10,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 10,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nX-PowerUp-Token: secret\r\nTransfer-Encoding: CHUNKED\r\n\r\n"
+        }
+      },
+      "reason": "Chunked is found in any case: the request waits for the end of the stream instead of being answered with an empty body.",
+      "effects": []
+    },
+    {
+      "endOfStream": 10,
+      "reason": "The end of the stream with no body: answered, nothing delivered.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 10,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 10
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 11 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 11
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 11,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 11,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nX-PowerUp-Token: secret\r\nContent-Length: 99999999999999999999\r\n\r\n{\"hook_event_name\":\"Stop\"}"
+        }
+      },
+      "reason": "A Content-Length past Int's range is one Int(String) cannot read: it counts as none, so the body is empty and the request is answered at once with nothing delivered.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 11,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 11
         }
       ]
     }

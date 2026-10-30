@@ -191,6 +191,7 @@ constants of `rust/powerup-core/src/protocol/listener.rs`.
 | Hook post body | 4 MB | 413 (also a negative `Content-Length`, or more than 16 KB + 4 MB received) |
 | Frame payload | 1 MB | close 1002, as soon as the frame's header shows the length |
 | Bytes waiting to be decoded | 2 MB | close 1009 |
+| Read size | 32 KB | The reference platform layer reads at most this much from a connection at a time. With these reads the 2 MB limit above cannot be reached, since decoding leaves at most one partial frame (up to 1 MB) and its header waiting; a platform that reads larger chunks can reach it |
 | Port | 1024–65535 | The reference implementation refuses a port below 1024 and doesn't start. The macOS app never hands it one: it replaces an unusable configured port (below 1024 or above 65535) with the default 48738 and listens there |
 | Bind retries | 3, after 2, 4 and 6 s | A port that stays taken leaves the listener stopped, with the reason in Settings, until the next successful bind or a new start |
 

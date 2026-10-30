@@ -6,9 +6,13 @@
 //! As in `transcript`, these functions take and return bytes, strings and
 //! records; the types are the uniffi faces of their `powerup-core` twins
 //! with a `Core` prefix, converted with exhaustive matches. The listener's
-//! machine, which runs all of these rules itself, is in `listener`: the app
-//! hands it `CoreServerMessage`s and asks the name table directly, and
-//! calls the rest only from its fixture runner.
+//! machine, which runs all of these rules itself, is in `listener`: it
+//! resolves a client's intent names inside the core
+//! (`protocol::message::intent_for_protocol_name`, through
+//! `parse_client_message`) and hands the app the intent. The app hands it
+//! `CoreServerMessage`s; every other function here, the name table's
+//! `protocol_intent` included, is a view of the core's rules that only the
+//! fixture runner and the tests call.
 
 use powerup_core::protocol::framing::{self, DecodedFrames, Frame, Opcode};
 use powerup_core::protocol::handshake::{

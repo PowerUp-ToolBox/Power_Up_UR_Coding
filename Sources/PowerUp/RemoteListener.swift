@@ -57,8 +57,10 @@ final class RemoteListener: ObservableObject {
     var onEvent: ((RemoteHookEvent) -> Void)?
 
     /// Intents sent by authenticated protocol clients. Always on the main
-    /// actor. Voice-capture intents can never arrive (the protocol vocabulary
-    /// omits them — see the core's name table, `CoreBridge.protocolIntent`).
+    /// actor. Voice-capture intents can never arrive: the listener's machine
+    /// resolves names through the core's table, which omits them
+    /// (`protocol::message::intent_for_protocol_name`, pinned by
+    /// Tests/Fixtures/protocol/intent-names.json).
     var onIntent: ((Intent) -> Void)?
 
     /// Messages sent to a client right after its `welcome` — the current

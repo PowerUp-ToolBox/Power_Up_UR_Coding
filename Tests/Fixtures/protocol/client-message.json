@@ -302,7 +302,7 @@
       "reason": "One past Int64 is read unsigned, and NSNumber.intValue wraps it around: the message names -9223372036854775808."
     },
     {
-      "name": "protocol 2^64 reads as 0",
+      "name": "protocol 2^64 wraps to 0",
       "input": {
         "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":18446744073709551616}"
       },
@@ -310,7 +310,117 @@
         "type": "hello",
         "token": "t"
       },
-      "reason": "One past UInt64: NSNumber.intValue makes 0 of it, so the hello is accepted as version 0."
+      "reason": "Past UInt64 the literal is an NSDecimalNumber, whose intValue is the literal wrapped to 64 bits: 2^64 is 0, so the hello is accepted as version 0."
+    },
+    {
+      "name": "protocol 2^64 + 1 wraps to 1",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":18446744073709551617}"
+      },
+      "expected": {
+        "error": "unsupported_protocol",
+        "message": "This server speaks protocol 0; you asked for 1."
+      },
+      "reason": "The NSDecimalNumber's intValue wraps to 64 bits, so one past 2^64 asks for version 1."
+    },
+    {
+      "name": "protocol 99999999999999999999 wraps",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":99999999999999999999}"
+      },
+      "expected": {
+        "error": "unsupported_protocol",
+        "message": "This server speaks protocol 0; you asked for 7766279631452241919."
+      },
+      "reason": "Twenty nines wrapped to 64 bits."
+    },
+    {
+      "name": "protocol one below Int64 min wraps to Int64 max",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":-9223372036854775809}"
+      },
+      "expected": {
+        "error": "unsupported_protocol",
+        "message": "This server speaks protocol 0; you asked for 9223372036854775807."
+      },
+      "reason": "A negative NSDecimalNumber wraps too: -2^63 - 1 reads as the largest Int64."
+    },
+    {
+      "name": "protocol 2^128 keeps the digits a 128-bit mantissa holds",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":340282366920938463463374607431768211456}"
+      },
+      "expected": {
+        "error": "unsupported_protocol",
+        "message": "This server speaks protocol 0; you asked for -6."
+      },
+      "reason": "The mantissa is 128 bits: the last digit that would overflow it is dropped and raises the exponent, so the value is 2^128 - 6 and wraps to -6."
+    },
+    {
+      "name": "protocol 9223372036854775808.0 wraps to the smallest Int64",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":9223372036854775808.0}"
+      },
+      "expected": {
+        "error": "unsupported_protocol",
+        "message": "This server speaks protocol 0; you asked for -9223372036854775808."
+      },
+      "reason": "More than 17 significant digits with a fraction is an NSDecimalNumber, not a double: 2^63 wraps to Int64.min instead of saturating."
+    },
+    {
+      "name": "protocol 123456789012345678.5 is truncated exactly",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":123456789012345678.5}"
+      },
+      "expected": {
+        "error": "unsupported_protocol",
+        "message": "This server speaks protocol 0; you asked for 123456789012345678."
+      },
+      "reason": "An NSDecimalNumber keeps every digit (a double would read 123456789012345680)."
+    },
+    {
+      "name": "protocol 922337203685477582.3 divides the wrapped mantissa",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":922337203685477582.3}"
+      },
+      "expected": {
+        "error": "unsupported_protocol",
+        "message": "This server speaks protocol 0; you asked for -922337203685477579."
+      },
+      "reason": "With a negative exponent intValue takes the mantissa's low 64 bits as a signed integer (9223372036854775823 is -9223372036854775793) and divides it toward zero."
+    },
+    {
+      "name": "protocol 1.00000000000000000e20 counts its trailing zeros",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":1.00000000000000000e20}"
+      },
+      "expected": {
+        "error": "unsupported_protocol",
+        "message": "This server speaks protocol 0; you asked for 7766279631452241920."
+      },
+      "reason": "Eighteen digits, trailing zeros included, make an NSDecimalNumber: 10^20 wraps to 64 bits instead of saturating."
+    },
+    {
+      "name": "protocol 0.92233720368547758e19 is a double",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":0.92233720368547758e19}"
+      },
+      "expected": {
+        "error": "unsupported_protocol",
+        "message": "This server speaks protocol 0; you asked for 9223372036854775807."
+      },
+      "reason": "The integer part's leading zero is not counted: 17 significant digits are a double, which saturates."
+    },
+    {
+      "name": "protocol -0.00000000000000000001e40 counts the fraction's zeros",
+      "input": {
+        "text": "{\"type\":\"hello\",\"token\":\"t\",\"protocol\":-0.00000000000000000001e40}"
+      },
+      "expected": {
+        "error": "unsupported_protocol",
+        "message": "This server speaks protocol 0; you asked for -7766279631452241920."
+      },
+      "reason": "The fraction's leading zeros are counted: twenty digits make an NSDecimalNumber, -10^20 wrapped to 64 bits."
     },
     {
       "name": "protocol 1e30 saturates at the largest Int64",
@@ -899,6 +1009,58 @@
         "type": "ping"
       },
       "reason": "Foundation detects UTF-16 from the zero bytes and reads the text."
+    },
+    {
+      "name": "UTF-32BE with a byte order mark is read",
+      "input": {
+        "hex": "0000feff0000007b0000002200000074000000790000007000000065000000220000003a0000002200000070000000690000006e00000067000000220000007d"
+      },
+      "expected": {
+        "type": "ping"
+      },
+      "reason": "00 00 FE FF names UTF-32BE."
+    },
+    {
+      "name": "a UTF-32LE byte order mark reads as UTF-16LE and is malformed",
+      "input": {
+        "hex": "fffe00007b0000002200000074000000790000007000000065000000220000003a0000002200000070000000690000006e00000067000000220000007d000000"
+      },
+      "expected": {
+        "error": "malformed",
+        "message": "Messages must be single JSON objects with a \"type\" field."
+      },
+      "reason": "Foundation tests FF FE before FF FE 00 00, so the text is UTF-16LE starting with U+0000, which is not JSON."
+    },
+    {
+      "name": "an odd trailing byte after UTF-16 is ignored",
+      "input": {
+        "hex": "fffe7b002200740079007000650022003a002200700069006e00670022007d0041"
+      },
+      "expected": {
+        "type": "ping"
+      },
+      "reason": "A trailing byte short of a UTF-16 unit is dropped, not rejected."
+    },
+    {
+      "name": "trailing bytes short of a UTF-32 unit are ignored",
+      "input": {
+        "hex": "0000007b0000002200000074000000790000007000000065000000220000003a0000002200000070000000690000006e00000067000000220000007d0000"
+      },
+      "expected": {
+        "type": "ping"
+      },
+      "reason": "UTF-32BE detected from the zero bytes; the two bytes short of a unit are dropped."
+    },
+    {
+      "name": "a second UTF-16 byte order mark is malformed",
+      "input": {
+        "hex": "fffefffe7b002200740079007000650022003a002200700069006e00670022007d00"
+      },
+      "expected": {
+        "error": "malformed",
+        "message": "Messages must be single JSON objects with a \"type\" field."
+      },
+      "reason": "One mark names the encoding; the second is U+FEFF before the object, not skipped again."
     },
     {
       "name": "invalid UTF-8 inside a string is malformed",

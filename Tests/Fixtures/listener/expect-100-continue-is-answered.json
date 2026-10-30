@@ -1,7 +1,7 @@
 {
   "formatVersion": 1,
   "name": "expect-100-continue-is-answered",
-  "description": "A request with Expect: 100-continue gets one interim 100 Continue as soon as its head is read, before the body; the body then completes it as usual. The interim answer is sent even when the body came with the head.",
+  "description": "A request with Expect: 100-continue (in any case) gets one interim 100 Continue as soon as its head is read, before the body; the body then completes it as usual. The interim answer is sent even when the body came with the head.",
   "reason": "curl sends Expect: 100-continue for bodies over about 1 KB and waits for the interim answer; without it every real hook payload would stall (HK-250).",
   "source": "rust/powerup-core/src/protocol/listener.rs, ported from Sources/PowerUp/RemoteListener.swift at 4c7abe6:535-541 (process)",
   "verifiedBy": "DESIGN.md v1.4, v1.7, v2.15; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: Tests/PowerUpTests/ListenerScenarioTests.swift testEveryListenerScenario plays every step through the bridge (CoreBridge.ListenerPolicy), and ProtocolServerTests drives the same policy over a real loopback socket.",
@@ -138,6 +138,56 @@
             "text": "other",
             "sessionID": "s-4",
             "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 3 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 3
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 3,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 3,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nX-PowerUp-Token: secret\r\nContent-Length: 26\r\nExpect: 100-Continue\r\n\r\n{\"hook_event_name\":\"Stop\"}"
+        }
+      },
+      "reason": "The expectation is found in any case: 100-Continue is answered like 100-continue.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 3,
+          "http": "HTTP/1.1 100 Continue\r\n\r\n"
+        },
+        {
+          "effect": "send",
+          "connection": 3,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 3
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": null,
+            "sessionID": null,
+            "cwd": null
           }
         }
       ]

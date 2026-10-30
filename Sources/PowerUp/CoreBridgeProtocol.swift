@@ -5,9 +5,12 @@ import PowerUpCore
 /// the core owns how a client's text frame reads, the protocol name table,
 /// every server message as the text of its frame, the handshake a request
 /// head comes to, the accept key and the RFC 6455 frames. The listener's
-/// machine (CoreBridgeListener.swift) runs all of them itself; the app
-/// builds server messages for it and the protocol name table answers
-/// directly. As in CoreBridge.swift, generated names are written
+/// machine (CoreBridgeListener.swift) runs all of them itself, resolving a
+/// client's intent names inside the core (`intent_for_protocol_name`,
+/// through `parse_client_message`), and the app only builds server messages
+/// for it. The other wrappers here, `protocolIntent(name:text:)` included,
+/// are views of the core's rules for the fixture runner and the tests. As
+/// in CoreBridge.swift, generated names are written
 /// `PowerUpCore.…` wherever a wrapper shares them.
 extension CoreBridge {
 
