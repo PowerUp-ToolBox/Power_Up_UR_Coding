@@ -1,0 +1,124 @@
+{
+  "formatVersion": 1,
+  "name": "a-start-refuses-unusable-ports-and-empty-tokens",
+  "description": "A port below 1024 or an empty token is refused with a problem and no bind; a listener the platform cannot create shows its problem and is not retried. A stop keeps the last problem.",
+  "reason": "Ports below 1024 need root, and an empty token would let anything post hooks; a clear message now beats an opaque failure later (HK-245).",
+  "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:79-111 (start)",
+  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: ProtocolServerTests drives the same rules over a real loopback socket.",
+  "steps": [
+    {
+      "start": {
+        "port": 80,
+        "token": "secret"
+      },
+      "reason": "Port 80.",
+      "effects": [
+        {
+          "effect": "publish",
+          "running": false,
+          "problem": "Port 80 isn't a usable port number — pick one between 1024 and 65535."
+        }
+      ]
+    },
+    {
+      "start": {
+        "port": 1023,
+        "token": "secret"
+      },
+      "reason": "Port 1023, one below the floor.",
+      "effects": [
+        {
+          "effect": "publish",
+          "running": false,
+          "problem": "Port 1023 isn't a usable port number — pick one between 1024 and 65535."
+        }
+      ]
+    },
+    {
+      "start": {
+        "port": 1024,
+        "token": ""
+      },
+      "reason": "The lowest usable port, no token.",
+      "effects": [
+        {
+          "effect": "publish",
+          "running": false,
+          "problem": "The read-back token is empty — reinstall the hooks from Settings → Remote."
+        }
+      ]
+    },
+    {
+      "start": {
+        "port": 1024,
+        "token": "secret"
+      },
+      "reason": "Port 1024 with a token binds (generation 5).",
+      "effects": [
+        {
+          "effect": "publish",
+          "running": false,
+          "problem": null
+        },
+        {
+          "effect": "listen",
+          "generation": 5,
+          "port": 1024
+        }
+      ]
+    },
+    {
+      "listenRefused": {
+        "generation": 5,
+        "detail": "Invalid argument"
+      },
+      "reason": "The platform cannot create the listener: the problem, no retry.",
+      "effects": [
+        {
+          "effect": "publish",
+          "running": false,
+          "problem": "Couldn't listen on 127.0.0.1:1024 — Invalid argument"
+        }
+      ]
+    },
+    {
+      "accept": 5,
+      "reason": "No listener, nothing accepted.",
+      "effects": [
+        {
+          "effect": "refuse"
+        }
+      ]
+    },
+    {
+      "bindFailed": {
+        "generation": 5,
+        "error": "addressInUse"
+      },
+      "reason": "No listener, no bind to fail.",
+      "effects": []
+    },
+    {
+      "stop": {},
+      "reason": "A stop keeps the problem.",
+      "effects": [],
+      "state": {
+        "running": false
+      }
+    },
+    {
+      "start": {
+        "port": 0,
+        "token": "secret"
+      },
+      "reason": "Port 0 is below the floor too.",
+      "effects": [
+        {
+          "effect": "publish",
+          "running": false,
+          "problem": "Port 0 isn't a usable port number — pick one between 1024 and 65535."
+        }
+      ]
+    }
+  ]
+}

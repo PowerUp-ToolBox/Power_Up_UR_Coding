@@ -1,0 +1,146 @@
+{
+  "formatVersion": 1,
+  "name": "expect-100-continue-is-answered",
+  "description": "A request with Expect: 100-continue gets one interim 100 Continue as soon as its head is read, before the body; the body then completes it as usual. The interim answer is sent even when the body came with the head.",
+  "reason": "curl sends Expect: 100-continue for bodies over about 1 KB and waits for the interim answer; without it every real hook payload would stall (HK-250).",
+  "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:535-541 (process)",
+  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: ProtocolServerTests drives the same rules over a real loopback socket.",
+  "steps": [
+    {
+      "start": {
+        "port": 48738,
+        "token": "secret"
+      },
+      "reason": "Settings start the listener: the start stops first (generation 1), then binds 127.0.0.1 with generation 2 (RemoteListener.swift:79-135).",
+      "effects": [
+        {
+          "effect": "listen",
+          "generation": 2,
+          "port": 48738
+        }
+      ]
+    },
+    {
+      "bindReady": 2,
+      "reason": "The bind is ready: running, no problem (RemoteListener.swift:158-161).",
+      "effects": [
+        {
+          "effect": "publish",
+          "running": true,
+          "problem": null
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 1 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 1
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 1,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 1603\r\nExpect: 100-continue\r\n\r\n"
+        }
+      },
+      "reason": "The head with Expect: 100-continue: the interim answer, no final one yet.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 1,
+          "http": "HTTP/1.1 100 Continue\r\n\r\n"
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": {
+          "text": "{\"hook_event_name\":\"SessionEnd\",\"session_id\":\"s-4\",\"cwd\":\"/Users/me/app\",\"reason\":\"other\",\"padding\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"}"
+        }
+      },
+      "reason": "The body: 204 and close, then the SessionEnd hook.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 1,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 1
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "sessionEnd",
+            "text": "other",
+            "sessionID": "s-4",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 2 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 2
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 2,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 2,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 1603\r\nExpect: 100-continue\r\n\r\n{\"hook_event_name\":\"SessionEnd\",\"session_id\":\"s-4\",\"cwd\":\"/Users/me/app\",\"reason\":\"other\",\"padding\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"}"
+        }
+      },
+      "reason": "Head and body together: the 100 Continue is still sent first, once.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 2,
+          "http": "HTTP/1.1 100 Continue\r\n\r\n"
+        },
+        {
+          "effect": "send",
+          "connection": 2,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 2
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "sessionEnd",
+            "text": "other",
+            "sessionID": "s-4",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    }
+  ]
+}

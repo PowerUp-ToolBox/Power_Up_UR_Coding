@@ -1,0 +1,244 @@
+{
+  "formatVersion": 1,
+  "name": "a-restart-bumps-the-generation",
+  "description": "A start with the same port and token while the bind is ready does nothing; any other start stops first, cancelling every connection, and binds with a new generation. Bind reports, accepts and bytes of the old listener are dropped; deliveries carry the generation they belong to. A start before the bind is ready restarts it.",
+  "reason": "A settings refresh must not drop connected devices (HK-289), and nothing from a torn-down listener may be attributed to its successor (HK-291).",
+  "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:79-152 (start, stop), 154-156, 259-275 (generation checks)",
+  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: ProtocolServerTests drives the same rules over a real loopback socket.",
+  "steps": [
+    {
+      "start": {
+        "port": 48738,
+        "token": "secret"
+      },
+      "reason": "Settings start the listener: the start stops first (generation 1), then binds 127.0.0.1 with generation 2 (RemoteListener.swift:79-135).",
+      "effects": [
+        {
+          "effect": "listen",
+          "generation": 2,
+          "port": 48738
+        }
+      ]
+    },
+    {
+      "bindReady": 2,
+      "reason": "The bind is ready: running, no problem (RemoteListener.swift:158-161).",
+      "effects": [
+        {
+          "effect": "publish",
+          "running": true,
+          "problem": null
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 1 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 1
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 1,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\n"
+        }
+      },
+      "reason": "A request in progress.",
+      "effects": []
+    },
+    {
+      "start": {
+        "port": 48738,
+        "token": "secret"
+      },
+      "reason": "The same port and token while ready: nothing (RemoteListener.swift:80).",
+      "effects": []
+    },
+    {
+      "start": {
+        "port": 48738,
+        "token": "rotated"
+      },
+      "reason": "A new token: stop (generation 3), cancelling the listener and connection 1, then bind with generation 4.",
+      "effects": [
+        {
+          "effect": "publish",
+          "running": false,
+          "problem": null
+        },
+        {
+          "effect": "stopListening"
+        },
+        {
+          "effect": "cancel",
+          "connection": 1
+        },
+        {
+          "effect": "listen",
+          "generation": 4,
+          "port": 48738
+        }
+      ],
+      "state": {
+        "connections": 0,
+        "generation": 4
+      }
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": {
+          "text": "X-PowerUp-Token: secret\r\n\r\n"
+        }
+      },
+      "reason": "Bytes of the cancelled connection are dropped.",
+      "effects": []
+    },
+    {
+      "accept": 2,
+      "reason": "A socket the old listener accepted: refused.",
+      "effects": [
+        {
+          "effect": "refuse"
+        }
+      ]
+    },
+    {
+      "bindReady": 2,
+      "reason": "The old listener's report: dropped.",
+      "effects": []
+    },
+    {
+      "bindReady": 4,
+      "reason": "The new bind is ready.",
+      "effects": [
+        {
+          "effect": "publish",
+          "running": true,
+          "problem": null
+        }
+      ]
+    },
+    {
+      "accept": 4,
+      "reason": "A socket is accepted: it becomes connection 2 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 2
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 2,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 2,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: rotated\r\nContent-Length: 104\r\n\r\n{\"hook_event_name\":\"UserPromptSubmit\",\"session_id\":\"s-2\",\"cwd\":\"/Users/me/app\",\"prompt\":\"Run the tests\"}"
+        }
+      },
+      "reason": "A hook post with the new token is delivered with generation 4.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 2,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 2
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 4,
+          "hook": {
+            "kind": "userPromptSubmit",
+            "text": "Run the tests",
+            "sessionID": "s-2",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "stop": {},
+      "reason": "Stop: generation 5, the listener and connection 2 cancelled.",
+      "effects": [
+        {
+          "effect": "publish",
+          "running": false,
+          "problem": null
+        },
+        {
+          "effect": "stopListening"
+        },
+        {
+          "effect": "cancel",
+          "connection": 2
+        }
+      ]
+    },
+    {
+      "accept": 4,
+      "reason": "Nothing is accepted after a stop.",
+      "effects": [
+        {
+          "effect": "refuse"
+        }
+      ]
+    },
+    {
+      "stop": {},
+      "reason": "Stopping again is safe: nothing left to cancel.",
+      "effects": [],
+      "state": {
+        "generation": 6
+      }
+    },
+    {
+      "start": {
+        "port": 48738,
+        "token": "secret"
+      },
+      "reason": "Start: generations 7 and 8.",
+      "effects": [
+        {
+          "effect": "listen",
+          "generation": 8,
+          "port": 48738
+        }
+      ]
+    },
+    {
+      "start": {
+        "port": 48738,
+        "token": "secret"
+      },
+      "reason": "The same start before the bind is ready is no no-op: the bind restarts (generations 9 and 10).",
+      "effects": [
+        {
+          "effect": "stopListening"
+        },
+        {
+          "effect": "listen",
+          "generation": 10,
+          "port": 48738
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,863 @@
+{
+  "formatVersion": 1,
+  "name": "the-authenticated-client-cap",
+  "description": "At most 16 protocol clients are authenticated at once. One more hello with the right token is answered server_busy and closed with 1013; once a client leaves there is room again.",
+  "reason": "Long-lived clients get their own, smaller ceiling so they cannot crowd out the hook posts (HK-229, HK-261).",
+  "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:233-237 (onProtocolAuth), 323-328 (markAuthed), 707-712 (refuseForCapacity)",
+  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: ProtocolServerTests drives the same rules over a real loopback socket.",
+  "steps": [
+    {
+      "start": {
+        "port": 48738,
+        "token": "secret"
+      },
+      "reason": "Settings start the listener: the start stops first (generation 1), then binds 127.0.0.1 with generation 2 (RemoteListener.swift:79-135).",
+      "effects": [
+        {
+          "effect": "listen",
+          "generation": 2,
+          "port": 48738
+        }
+      ]
+    },
+    {
+      "bindReady": 2,
+      "reason": "The bind is ready: running, no problem (RemoteListener.swift:158-161).",
+      "effects": [
+        {
+          "effect": "publish",
+          "running": true,
+          "problem": null
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 1 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 1
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 1,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"secret\",\"protocol\":0}"
+          }
+        ]
+      },
+      "reason": "Plugin 1 upgrades and authenticates.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 1,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "welcome",
+          "connection": 1
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 2 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 2
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 2,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 2,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"secret\",\"protocol\":0}"
+          }
+        ]
+      },
+      "reason": "Plugin 2 upgrades and authenticates.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 2,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "welcome",
+          "connection": 2
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 3 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 3
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 3,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 3,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"secret\",\"protocol\":0}"
+          }
+        ]
+      },
+      "reason": "Plugin 3 upgrades and authenticates.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 3,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "welcome",
+          "connection": 3
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 4 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 4
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 4,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 4,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"secret\",\"protocol\":0}"
+          }
+        ]
+      },
+      "reason": "Plugin 4 upgrades and authenticates.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 4,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "welcome",
+          "connection": 4
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 5 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 5
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 5,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 5,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"secret\",\"protocol\":0}"
+          }
+        ]
+      },
+      "reason": "Plugin 5 upgrades and authenticates.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 5,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "welcome",
+          "connection": 5
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 6 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 6
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 6,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 6,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"secret\",\"protocol\":0}"
+          }
+        ]
+      },
+      "reason": "Plugin 6 upgrades and authenticates.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 6,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "welcome",
+          "connection": 6
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 7 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 7
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 7,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 7,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"secret\",\"protocol\":0}"
+          }
+        ]
+      },
+      "reason": "Plugin 7 upgrades and authenticates.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 7,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "welcome",
+          "connection": 7
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 8 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 8
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 8,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 8,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"secret\",\"protocol\":0}"
+          }
+        ]
+      },
+      "reason": "Plugin 8 upgrades and authenticates.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 8,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "welcome",
+          "connection": 8
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 9 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 9
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 9,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 9,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"secret\",\"protocol\":0}"
+          }
+        ]
+      },
+      "reason": "Plugin 9 upgrades and authenticates.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 9,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "welcome",
+          "connection": 9
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 10 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 10
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 10,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 10,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"secret\",\"protocol\":0}"
+          }
+        ]
+      },
+      "reason": "Plugin 10 upgrades and authenticates.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 10,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "welcome",
+          "connection": 10
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 11 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 11
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 11,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 11,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"secret\",\"protocol\":0}"
+          }
+        ]
+      },
+      "reason": "Plugin 11 upgrades and authenticates.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 11,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "welcome",
+          "connection": 11
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 12 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 12
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 12,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 12,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"secret\",\"protocol\":0}"
+          }
+        ]
+      },
+      "reason": "Plugin 12 upgrades and authenticates.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 12,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "welcome",
+          "connection": 12
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 13 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 13
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 13,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 13,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"secret\",\"protocol\":0}"
+          }
+        ]
+      },
+      "reason": "Plugin 13 upgrades and authenticates.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 13,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "welcome",
+          "connection": 13
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 14 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 14
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 14,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 14,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"secret\",\"protocol\":0}"
+          }
+        ]
+      },
+      "reason": "Plugin 14 upgrades and authenticates.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 14,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "welcome",
+          "connection": 14
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 15 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 15
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 15,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 15,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"secret\",\"protocol\":0}"
+          }
+        ]
+      },
+      "reason": "Plugin 15 upgrades and authenticates.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 15,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "welcome",
+          "connection": 15
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 16 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 16
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 16,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 16,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"secret\",\"protocol\":0}"
+          }
+        ]
+      },
+      "reason": "Plugin 16 upgrades and authenticates.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 16,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "welcome",
+          "connection": 16
+        }
+      ],
+      "state": {
+        "connections": 16,
+        "authenticated": 16
+      }
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 17 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 17
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 17,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 17,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"secret\",\"protocol\":0}"
+          }
+        ]
+      },
+      "reason": "A 17th client with the right token: server_busy, then close 1013 (RemoteListener.swift:233-237, 707-712).",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 17,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "send",
+          "connection": 17,
+          "message": {
+            "type": "error",
+            "code": "server_busy",
+            "message": "Too many protocol clients are connected."
+          }
+        },
+        {
+          "effect": "send",
+          "connection": 17,
+          "close": 1013
+        },
+        {
+          "effect": "close",
+          "connection": 17
+        }
+      ],
+      "state": {
+        "connections": 17,
+        "authenticated": 16
+      }
+    },
+    {
+      "welcome": {
+        "connection": 17,
+        "appVersion": "1.4.0",
+        "snapshot": []
+      },
+      "reason": "A welcome for a refused client sends nothing.",
+      "effects": []
+    },
+    {
+      "closed": 17,
+      "reason": "Its close runs.",
+      "effects": [
+        {
+          "effect": "cancel",
+          "connection": 17
+        }
+      ]
+    },
+    {
+      "closed": 1,
+      "reason": "Plugin 1 goes away.",
+      "effects": [
+        {
+          "effect": "cancel",
+          "connection": 1
+        }
+      ],
+      "state": {
+        "authenticated": 15
+      }
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 18 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 18
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 18,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 18,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"secret\",\"protocol\":0}"
+          }
+        ]
+      },
+      "reason": "Now there is room: the next client is authenticated.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 18,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "welcome",
+          "connection": 18
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1584 @@
+{
+  "formatVersion": 1,
+  "name": "a-hook-burst-never-severs-an-authenticated-plugin",
+  "description": "With 32 connections held, accepting one more cancels the oldest connection that is not an authenticated protocol client. A burst of hook posts therefore evicts its own posts (already answered) and never the device plugin, however old it is.",
+  "reason": "The hook-burst rule: a busy Claude Code session fires hooks in bursts, and a plugin dropped by them would lose its session mid-use (HK-261, DESIGN.md v1.7).",
+  "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:288-358 (ConnectionRegistry)",
+  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: ProtocolServerTests drives the same rules over a real loopback socket.",
+  "steps": [
+    {
+      "start": {
+        "port": 48738,
+        "token": "secret"
+      },
+      "reason": "Settings start the listener: the start stops first (generation 1), then binds 127.0.0.1 with generation 2 (RemoteListener.swift:79-135).",
+      "effects": [
+        {
+          "effect": "listen",
+          "generation": 2,
+          "port": 48738
+        }
+      ]
+    },
+    {
+      "bindReady": 2,
+      "reason": "The bind is ready: running, no problem (RemoteListener.swift:158-161).",
+      "effects": [
+        {
+          "effect": "publish",
+          "running": true,
+          "problem": null
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 1 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 1
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 1,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"secret\",\"protocol\":0}"
+          }
+        ]
+      },
+      "reason": "The device plugin connects first, so it is the oldest connection: upgraded and authenticated.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 1,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "welcome",
+          "connection": 1
+        }
+      ]
+    },
+    {
+      "welcome": {
+        "connection": 1,
+        "appVersion": "1.4.0",
+        "snapshot": []
+      },
+      "reason": "Welcomed.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 1,
+          "message": {
+            "type": "welcome",
+            "protocol": 0,
+            "app": "PowerUp",
+            "version": "1.4.0"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 1 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 2
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 2,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 2,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 2,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 2
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 2 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 3
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 3,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 3,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 3,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 3
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 3 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 4
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 4,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 4,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 4,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 4
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 4 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 5
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 5,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 5,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 5,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 5
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 5 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 6
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 6,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 6,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 6,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 6
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 6 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 7
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 7,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 7,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 7,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 7
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 7 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 8
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 8,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 8,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 8,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 8
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 8 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 9
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 9,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 9,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 9,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 9
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 9 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 10
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 10,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 10,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 10,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 10
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 10 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 11
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 11,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 11,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 11,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 11
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 11 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 12
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 12,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 12,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 12,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 12
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 12 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 13
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 13,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 13,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 13,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 13
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 13 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 14
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 14,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 14,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 14,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 14
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 14 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 15
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 15,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 15,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 15,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 15
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 15 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 16
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 16,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 16,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 16,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 16
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 16 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 17
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 17,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 17,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 17,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 17
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 17 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 18
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 18,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 18,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 18,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 18
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 18 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 19
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 19,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 19,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 19,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 19
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 19 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 20
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 20,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 20,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 20,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 20
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 20 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 21
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 21,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 21,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 21,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 21
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 21 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 22
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 22,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 22,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 22,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 22
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 22 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 23
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 23,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 23,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 23,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 23
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 23 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 24
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 24,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 24,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 24,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 24
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 24 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 25
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 25,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 25,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 25,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 25
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 25 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 26
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 26,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 26,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 26,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 26
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 26 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 27
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 27,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 27,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 27,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 27
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 27 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 28
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 28,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 28,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 28,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 28
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 28 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 29
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 29,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 29,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 29,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 29
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 29 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 30
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 30,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 30,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 30,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 30
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 30 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 31
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 31,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 31,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 31,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 31
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "Hook post 31 of the burst is accepted.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 32
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 32,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 32,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "It is answered; its close has not run yet, so it still counts.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 32,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 32
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ],
+      "state": {
+        "connections": 32,
+        "authenticated": 1
+      }
+    },
+    {
+      "accept": 2,
+      "reason": "The 33rd connection: the oldest connection that is not authenticated (connection 2) is cancelled, unanswered. The plugin, though older, is never evicted, nor is the new connection (RemoteListener.swift:298-319; Swift took the victims in its dictionary's hash order, the core takes the oldest).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 33
+        },
+        {
+          "effect": "cancel",
+          "connection": 2
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 33,
+          "seconds": 15
+        }
+      ],
+      "state": {
+        "connections": 32,
+        "authenticated": 1
+      }
+    },
+    {
+      "accept": 2,
+      "reason": "The 34th: connection 3 goes.",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 34
+        },
+        {
+          "effect": "cancel",
+          "connection": 3
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 34,
+          "seconds": 15
+        }
+      ],
+      "state": {
+        "connections": 32
+      }
+    },
+    {
+      "broadcast": {
+        "type": "status",
+        "status": "thinking"
+      },
+      "reason": "The plugin is still connected and served.",
+      "effects": [
+        {
+          "effect": "broadcast",
+          "connections": [
+            1
+          ],
+          "message": {
+            "type": "status",
+            "status": "thinking"
+          }
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": [
+          {
+            "hex": "81a600000000"
+          },
+          {
+            "text": "{\"type\":\"intent\",\"intent\":\"interrupt\"}"
+          }
+        ]
+      },
+      "reason": "And its intents still arrive.",
+      "effects": [
+        {
+          "effect": "deliverIntent",
+          "generation": 2,
+          "intent": {
+            "intent": "interrupt"
+          }
+        }
+      ]
+    }
+  ]
+}

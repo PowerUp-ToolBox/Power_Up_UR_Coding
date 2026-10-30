@@ -1,0 +1,262 @@
+{
+  "formatVersion": 1,
+  "name": "broadcasts-reach-authenticated-clients",
+  "description": "A broadcast is encoded once and sent to every authenticated client that is not closing, in accept order. With none there is nothing to send; a message that cannot be encoded (a NaN cost) is not sent; a welcome for a client that is gone or closing sends nothing.",
+  "reason": "Status, transcript and session events go to plugins only after they authenticate (HK-262, HK-260).",
+  "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:209-216 (broadcast), 269-275 (welcomeAuthenticated)",
+  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: ProtocolServerTests drives the same rules over a real loopback socket.",
+  "steps": [
+    {
+      "start": {
+        "port": 48738,
+        "token": "secret"
+      },
+      "reason": "Settings start the listener: the start stops first (generation 1), then binds 127.0.0.1 with generation 2 (RemoteListener.swift:79-135).",
+      "effects": [
+        {
+          "effect": "listen",
+          "generation": 2,
+          "port": 48738
+        }
+      ]
+    },
+    {
+      "bindReady": 2,
+      "reason": "The bind is ready: running, no problem (RemoteListener.swift:158-161).",
+      "effects": [
+        {
+          "effect": "publish",
+          "running": true,
+          "problem": null
+        }
+      ]
+    },
+    {
+      "broadcast": {
+        "type": "status",
+        "status": "idle"
+      },
+      "reason": "Nobody connected: nothing.",
+      "effects": []
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 1 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 1
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 1,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": {
+          "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+        }
+      },
+      "reason": "Upgraded but not authenticated.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 1,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        }
+      ]
+    },
+    {
+      "broadcast": {
+        "type": "status",
+        "status": "idle"
+      },
+      "reason": "An unauthenticated client gets no broadcast.",
+      "effects": []
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 2 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 2
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 2,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 2,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"secret\",\"protocol\":0}"
+          }
+        ]
+      },
+      "reason": "The upgrade and the hello pipelined behind it: 101, then the hello's token matches and the client is authenticated (RemoteListener.swift:620-638, 679-689; HK-256, HK-260).",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 2,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "welcome",
+          "connection": 2
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 3 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 3
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 3,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 3,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"secret\",\"protocol\":0}"
+          }
+        ]
+      },
+      "reason": "The upgrade and the hello pipelined behind it: 101, then the hello's token matches and the client is authenticated (RemoteListener.swift:620-638, 679-689; HK-256, HK-260).",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 3,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "welcome",
+          "connection": 3
+        }
+      ]
+    },
+    {
+      "broadcast": {
+        "type": "status",
+        "status": "speaking"
+      },
+      "reason": "Both authenticated clients, one frame encoded once.",
+      "effects": [
+        {
+          "effect": "broadcast",
+          "connections": [
+            2,
+            3
+          ],
+          "message": {
+            "type": "status",
+            "status": "speaking"
+          }
+        }
+      ]
+    },
+    {
+      "broadcast": {
+        "type": "session",
+        "model": "default",
+        "liveModel": "claude-opus-4-1",
+        "effort": "high",
+        "permissionMode": "default",
+        "controlMode": "builtin",
+        "sessionID": "s-1",
+        "costUSD": "nan",
+        "tokens": 0
+      },
+      "reason": "A session message with a NaN cost cannot be encoded: nothing is sent (RemoteListener.swift:211).",
+      "effects": []
+    },
+    {
+      "receive": {
+        "connection": 3,
+        "bytes": [
+          {
+            "hex": "88820000000003e8"
+          }
+        ]
+      },
+      "reason": "Client 3 closes.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 3,
+          "close": 1000
+        },
+        {
+          "effect": "close",
+          "connection": 3
+        }
+      ]
+    },
+    {
+      "broadcast": {
+        "type": "status",
+        "status": "idle"
+      },
+      "reason": "A closing client gets nothing more (nothing is sent after a close frame).",
+      "effects": [
+        {
+          "effect": "broadcast",
+          "connections": [
+            2
+          ],
+          "message": {
+            "type": "status",
+            "status": "idle"
+          }
+        }
+      ]
+    },
+    {
+      "welcome": {
+        "connection": 3,
+        "appVersion": "1.4.0",
+        "snapshot": []
+      },
+      "reason": "Nor a welcome.",
+      "effects": []
+    },
+    {
+      "welcome": {
+        "connection": 99,
+        "appVersion": "1.4.0",
+        "snapshot": []
+      },
+      "reason": "A welcome for a connection the listener never had sends nothing.",
+      "effects": []
+    }
+  ]
+}

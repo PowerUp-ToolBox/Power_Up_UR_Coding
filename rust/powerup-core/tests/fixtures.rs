@@ -4,7 +4,7 @@
 
 mod support;
 
-use support::{fixtures_dir, json_files, load_case_table, load_session};
+use support::{fixtures_dir, json_files, load_case_table, load_listener_scenario, load_session};
 
 #[test]
 fn the_shared_fixtures_directory_is_not_empty() {
@@ -21,6 +21,15 @@ fn the_shared_fixtures_directory_is_not_empty() {
 fn every_session_scenario_loads() {
     for path in json_files("session") {
         load_session(&path);
+    }
+}
+
+#[test]
+fn every_listener_scenario_loads() {
+    let files = json_files("listener");
+    assert!(!files.is_empty(), "no listener scenarios");
+    for path in files {
+        load_listener_scenario(&path);
     }
 }
 
@@ -83,6 +92,7 @@ fn every_fixture_is_a_known_format() {
                         | "hooks"
                         | "speech"
                         | "protocol"
+                        | "listener"
                 )
             ),
             "{}: unknown fixture area; teach tests/support how to load it",

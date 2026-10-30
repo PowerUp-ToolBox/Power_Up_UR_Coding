@@ -18,13 +18,12 @@ use powerup_core::protocol::handshake::{
     accept_key, header_boundary, upgrade_decision, RequestHead, UpgradeDecision,
 };
 use powerup_core::protocol::message::{
-    encode, intent_for_protocol_name, parse_client_message, ClientMessage, ServerMessage,
-    SessionMessage,
+    encode, intent_for_protocol_name, parse_client_message, ClientMessage,
 };
-use powerup_core::status::AppStatus;
-use powerup_core::transcript::{TranscriptEntry, TranscriptKind};
 use serde_json::{json, Value};
-use support::{case_table, descriptor_bytes, hex_descriptor, intent_descriptor, CaseTable};
+use support::{
+    case_table, descriptor_bytes, hex_descriptor, intent_descriptor, server_message_from, CaseTable,
+};
 
 fn fail(file: &str, name: &str, reason: &str, expected: &Value, actual: &Value) -> String {
     format!("{file} case {name:?} failed (guards: {reason})\n  expected: {expected}\n  actual:   {actual}")
@@ -58,39 +57,6 @@ fn string<'a>(value: &'a Value, key: &str) -> &'a str {
         .unwrap_or_else(|| panic!("no string {key} in {value}"))
 }
 
-fn optional_string(value: &Value, key: &str) -> Option<String> {
-    match &value[key] {
-        Value::String(text) => Some(text.clone()),
-        Value::Null => None,
-        other => panic!("{key} must be a string or null, not {other}"),
-    }
-}
-
-/// A number, or `"nan"`, `"infinity"` or `"-0"` for a Double JSON cannot
-/// spell or a reader may not keep.
-fn double(value: &Value) -> f64 {
-    match value {
-        Value::Number(number) => number
-            .as_f64()
-            .unwrap_or_else(|| panic!("not a double: {value}")),
-        Value::String(text) if text == "nan" => f64::NAN,
-        Value::String(text) if text == "infinity" => f64::INFINITY,
-        Value::String(text) if text == "-0" => -0.0,
-        other => panic!("not a number: {other}"),
-    }
-}
-
-fn status(name: &str) -> AppStatus {
-    match name {
-        "noController" => AppStatus::NoController,
-        "idle" => AppStatus::Idle,
-        "listening" => AppStatus::Listening,
-        "thinking" => AppStatus::Thinking,
-        "speaking" => AppStatus::Speaking,
-        other => panic!("unknown status {other}"),
-    }
-}
-
 fn client_message(payload: &[u8]) -> Value {
     match parse_client_message(payload) {
         Ok(ClientMessage::Hello { token }) => json!({"type": "hello", "token": token}),
@@ -101,43 +67,6 @@ fn client_message(payload: &[u8]) -> Value {
         }
         Ok(ClientMessage::Ping) => json!({"type": "ping"}),
         Err(failure) => json!({"error": failure.code().name(), "message": failure.message()}),
-    }
-}
-
-fn server_message(input: &Value) -> ServerMessage {
-    match string(input, "type") {
-        "welcome" => ServerMessage::Welcome {
-            app_version: string(input, "appVersion").to_owned(),
-        },
-        "status" => ServerMessage::Status(status(string(input, "status"))),
-        "transcript" => {
-            let entry = &input["entry"];
-            ServerMessage::Transcript(TranscriptEntry {
-                id: string(entry, "id").to_owned(),
-                kind: TranscriptKind::from_name(string(entry, "kind"))
-                    .unwrap_or_else(|| panic!("not a transcript kind: {entry}")),
-                text: string(entry, "text").to_owned(),
-                date_seconds: double(&entry["date"]),
-            })
-        }
-        "session" => ServerMessage::Session(SessionMessage {
-            model: string(input, "model").to_owned(),
-            live_model: optional_string(input, "liveModel"),
-            effort: string(input, "effort").to_owned(),
-            permission_mode: string(input, "permissionMode").to_owned(),
-            control_mode: string(input, "controlMode").to_owned(),
-            session_id: optional_string(input, "sessionID"),
-            cost_usd: double(&input["costUSD"]),
-            tokens: input["tokens"]
-                .as_i64()
-                .unwrap_or_else(|| panic!("tokens must be an integer: {input}")),
-        }),
-        "pong" => ServerMessage::Pong,
-        "error" => ServerMessage::Error {
-            code: string(input, "code").to_owned(),
-            message: string(input, "message").to_owned(),
-        },
-        other => panic!("unknown server message {other}"),
     }
 }
 
@@ -298,7 +227,7 @@ fn intent_name_cases() {
 fn server_message_cases() {
     let table = play(
         "server-message.json",
-        |input| encode(&server_message(input)).map_or(Value::Null, Value::String),
+        |input| encode(&server_message_from(input)).map_or(Value::Null, Value::String),
         Clone::clone,
     );
     for case in &table.cases {

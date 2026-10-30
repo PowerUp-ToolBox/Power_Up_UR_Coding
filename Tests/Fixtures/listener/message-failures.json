@@ -1,0 +1,388 @@
+{
+  "formatVersion": 1,
+  "name": "message-failures",
+  "description": "How an authenticated client's refused messages are answered: an unknown type, an unknown intent, an escalation, a voice intent and a blank prompt each get their error and keep the connection; a malformed message, invalid UTF-8 included, a bad hello and an unsupported version get theirs and close with 1002, never 1007.",
+  "reason": "Unknown wire input is answered, never partially executed; close codes are contract (HK-224 to HK-229).",
+  "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:668-677 (handleProtocolText); PowerUpProtocol.swift:93-125",
+  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: ProtocolServerTests drives the same rules over a real loopback socket.",
+  "steps": [
+    {
+      "start": {
+        "port": 48738,
+        "token": "secret"
+      },
+      "reason": "Settings start the listener: the start stops first (generation 1), then binds 127.0.0.1 with generation 2 (RemoteListener.swift:79-135).",
+      "effects": [
+        {
+          "effect": "listen",
+          "generation": 2,
+          "port": 48738
+        }
+      ]
+    },
+    {
+      "bindReady": 2,
+      "reason": "The bind is ready: running, no problem (RemoteListener.swift:158-161).",
+      "effects": [
+        {
+          "effect": "publish",
+          "running": true,
+          "problem": null
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 1 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 1
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 1,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"secret\",\"protocol\":0}"
+          }
+        ]
+      },
+      "reason": "The upgrade and the hello pipelined behind it: 101, then the hello's token matches and the client is authenticated (RemoteListener.swift:620-638, 679-689; HK-256, HK-260).",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 1,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "welcome",
+          "connection": 1
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": [
+          {
+            "hex": "819400000000"
+          },
+          {
+            "text": "{\"type\":\"subscribe\"}"
+          }
+        ]
+      },
+      "reason": "An unknown type: answered, open.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 1,
+          "message": {
+            "type": "error",
+            "code": "unknown_type",
+            "message": "Unknown message type \"subscribe\"."
+          }
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": [
+          {
+            "hex": "81ab00000000"
+          },
+          {
+            "text": "{\"type\":\"intent\",\"intent\":\"launchMissiles\"}"
+          }
+        ]
+      },
+      "reason": "An unknown intent: answered, open.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 1,
+          "message": {
+            "type": "error",
+            "code": "unknown_intent",
+            "message": "Unknown or disallowed intent \"launchMissiles\" (see docs/protocol.md for the allowed set)."
+          }
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": [
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"intent\",\"intent\":\"setPermissionMode\"}"
+          }
+        ]
+      },
+      "reason": "No protocol name grants an escalation (HK-227).",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 1,
+          "message": {
+            "type": "error",
+            "code": "unknown_intent",
+            "message": "Unknown or disallowed intent \"setPermissionMode\" (see docs/protocol.md for the allowed set)."
+          }
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": [
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"intent\",\"intent\":\"beginVoiceCapture\"}"
+          }
+        ]
+      },
+      "reason": "Voice capture is not on the wire (HK-226).",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 1,
+          "message": {
+            "type": "error",
+            "code": "unknown_intent",
+            "message": "Unknown or disallowed intent \"beginVoiceCapture\" (see docs/protocol.md for the allowed set)."
+          }
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": [
+          {
+            "hex": "81b500000000"
+          },
+          {
+            "text": "{\"type\":\"intent\",\"intent\":\"sendPrompt\",\"text\":\" \\n \"}"
+          }
+        ]
+      },
+      "reason": "A blank prompt is refused (HK-228).",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 1,
+          "message": {
+            "type": "error",
+            "code": "unknown_intent",
+            "message": "Unknown or disallowed intent \"sendPrompt\" (see docs/protocol.md for the allowed set)."
+          }
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": [
+          {
+            "hex": "818800000000"
+          },
+          {
+            "text": "not json"
+          }
+        ]
+      },
+      "reason": "Malformed: answered, closed 1002.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 1,
+          "message": {
+            "type": "error",
+            "code": "malformed",
+            "message": "Messages must be single JSON objects with a \"type\" field."
+          }
+        },
+        {
+          "effect": "send",
+          "connection": 1,
+          "close": 1002
+        },
+        {
+          "effect": "close",
+          "connection": 1
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 2 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 2
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 2,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 2,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"secret\",\"protocol\":0}"
+          }
+        ]
+      },
+      "reason": "The upgrade and the hello pipelined behind it: 101, then the hello's token matches and the client is authenticated (RemoteListener.swift:620-638, 679-689; HK-256, HK-260).",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 2,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "welcome",
+          "connection": 2
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 2,
+        "bytes": [
+          {
+            "hex": "818200000000c328"
+          }
+        ]
+      },
+      "reason": "Invalid UTF-8 is malformed like any unreadable text: 1002, not RFC 6455's 1007 (HK-225).",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 2,
+          "message": {
+            "type": "error",
+            "code": "malformed",
+            "message": "Messages must be single JSON objects with a \"type\" field."
+          }
+        },
+        {
+          "effect": "send",
+          "connection": 2,
+          "close": 1002
+        },
+        {
+          "effect": "close",
+          "connection": 2
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 3 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 3
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 3,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 3,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"secret\",\"protocol\":0}"
+          }
+        ]
+      },
+      "reason": "The upgrade and the hello pipelined behind it: 101, then the hello's token matches and the client is authenticated (RemoteListener.swift:620-638, 679-689; HK-256, HK-260).",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 3,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "welcome",
+          "connection": 3
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 3,
+        "bytes": [
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"secret\",\"protocol\":1}"
+          }
+        ]
+      },
+      "reason": "A hello asking for another version is parsed before the second-hello rule: unsupported_protocol, close 1002.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 3,
+          "message": {
+            "type": "error",
+            "code": "unsupported_protocol",
+            "message": "This server speaks protocol 0; you asked for 1."
+          }
+        },
+        {
+          "effect": "send",
+          "connection": 3,
+          "close": 1002
+        },
+        {
+          "effect": "close",
+          "connection": 3
+        }
+      ]
+    }
+  ]
+}

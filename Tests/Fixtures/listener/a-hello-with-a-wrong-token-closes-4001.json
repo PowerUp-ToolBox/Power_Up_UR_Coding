@@ -1,0 +1,215 @@
+{
+  "formatVersion": 1,
+  "name": "a-hello-with-a-wrong-token-closes-4001",
+  "description": "A hello whose token is not the listener's is answered auth_failed and closed with 4001; a right hello behind it in the same read is not read. A hello with no token is bad_hello and closes with 1002.",
+  "reason": "The token is the only thing standing between a local process and the app's intents (HK-257).",
+  "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:679-689 (handleProtocolText), 668-677",
+  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: ProtocolServerTests drives the same rules over a real loopback socket.",
+  "steps": [
+    {
+      "start": {
+        "port": 48738,
+        "token": "secret"
+      },
+      "reason": "Settings start the listener: the start stops first (generation 1), then binds 127.0.0.1 with generation 2 (RemoteListener.swift:79-135).",
+      "effects": [
+        {
+          "effect": "listen",
+          "generation": 2,
+          "port": 48738
+        }
+      ]
+    },
+    {
+      "bindReady": 2,
+      "reason": "The bind is ready: running, no problem (RemoteListener.swift:158-161).",
+      "effects": [
+        {
+          "effect": "publish",
+          "running": true,
+          "problem": null
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 1 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 1
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 1,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "81ad00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"wrong\",\"protocol\":0}"
+          }
+        ]
+      },
+      "reason": "A wrong token: auth_failed, then close 4001 (RemoteListener.swift:681-688).",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 1,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "send",
+          "connection": 1,
+          "message": {
+            "type": "error",
+            "code": "auth_failed",
+            "message": "The token doesn't match — copy it from Settings → Remote → Read-back."
+          }
+        },
+        {
+          "effect": "send",
+          "connection": 1,
+          "close": 4001
+        },
+        {
+          "effect": "close",
+          "connection": 1
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 2 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 2
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 2,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 2,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "81ad00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"wrong\",\"protocol\":0}"
+          },
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"secret\",\"protocol\":0}"
+          }
+        ]
+      },
+      "reason": "A wrong hello, then a right one in the same read: the connection is closing after the first, so the second is not read (Swift read it, and could authenticate a connection it had refused; the core does not).",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 2,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "send",
+          "connection": 2,
+          "message": {
+            "type": "error",
+            "code": "auth_failed",
+            "message": "The token doesn't match — copy it from Settings → Remote → Read-back."
+          }
+        },
+        {
+          "effect": "send",
+          "connection": 2,
+          "close": 4001
+        },
+        {
+          "effect": "close",
+          "connection": 2
+        }
+      ],
+      "state": {
+        "authenticated": 0
+      }
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 3 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 3
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 3,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 3,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "819b00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"\"}"
+          }
+        ]
+      },
+      "reason": "An empty token: bad_hello and close 1002 (RemoteListener.swift:670-675).",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 3,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "send",
+          "connection": 3,
+          "message": {
+            "type": "error",
+            "code": "bad_hello",
+            "message": "hello must carry a non-empty \"token\"."
+          }
+        },
+        {
+          "effect": "send",
+          "connection": 3,
+          "close": 1002
+        },
+        {
+          "effect": "close",
+          "connection": 3
+        }
+      ]
+    }
+  ]
+}

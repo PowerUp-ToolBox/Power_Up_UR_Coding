@@ -7,7 +7,7 @@ rules it owns so far (`mapping/` and `device/`, since slice 2.2,
 `harness/`, `status/` and `session/`, since slice 2.3, the ACP tables
 of `harness/`, since slice 2.4, `config/`, `transcript/`,
 `hooks/`, `text-safety/` and `speech/`, since slice 2.5, and
-`protocol/`, since slice 2.6) and checks the format of the rest, picking up
+`protocol/` and `listener/`, since slice 2.6) and checks the format of the rest, picking up
 more as later slices port them. Each implementation loads these files from
 its own source location. Swift resolves
 them relative to `#filePath`, because SwiftPM accepts no resources outside a
@@ -26,19 +26,23 @@ case table's `verifiedBy` sentence.
 
 ## Conventions
 
-- One subdirectory per area: `session/` (scenarios), `text-safety/`,
-  `status/`, `mapping/`, `device/`, `harness/`, `config/`, `transcript/`,
-  `hooks/`, `speech/` and `protocol/` (case tables).
+- One subdirectory per area: `session/` and `listener/` (scenarios),
+  `text-safety/`, `status/`, `mapping/`, `device/`, `harness/`, `config/`,
+  `transcript/`, `hooks/`, `speech/` and `protocol/` (case tables).
 - Plain JSON only, with no comments and no implementation-specific shapes.
   The one exception is `harness/acp-mock-agent.py`, the scripted ACP agent
   both suites run as a process (see [the ACP adapter](#harness-the-acp-adapter)):
   the JSON loaders list only `.json` files, so it is invisible to them.
 - Every file starts with a header and gives a `reason` for each thing it
-  pins. There are two formats:
+  pins. There are three formats:
   - Session scenarios (`session/`) use `formatVersion`, `name`,
     `description`, `reason` (why the rule exists), `source` (where the rule
     is written down) and `verifiedBy` (the implementations that run it, for
     example `["swift"]`). See [`session/`](#session-session-scenarios-format-1).
+  - Listener scenarios (`listener/`) use `formatVersion`, `name`,
+    `description`, `reason`, `source`, `verifiedBy` (a sentence naming the
+    tests that play them) and a `steps` list in which every step has a
+    `reason`. See [`listener/`](#listener-the-listeners-connection-policy-format-1).
   - Case tables (`text-safety/`, `status/`, `mapping/`, `device/`, `harness/`, `config/`, `transcript/`, `hooks/`, `speech/`, `protocol/`) use `description`,
     `function`, `verifiedBy`, `capturedAgainst` and a `cases` list in which
     every case has a `reason`. See [case tables](#text-safety-and-status-case-tables).
@@ -559,6 +563,83 @@ table, against `protocol::message`, `protocol::handshake` and
 `protocol::framing`; the core writes a server message's members in the
 order the table shows, so it compares `server-message.json` byte for
 byte.
+
+## `listener/`: the listener's connection policy (format 1)
+
+The loopback listener's connection policy (spec #101, slice 2.6, ticket
+#162): what the listener does with its bind, the sockets it accepts, the
+bytes each one sends, its closes and its timers. Each file is one policy,
+played step by step on one `protocol::listener::Listener`; every step is one
+input and the exact effects it returns, in order. The expected effects were
+written from the Swift listener (`Sources/PowerUp/RemoteListener.swift` at
+4c7abe6), whose policy had no seam to capture from; each step's `reason`
+cites the Swift lines, and a step that differs from Swift on purpose says
+so. The policies covered: reply before deliver for hook posts, bare-LF
+heads, the hook path's routing and token, `Expect: 100-continue`, how a
+body is found, the HTTP size limits, malformed requests, hook payloads, the
+upgrade and hello, the Origin refusal and the other upgrade refusals, a
+wrong token (4001), an intent before hello (4003), message failures, the
+frame rules, the idle deadline, the hook-burst rule, the authenticated
+client cap, broadcasts, the generation on restart, the bind retry with its
+backoff, and unusable ports and tokens.
+
+```json
+{
+  "formatVersion": 1,
+  "name": "a-hook-post-is-answered-before-it-is-delivered",
+  "description": "What the policy does, in a few sentences.",
+  "reason": "Why the rule exists (the failure it prevents).",
+  "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:553-597; DESIGN.md v1.4",
+  "verifiedBy": "The tests that play it.",
+  "steps": [
+    { "start": { "port": 48738, "token": "secret" }, "reason": "...",
+      "effects": [ { "effect": "listen", "generation": 2, "port": 48738 } ] },
+    { "accept": 2, "reason": "...",
+      "effects": [ { "effect": "admit", "connection": 1 },
+                   { "effect": "armIdleDeadline", "connection": 1, "seconds": 15 } ],
+      "state": { "connections": 1 } }
+  ]
+}
+```
+
+A step holds exactly one input, its `reason`, its `effects` (`[]` for
+none) and, optionally, `state`: facts checked after it, any of
+`connections` (held, closing ones included), `authenticated`, `generation`
+and `running`. Connections are numbered from 1 in accept order; a
+generation is the one a `listen` effect carried.
+
+| Input | Value |
+| --- | --- |
+| `start` | `{port, token}` |
+| `stop` | `{}` |
+| `bindReady`, `bindCancelled`, `retryFired`, `accept` | a generation |
+| `bindWaiting`, `bindFailed` | `{generation, error}`, `error` `"addressInUse"` or `{"other": <detail>}` |
+| `listenRefused` | `{generation, detail}`: the platform could not create the listener |
+| `receive` | `{connection, bytes}`, `bytes` a bytes descriptor of [`protocol/`](#protocol-the-powerup-protocols-messages-and-websocket-framing) |
+| `endOfStream`, `closed`, `deadlineFired` | a connection |
+| `broadcast` | a server message as `protocol/server-message.json` writes its input (`{type, ...}`) |
+| `welcome` | `{connection, appVersion, snapshot}`, `snapshot` a list of server messages |
+
+| Effect | Fields |
+| --- | --- |
+| `publish` | `running`, `problem` (the text Settings shows, or `null`) |
+| `listen` | `generation`, `port` |
+| `stopListening`, `refuse` | none |
+| `scheduleBindRetry` | `generation`, `seconds` |
+| `admit`, `close`, `cancel`, `welcome` | `connection` |
+| `armIdleDeadline` | `connection`, `seconds` |
+| `send` | `connection` and what is sent: `http` (the response text), `message` (one text frame holding a JSON object, compared as JSON), `text` (any other text frame), `close` (a close frame's code), `pong` (a pong frame's payload, bytes) or `hex` (anything else) |
+| `broadcast` | `connections` and what is sent, as for `send` |
+| `deliverHook` | `generation` and `hook`: `{kind, text, sessionID, cwd}`, `kind` the Swift case name (`stop`, `userPromptSubmit`, `notification`, `sessionEnd`, `postToolUse`) |
+| `deliverIntent` | `generation` and `intent`, an intent descriptor |
+
+Client frames are written as a bytes descriptor, usually a header with a
+zero mask key followed by the payload's text, so the message stays
+readable. The Rust runner is `rust/powerup-core/tests/listener.rs`
+(`listener_scenarios`), which also checks the spec constants and, on random
+input, that no accept ever cancels an authenticated client and nothing
+panics. No Swift runner plays these files yet; `ProtocolServerTests` drives
+the same rules over a real loopback socket.
 
 ## `session/`: session scenarios (format 1)
 

@@ -8,12 +8,14 @@
 //! - [`handshake`]: the request head on the listener port, the upgrade
 //!   decision and the `Sec-WebSocket-Accept` value;
 //! - [`framing`]: RFC 6455 frames as the server decodes and encodes them,
-//!   with v0's limits, and the close codes in use.
+//!   with v0's limits, and the close codes in use;
+//! - [`listener`]: the connection policy, a state machine over the bind and
+//!   abstract connections that turns what happened into effects.
 //!
-//! Everything here is bytes in and values out. The platform keeps the
-//! sockets (NWListener and NWConnection on macOS); what the listener does
-//! with a connection is the connection policy's.
+//! Everything here is bytes in and values or effects out. The platform
+//! keeps the sockets (NWListener and NWConnection on macOS) and the timers.
 
 pub mod framing;
 pub mod handshake;
+pub mod listener;
 pub mod message;

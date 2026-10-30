@@ -1,0 +1,160 @@
+{
+  "formatVersion": 1,
+  "name": "a-bare-lf-hook-post-is-read",
+  "description": "A hook post whose lines end in a bare LF, and whose header block ends in LF LF, is read like a CRLF one; so is a CRLF head that ends in CR LF LF. A bare-LF head followed by a CRLF blank line (LF CR LF) is never recognised: the request waits, and a peer that then closes is cancelled unanswered.",
+  "reason": "A real hook script produced bare-LF requests; dropping them would silently lose hooks (HK-254). The LF CR LF case is pinned so a port does not change it by accident.",
+  "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:795-810 (RequestHead.headerBoundary), 487-503 (handleEndOfStream)",
+  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: ProtocolServerTests drives the same rules over a real loopback socket.",
+  "steps": [
+    {
+      "start": {
+        "port": 48738,
+        "token": "secret"
+      },
+      "reason": "Settings start the listener: the start stops first (generation 1), then binds 127.0.0.1 with generation 2 (RemoteListener.swift:79-135).",
+      "effects": [
+        {
+          "effect": "listen",
+          "generation": 2,
+          "port": 48738
+        }
+      ]
+    },
+    {
+      "bindReady": 2,
+      "reason": "The bind is ready: running, no problem (RemoteListener.swift:158-161).",
+      "effects": [
+        {
+          "effect": "publish",
+          "running": true,
+          "problem": null
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 1 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 1
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 1,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\nHost: 127.0.0.1:48738\nUser-Agent: curl/8.7.1\nAccept: */*\nContent-Type: application/json\nX-PowerUp-Token: secret\nContent-Length: 104\n\n{\"hook_event_name\":\"UserPromptSubmit\",\"session_id\":\"s-2\",\"cwd\":\"/Users/me/app\",\"prompt\":\"Run the tests\"}"
+        }
+      },
+      "reason": "Bare LF throughout, LF LF ending the head (RemoteListener.swift:795-810).",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 1,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 1
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "userPromptSubmit",
+            "text": "Run the tests",
+            "sessionID": "s-2",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 2 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 2
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 2,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 2,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 104\r\n\n{\"hook_event_name\":\"UserPromptSubmit\",\"session_id\":\"s-2\",\"cwd\":\"/Users/me/app\",\"prompt\":\"Run the tests\"}"
+        }
+      },
+      "reason": "CRLF lines with the head ending in CR LF LF: the LF LF is the end, and the stray CR is dropped from the last header line.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 2,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 2
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "userPromptSubmit",
+            "text": "Run the tests",
+            "sessionID": "s-2",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 3 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 3
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 3,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 3,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\nHost: 127.0.0.1:48738\nUser-Agent: curl/8.7.1\nAccept: */*\nContent-Type: application/json\nX-PowerUp-Token: secret\nContent-Length: 104\n\r\n{\"hook_event_name\":\"UserPromptSubmit\",\"session_id\":\"s-2\",\"cwd\":\"/Users/me/app\",\"prompt\":\"Run the tests\"}"
+        }
+      },
+      "reason": "Bare-LF lines ended by a CRLF blank line: no boundary is found, so the request waits for more.",
+      "effects": []
+    },
+    {
+      "endOfStream": 3,
+      "reason": "The peer closes with no head read: cancelled with no answer (RemoteListener.swift:499-502).",
+      "effects": [
+        {
+          "effect": "cancel",
+          "connection": 3
+        }
+      ]
+    }
+  ]
+}

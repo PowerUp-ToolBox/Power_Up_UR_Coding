@@ -1,0 +1,640 @@
+{
+  "formatVersion": 1,
+  "name": "hook-payloads",
+  "description": "What each hook post body delivers: Stop's last_assistant_message, UserPromptSubmit's prompt, Notification's message, SessionEnd's reason and PostToolUse's tool_name, each with session_id and cwd. A blank or non-string value is absent; others stay untrimmed. Other hooks and bodies that are not a hook object are answered and dropped.",
+  "reason": "The five hooks PowerUp installs drive the remote session; an error reply for anything else would make the hook log noise (HK-248, HK-249).",
+  "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:743-782 (event(from:), nonEmpty); RemoteListener.swift:5-25 (the verified shapes)",
+  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: ProtocolServerTests drives the same rules over a real loopback socket.",
+  "steps": [
+    {
+      "start": {
+        "port": 48738,
+        "token": "secret"
+      },
+      "reason": "Settings start the listener: the start stops first (generation 1), then binds 127.0.0.1 with generation 2 (RemoteListener.swift:79-135).",
+      "effects": [
+        {
+          "effect": "listen",
+          "generation": 2,
+          "port": 48738
+        }
+      ]
+    },
+    {
+      "bindReady": 2,
+      "reason": "The bind is ready: running, no problem (RemoteListener.swift:158-161).",
+      "effects": [
+        {
+          "effect": "publish",
+          "running": true,
+          "problem": null
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 1 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 1
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 1,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "Stop with every field: answered 204 either way, then delivered.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 1,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 1
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 2 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 2
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 2,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 2,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 104\r\n\r\n{\"hook_event_name\":\"UserPromptSubmit\",\"session_id\":\"s-2\",\"cwd\":\"/Users/me/app\",\"prompt\":\"Run the tests\"}"
+        }
+      },
+      "reason": "UserPromptSubmit reads prompt: answered 204 either way, then delivered.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 2,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 2
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "userPromptSubmit",
+            "text": "Run the tests",
+            "sessionID": "s-2",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 3 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 3
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 3,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 3,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 106\r\n\r\n{\"hook_event_name\":\"Notification\",\"session_id\":\"s-3\",\"message\":\"Claude needs your permission to use Bash\"}"
+        }
+      },
+      "reason": "Notification reads message (from the docs, not verified live): answered 204 either way, then delivered.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 3,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 3
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "notification",
+            "text": "Claude needs your permission to use Bash",
+            "sessionID": "s-3",
+            "cwd": null
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 4 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 4
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 4,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 4,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 68\r\n\r\n{\"hook_event_name\":\"SessionEnd\",\"session_id\":\"s-4\",\"reason\":\"other\"}"
+        }
+      },
+      "reason": "SessionEnd reads reason (from the docs, not verified live): answered 204 either way, then delivered.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 4,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 4
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "sessionEnd",
+            "text": "other",
+            "sessionID": "s-4",
+            "cwd": null
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 5 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 5
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 5,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 5,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 93\r\n\r\n{\"hook_event_name\":\"PostToolUse\",\"session_id\":\"s-9\",\"cwd\":\"/Users/me/app\",\"tool_name\":\"Bash\"}"
+        }
+      },
+      "reason": "PostToolUse reads tool_name, a heartbeat: answered 204 either way, then delivered.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 5,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 5
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "postToolUse",
+            "text": "Bash",
+            "sessionID": "s-9",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 6 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 6
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 6,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 6,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 53\r\n\r\n{\"hook_event_name\":\"SubagentStop\",\"session_id\":\"s-1\"}"
+        }
+      },
+      "reason": "SubagentStop is not PowerUp's to act on: answered 204 either way, and dropped.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 6,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 6
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 7 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 7
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 7,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 7,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 51\r\n\r\n{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\"}"
+        }
+      },
+      "reason": "PreToolUse is not PowerUp's to act on: answered 204 either way, and dropped.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 7,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 7
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 8 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 8
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 8,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 8,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 87\r\n\r\n{\"hook_event_name\":\"Stop\",\"last_assistant_message\":\" \\n\\t\",\"session_id\":\"\",\"cwd\":\"​\"}"
+        }
+      },
+      "reason": "blank values read as absent: answered 204 either way, then delivered.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 8,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 8
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": null,
+            "sessionID": null,
+            "cwd": null
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 9 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 9
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 9,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 9,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 56\r\n\r\n{\"hook_event_name\":\"UserPromptSubmit\",\"prompt\":\"  hi  \"}"
+        }
+      },
+      "reason": "a value that is not blank is kept untrimmed: answered 204 either way, then delivered.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 9,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 9
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "userPromptSubmit",
+            "text": "  hi  ",
+            "sessionID": null,
+            "cwd": null
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 10 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 10
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 10,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 10,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 73\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":42,\"last_assistant_message\":[\"x\"]}"
+        }
+      },
+      "reason": "a value that is not a string reads as absent: answered 204 either way, then delivered.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 10,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 10
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": null,
+            "sessionID": null,
+            "cwd": null
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 11 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 11
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 11,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 11,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 5\r\n\r\nhello"
+        }
+      },
+      "reason": "a body that is not JSON: answered 204 either way, and dropped.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 11,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 11
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 12 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 12
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 12,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 12,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 28\r\n\r\n[{\"hook_event_name\":\"Stop\"}]"
+        }
+      },
+      "reason": "a JSON array: answered 204 either way, and dropped.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 12,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 12
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 13 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 13
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 13,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 13,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 20\r\n\r\n{\"session_id\":\"s-1\"}"
+        }
+      },
+      "reason": "no hook_event_name: answered 204 either way, and dropped.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 13,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 13
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 14 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 14
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 14,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 14,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 21\r\n\r\n{\"hook_event_name\":1}"
+        }
+      },
+      "reason": "a hook_event_name that is not a string: answered 204 either way, and dropped.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 14,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 14
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 15 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 15
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 15,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 15,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 26\r\n\r\n{\"hook_event_name\":\"stop\"}"
+        }
+      },
+      "reason": "the name is matched exactly: answered 204 either way, and dropped.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 15,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 15
+        }
+      ]
+    }
+  ]
+}

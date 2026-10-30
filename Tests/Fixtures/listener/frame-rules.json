@@ -1,0 +1,335 @@
+{
+  "formatVersion": 1,
+  "name": "frame-rules",
+  "description": "What the WebSocket frame rules do to a connection: a binary frame closes with 1003; an unmasked or fragmented frame, or a length past 1 MB, closes with 1002 as soon as its header shows it; a violation discards the whole read, a hello before it included; more than 2 MB waiting to be decoded closes with 1009.",
+  "reason": "v0 speaks text frames only, with no fragmentation and conservative limits (ADR 0003; HK-236 to HK-242, HK-259).",
+  "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:465-475 (ingest), 640-666 (processWebSocketBuffer); WebSocketFraming.swift:45-106",
+  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: ProtocolServerTests drives the same rules over a real loopback socket.",
+  "steps": [
+    {
+      "start": {
+        "port": 48738,
+        "token": "secret"
+      },
+      "reason": "Settings start the listener: the start stops first (generation 1), then binds 127.0.0.1 with generation 2 (RemoteListener.swift:79-135).",
+      "effects": [
+        {
+          "effect": "listen",
+          "generation": 2,
+          "port": 48738
+        }
+      ]
+    },
+    {
+      "bindReady": 2,
+      "reason": "The bind is ready: running, no problem (RemoteListener.swift:158-161).",
+      "effects": [
+        {
+          "effect": "publish",
+          "running": true,
+          "problem": null
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 1 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 1
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 1,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "828300000000"
+          },
+          {
+            "text": "abc"
+          }
+        ]
+      },
+      "reason": "A binary frame: close 1003 (RemoteListener.swift:662-663).",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 1,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "send",
+          "connection": 1,
+          "close": 1003
+        },
+        {
+          "effect": "close",
+          "connection": 1
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 2 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 2
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 2,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 2,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "8100"
+          }
+        ]
+      },
+      "reason": "An unmasked frame: close 1002.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 2,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "send",
+          "connection": 2,
+          "close": 1002
+        },
+        {
+          "effect": "close",
+          "connection": 2
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 3 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 3
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 3,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 3,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "018800000000"
+          },
+          {
+            "text": "{\"type\":"
+          }
+        ]
+      },
+      "reason": "A fragmented text frame: close 1002.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 3,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "send",
+          "connection": 3,
+          "close": 1002
+        },
+        {
+          "effect": "close",
+          "connection": 3
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 4 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 4
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 4,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 4,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "81ff000000000010000100000000"
+          }
+        ]
+      },
+      "reason": "A declared length of 1 MB plus one byte: close 1002 before any payload arrives (HK-240).",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 4,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "send",
+          "connection": 4,
+          "close": 1002
+        },
+        {
+          "effect": "close",
+          "connection": 4
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 5 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 5
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 5,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 5,
+        "bytes": {
+          "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+        }
+      },
+      "reason": "An upgrade.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 5,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 5,
+        "bytes": [
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"secret\",\"protocol\":0}"
+          },
+          {
+            "hex": "8100"
+          }
+        ]
+      },
+      "reason": "A hello then an unmasked frame in one read: the violation discards the whole read, so the hello is never read.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 5,
+          "close": 1002
+        },
+        {
+          "effect": "close",
+          "connection": 5
+        }
+      ],
+      "state": {
+        "authenticated": 0
+      }
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 6 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 6
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 6,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 6,
+        "bytes": {
+          "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+        }
+      },
+      "reason": "An upgrade.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 6,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 6,
+        "bytes": {
+          "hex": "00",
+          "times": 2097153
+        }
+      },
+      "reason": "2 MB plus one byte waiting: close 1009. The macOS listener's 32 KB reads never get here (decoding leaves at most one partial frame), a larger read can (RemoteListener.swift:470-473).",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 6,
+          "close": 1009
+        },
+        {
+          "effect": "close",
+          "connection": 6
+        }
+      ]
+    }
+  ]
+}

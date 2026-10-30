@@ -21,7 +21,10 @@ use powerup_core::harness::{HarnessEvent, HarnessState};
 use powerup_core::hold::HoldEffect;
 use powerup_core::intent::{ControlPhase, Intent};
 use powerup_core::mapping::{default_device_mappings, DeviceMappings};
+use powerup_core::protocol::message::{ServerMessage, SessionMessage};
 use powerup_core::slots::ConnectedController;
+use powerup_core::status::AppStatus;
+use powerup_core::transcript::{TranscriptEntry, TranscriptKind};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -68,6 +71,131 @@ pub struct SessionScenario {
     pub config: Value,
     pub script: Vec<Value>,
     pub expect: Value,
+}
+
+/// A listener scenario (`listener/`, format 1): the connection policy
+/// played one input at a time, each step with the effects it must return.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ListenerScenario {
+    pub format_version: u32,
+    pub name: String,
+    pub description: String,
+    pub reason: String,
+    pub source: String,
+    pub verified_by: String,
+    pub steps: Vec<Value>,
+}
+
+/// One step of a listener scenario, its input split off the rest.
+#[derive(Debug)]
+pub struct ListenerStep {
+    /// The input's name (one of [`LISTENER_INPUTS`]) and its value.
+    pub input: String,
+    pub value: Value,
+    pub reason: String,
+    pub effects: Vec<Value>,
+    /// What the machine holds afterwards, when the step checks it.
+    pub state: Option<serde_json::Map<String, Value>>,
+}
+
+/// The inputs a listener step may make, one per step.
+pub const LISTENER_INPUTS: [&str; 15] = [
+    "start",
+    "stop",
+    "bindReady",
+    "bindWaiting",
+    "bindFailed",
+    "bindCancelled",
+    "listenRefused",
+    "retryFired",
+    "accept",
+    "receive",
+    "endOfStream",
+    "closed",
+    "deadlineFired",
+    "broadcast",
+    "welcome",
+];
+
+/// The facts a step's `state` may check.
+pub const LISTENER_STATE_KEYS: [&str; 4] =
+    ["connections", "authenticated", "generation", "running"];
+
+/// Loads and checks one listener scenario; panics naming the file and step
+/// on any problem.
+pub fn load_listener_scenario(path: &Path) -> (ListenerScenario, Vec<ListenerStep>) {
+    let scenario: ListenerScenario =
+        serde_json::from_str(&read(path)).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let file = path.display();
+    assert_eq!(
+        scenario.format_version, 1,
+        "{file}: unsupported formatVersion"
+    );
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or_default();
+    assert_eq!(scenario.name, stem, "{file}: name must match the file name");
+    for (field, value) in [
+        ("description", &scenario.description),
+        ("reason", &scenario.reason),
+        ("source", &scenario.source),
+        ("verifiedBy", &scenario.verified_by),
+    ] {
+        assert!(!value.trim().is_empty(), "{file}: empty {field}");
+    }
+    assert!(!scenario.steps.is_empty(), "{file}: no steps");
+    let steps = scenario
+        .steps
+        .iter()
+        .enumerate()
+        .map(|(index, step)| {
+            let object = step
+                .as_object()
+                .unwrap_or_else(|| panic!("{file}: step {index} is not an object"));
+            let inputs: Vec<&String> = object
+                .keys()
+                .filter(|key| !matches!(key.as_str(), "reason" | "effects" | "state"))
+                .collect();
+            let [input] = inputs.as_slice() else {
+                panic!("{file}: step {index} needs exactly one input, has {inputs:?}");
+            };
+            assert!(
+                LISTENER_INPUTS.contains(&input.as_str()),
+                "{file}: step {index} has an unknown input {input:?}"
+            );
+            let reason = object
+                .get("reason")
+                .and_then(Value::as_str)
+                .filter(|reason| !reason.trim().is_empty())
+                .unwrap_or_else(|| panic!("{file}: step {index} has no reason"));
+            let effects = object
+                .get("effects")
+                .and_then(Value::as_array)
+                .unwrap_or_else(|| panic!("{file}: step {index} has no effects list"));
+            let state = object.get("state").map(|state| {
+                let state = state
+                    .as_object()
+                    .unwrap_or_else(|| panic!("{file}: step {index} state is not an object"));
+                for key in state.keys() {
+                    assert!(
+                        LISTENER_STATE_KEYS.contains(&key.as_str()),
+                        "{file}: step {index} checks an unknown fact {key:?}"
+                    );
+                }
+                state.clone()
+            });
+            ListenerStep {
+                input: (*input).clone(),
+                value: object[input.as_str()].clone(),
+                reason: reason.to_owned(),
+                effects: effects.clone(),
+                state,
+            }
+        })
+        .collect();
+    (scenario, steps)
 }
 
 /// A case table (`text-safety/`, `status/`, `mapping/`, `device/`, `harness/`,
@@ -567,6 +695,88 @@ pub fn descriptor_bytes(descriptor: &Value) -> Vec<u8> {
 pub fn hex_descriptor(bytes: &[u8]) -> Value {
     let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
     serde_json::json!({ "hex": hex })
+}
+
+// Server message descriptors (`Tests/Fixtures/README.md`, `protocol/`).
+
+fn string_member<'a>(value: &'a Value, key: &str) -> &'a str {
+    value[key]
+        .as_str()
+        .unwrap_or_else(|| panic!("no string {key} in {value}"))
+}
+
+fn optional_string_member(value: &Value, key: &str) -> Option<String> {
+    match &value[key] {
+        Value::String(text) => Some(text.clone()),
+        Value::Null => None,
+        other => panic!("{key} must be a string or null, not {other}"),
+    }
+}
+
+/// A number, or `"nan"`, `"infinity"` or `"-0"` for a Double JSON cannot
+/// spell or a reader may not keep.
+pub fn double_from(value: &Value) -> f64 {
+    match value {
+        Value::Number(number) => number
+            .as_f64()
+            .unwrap_or_else(|| panic!("not a double: {value}")),
+        Value::String(text) if text == "nan" => f64::NAN,
+        Value::String(text) if text == "infinity" => f64::INFINITY,
+        Value::String(text) if text == "-0" => -0.0,
+        other => panic!("not a number: {other}"),
+    }
+}
+
+pub fn status_from(name: &str) -> AppStatus {
+    match name {
+        "noController" => AppStatus::NoController,
+        "idle" => AppStatus::Idle,
+        "listening" => AppStatus::Listening,
+        "thinking" => AppStatus::Thinking,
+        "speaking" => AppStatus::Speaking,
+        other => panic!("unknown status {other}"),
+    }
+}
+
+/// `{type, ...fields}`: a server message by its type and its builder's
+/// arguments (`protocol/server-message.json`).
+pub fn server_message_from(input: &Value) -> ServerMessage {
+    let string = string_member;
+    let optional_string = optional_string_member;
+    match string(input, "type") {
+        "welcome" => ServerMessage::Welcome {
+            app_version: string(input, "appVersion").to_owned(),
+        },
+        "status" => ServerMessage::Status(status_from(string(input, "status"))),
+        "transcript" => {
+            let entry = &input["entry"];
+            ServerMessage::Transcript(TranscriptEntry {
+                id: string(entry, "id").to_owned(),
+                kind: TranscriptKind::from_name(string(entry, "kind"))
+                    .unwrap_or_else(|| panic!("not a transcript kind: {entry}")),
+                text: string(entry, "text").to_owned(),
+                date_seconds: double_from(&entry["date"]),
+            })
+        }
+        "session" => ServerMessage::Session(SessionMessage {
+            model: string(input, "model").to_owned(),
+            live_model: optional_string(input, "liveModel"),
+            effort: string(input, "effort").to_owned(),
+            permission_mode: string(input, "permissionMode").to_owned(),
+            control_mode: string(input, "controlMode").to_owned(),
+            session_id: optional_string(input, "sessionID"),
+            cost_usd: double_from(&input["costUSD"]),
+            tokens: input["tokens"]
+                .as_i64()
+                .unwrap_or_else(|| panic!("tokens must be an integer: {input}")),
+        }),
+        "pong" => ServerMessage::Pong,
+        "error" => ServerMessage::Error {
+            code: string(input, "code").to_owned(),
+            message: string(input, "message").to_owned(),
+        },
+        other => panic!("unknown server message {other}"),
+    }
 }
 
 /// The table at `Tests/Fixtures/<area>/<file>`.

@@ -1,0 +1,431 @@
+{
+  "formatVersion": 1,
+  "name": "an-authenticated-plugin-is-welcomed-and-served",
+  "description": "A protocol client upgrades, says hello with the token and is welcomed with the app version and the snapshot, each message in its own frame. Its intents reach the app, a ping message gets a pong message and a ping frame a pong frame with the same payload; a second hello does nothing; the idle deadline spares it. Its close frame is answered with 1000 and nothing after it is read. A hello split across reads waits for its frame.",
+  "reason": "This is the local plugin API's happy path (docs/protocol.md); every later rule is a departure from it (HK-234, HK-256 to HK-258).",
+  "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:620-704 (acceptWebSocket, processWebSocketBuffer, handleProtocolText), 269-275 (welcomeAuthenticated), 427-433 (deadline)",
+  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: ProtocolServerTests drives the same rules over a real loopback socket.",
+  "steps": [
+    {
+      "start": {
+        "port": 48738,
+        "token": "secret"
+      },
+      "reason": "Settings start the listener: the start stops first (generation 1), then binds 127.0.0.1 with generation 2 (RemoteListener.swift:79-135).",
+      "effects": [
+        {
+          "effect": "listen",
+          "generation": 2,
+          "port": 48738
+        }
+      ]
+    },
+    {
+      "bindReady": 2,
+      "reason": "The bind is ready: running, no problem (RemoteListener.swift:158-161).",
+      "effects": [
+        {
+          "effect": "publish",
+          "running": true,
+          "problem": null
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 1 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 1
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 1,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+          },
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"secret\",\"protocol\":0}"
+          }
+        ]
+      },
+      "reason": "The upgrade and the hello pipelined behind it: 101, then the hello's token matches and the client is authenticated (RemoteListener.swift:620-638, 679-689; HK-256, HK-260).",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 1,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "welcome",
+          "connection": 1
+        }
+      ]
+    },
+    {
+      "welcome": {
+        "connection": 1,
+        "appVersion": "1.4.0",
+        "snapshot": [
+          {
+            "type": "status",
+            "status": "idle"
+          },
+          {
+            "type": "session",
+            "model": "default",
+            "liveModel": "claude-opus-4-1",
+            "effort": "high",
+            "permissionMode": "default",
+            "controlMode": "builtin",
+            "sessionID": "s-1",
+            "costUSD": 0.5,
+            "tokens": 0
+          }
+        ]
+      },
+      "reason": "The app answers the welcome effect: welcome, then status and session (RemoteListener.swift:269-275).",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 1,
+          "message": {
+            "type": "welcome",
+            "protocol": 0,
+            "app": "PowerUp",
+            "version": "1.4.0"
+          }
+        },
+        {
+          "effect": "send",
+          "connection": 1,
+          "message": {
+            "type": "status",
+            "status": "idle"
+          }
+        },
+        {
+          "effect": "send",
+          "connection": 1,
+          "message": {
+            "type": "session",
+            "model": "default",
+            "effort": "high",
+            "permissionMode": "default",
+            "controlMode": "builtin",
+            "costUSD": 0.5,
+            "liveModel": "claude-opus-4-1",
+            "sessionID": "s-1"
+          }
+        }
+      ],
+      "state": {
+        "connections": 1,
+        "authenticated": 1
+      }
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": [
+          {
+            "hex": "81c300000000"
+          },
+          {
+            "text": "{\"type\":\"intent\",\"intent\":\"sendPrompt\",\"text\":\"  run the tests \\n\"}"
+          }
+        ]
+      },
+      "reason": "An intent from an authenticated client reaches the app, its prompt trimmed (RemoteListener.swift:691-698).",
+      "effects": [
+        {
+          "effect": "deliverIntent",
+          "generation": 2,
+          "intent": {
+            "intent": "sendPrompt",
+            "prompt": "run the tests"
+          }
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": [
+          {
+            "hex": "81a400000000"
+          },
+          {
+            "text": "{\"type\":\"intent\",\"intent\":\"approve\"}"
+          }
+        ]
+      },
+      "reason": "Another intent.",
+      "effects": [
+        {
+          "effect": "deliverIntent",
+          "generation": 2,
+          "intent": {
+            "intent": "approve"
+          }
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": [
+          {
+            "hex": "818f00000000"
+          },
+          {
+            "text": "{\"type\":\"ping\"}"
+          }
+        ]
+      },
+      "reason": "A ping message gets a pong message.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 1,
+          "message": {
+            "type": "pong"
+          }
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": [
+          {
+            "hex": "898200000000"
+          },
+          {
+            "text": "hb"
+          }
+        ]
+      },
+      "reason": "A ping frame gets a pong frame echoing its payload (RemoteListener.swift:656-657).",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 1,
+          "pong": {
+            "text": "hb"
+          }
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": [
+          {
+            "hex": "8a8000000000"
+          },
+          {
+            "text": ""
+          }
+        ]
+      },
+      "reason": "An unsolicited pong frame is ignored.",
+      "effects": []
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": [
+          {
+            "hex": "81ad00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"wrong\",\"protocol\":0}"
+          }
+        ]
+      },
+      "reason": "A second hello does nothing, even with a wrong token (RemoteListener.swift:680).",
+      "effects": []
+    },
+    {
+      "deadlineFired": 1,
+      "reason": "The deadline spares an authenticated client (RemoteListener.swift:427-433).",
+      "effects": []
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": [
+          {
+            "hex": "88820000000003e8"
+          },
+          {
+            "hex": "81a400000000"
+          },
+          {
+            "text": "{\"type\":\"intent\",\"intent\":\"approve\"}"
+          }
+        ]
+      },
+      "reason": "A close frame is answered with close 1000 and the connection closed; the intent behind it in the same read is not handled (the core reads nothing after a close; Swift handled it until its close completed).",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 1,
+          "close": 1000
+        },
+        {
+          "effect": "close",
+          "connection": 1
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": [
+          {
+            "hex": "81a400000000"
+          },
+          {
+            "text": "{\"type\":\"intent\",\"intent\":\"approve\"}"
+          }
+        ]
+      },
+      "reason": "A closing connection reads nothing.",
+      "effects": []
+    },
+    {
+      "closed": 1,
+      "reason": "The close has run.",
+      "effects": [
+        {
+          "effect": "cancel",
+          "connection": 1
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 2 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 2
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 2,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 2,
+        "bytes": {
+          "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+        }
+      },
+      "reason": "An upgrade alone: 101.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 2,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 2,
+        "bytes": {
+          "hex": "81ae000000007b"
+        }
+      },
+      "reason": "Part of the hello frame: it waits (HK-242).",
+      "effects": []
+    },
+    {
+      "receive": {
+        "connection": 2,
+        "bytes": {
+          "hex": "2274797065223a2268656c6c6f222c22746f6b656e223a22736563726574222c2270726f746f636f6c223a307d"
+        }
+      },
+      "reason": "The rest: the hello is read.",
+      "effects": [
+        {
+          "effect": "welcome",
+          "connection": 2
+        }
+      ],
+      "state": {
+        "authenticated": 1
+      }
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 3 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 3
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 3,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 3,
+        "bytes": [
+          {
+            "text": "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nContent-Length: 100\r\n\r\n"
+          },
+          {
+            "hex": "81ae00000000"
+          },
+          {
+            "text": "{\"type\":\"hello\",\"token\":\"secret\",\"protocol\":0}"
+          }
+        ]
+      },
+      "reason": "An upgrade that declares a body waits for it, like any request (RemoteListener.swift:543-548).",
+      "effects": []
+    },
+    {
+      "endOfStream": 3,
+      "reason": "The peer ends its stream first: the request is completed with what came, so it upgrades, and the hello it carried is read (RemoteListener.swift:495-498, 620-638).",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 3,
+          "http": "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
+        },
+        {
+          "effect": "welcome",
+          "connection": 3
+        }
+      ],
+      "state": {
+        "authenticated": 2
+      }
+    }
+  ]
+}

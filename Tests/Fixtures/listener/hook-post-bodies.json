@@ -1,0 +1,330 @@
+{
+  "formatVersion": 1,
+  "name": "hook-post-bodies",
+  "description": "How a hook post's body is found. No Content-Length (and not chunked) is an empty body, answered at once; an unreadable Content-Length counts as none. A chunked body is not decoded: it is read to the end of the stream, so its framing makes it unreadable. A peer that closes before its declared length is answered with what came. Bytes past the declared length are ignored. Every one is answered 204; only a body that reads as a hook is delivered.",
+  "reason": "Hook scripts and curl vary; whatever they send, the post is answered and never left hanging (HK-249, HK-251).",
+  "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:487-503 (handleEndOfStream), 518-533, 543-548 (process), 583-596 (complete)",
+  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: ProtocolServerTests drives the same rules over a real loopback socket.",
+  "steps": [
+    {
+      "start": {
+        "port": 48738,
+        "token": "secret"
+      },
+      "reason": "Settings start the listener: the start stops first (generation 1), then binds 127.0.0.1 with generation 2 (RemoteListener.swift:79-135).",
+      "effects": [
+        {
+          "effect": "listen",
+          "generation": 2,
+          "port": 48738
+        }
+      ]
+    },
+    {
+      "bindReady": 2,
+      "reason": "The bind is ready: running, no problem (RemoteListener.swift:158-161).",
+      "effects": [
+        {
+          "effect": "publish",
+          "running": true,
+          "problem": null
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 1 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 1
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 1,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nX-PowerUp-Token: secret\r\n\r\n"
+        }
+      },
+      "reason": "No Content-Length: the body is empty and the request complete; an empty body is no hook (RemoteListener.swift:530-532, 761-764).",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 1,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 1
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 2 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 2
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 2,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 2,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nX-PowerUp-Token: secret\r\nContent-Length: abc\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "A Content-Length Int(String) cannot read counts as none: empty body, the bytes that follow are not read.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 2,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 2
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 3 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 3
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 3,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 3,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nX-PowerUp-Token: secret\r\nTransfer-Encoding: chunked\r\n\r\n"
+        }
+      },
+      "reason": "Chunked: the body is read to the end of the stream (RemoteListener.swift:527-529).",
+      "effects": []
+    },
+    {
+      "receive": {
+        "connection": 3,
+        "bytes": {
+          "text": "8a\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}\r\n0\r\n\r\n"
+        }
+      },
+      "reason": "The chunks arrive: still waiting for the end of the stream.",
+      "effects": []
+    },
+    {
+      "endOfStream": 3,
+      "reason": "The end of the stream: answered with the raw chunked bytes as the body, which read as no JSON, so nothing is delivered (RemoteListener.swift:495-498).",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 3,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 3
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 4 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 4
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 4,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 4,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nX-PowerUp-Token: secret\r\nContent-Length: 40\r\n\r\n{\"hook_event_name\":\"Stop\"}"
+        }
+      },
+      "reason": "Content-Length 40 but only 26 bytes: waiting for the rest.",
+      "effects": []
+    },
+    {
+      "endOfStream": 4,
+      "reason": "The peer closes early: answered with the bytes that came, which are a whole Stop hook.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 4,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 4
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": null,
+            "sessionID": null,
+            "cwd": null
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 5 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 5
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 5,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 5,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nX-PowerUp-Token: secret\r\nContent-Length: 26\r\n\r\n{\"hook_event_name\":\"Stop\"}trailing"
+        }
+      },
+      "reason": "Bytes past Content-Length are cut off, so the body reads.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 5,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 5
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": null,
+            "sessionID": null,
+            "cwd": null
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 6 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 6
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 6,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 6,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nX-PowerUp-Token: secret\r\nContent-Length: +26\r\n\r\n{\"hook_event_name\":\"Stop\"}"
+        }
+      },
+      "reason": "Int(String) reads a leading plus sign.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 6,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 6
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": null,
+            "sessionID": null,
+            "cwd": null
+          }
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 7 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 7
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 7,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 7,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nX-Pow"
+        }
+      },
+      "reason": "Half a head.",
+      "effects": []
+    },
+    {
+      "endOfStream": 7,
+      "reason": "The peer closes before the head ended: cancelled, unanswered.",
+      "effects": [
+        {
+          "effect": "cancel",
+          "connection": 7
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,158 @@
+{
+  "formatVersion": 1,
+  "name": "a-hook-post-is-answered-before-it-is-delivered",
+  "description": "A hook post with the right token is answered 204 and closed, and only then handed to the app: the reply effects come before the deliver effect, whether the body arrives with the head or after it. Bytes after the answer are not read, and the connection is forgotten once its close has run.",
+  "reason": "The hook script's curl gives up after one second (--max-time 1). Answering first means a slow hand-off to the app can never make a hook look failed (HK-247).",
+  "source": "Sources/PowerUp/RemoteListener.swift at 4c7abe6:553-597 (complete: respond(204) before onEvent), 599-609 (respond); DESIGN.md v1.4",
+  "verifiedBy": "DESIGN.md v1.4, v1.7; docs/protocol.md spec v0. Rust: rust/powerup-core/tests/listener.rs listener_scenarios plays every step through protocol::listener::Listener. Swift: ProtocolServerTests drives the same rules over a real loopback socket.",
+  "steps": [
+    {
+      "start": {
+        "port": 48738,
+        "token": "secret"
+      },
+      "reason": "Settings start the listener: the start stops first (generation 1), then binds 127.0.0.1 with generation 2 (RemoteListener.swift:79-135).",
+      "effects": [
+        {
+          "effect": "listen",
+          "generation": 2,
+          "port": 48738
+        }
+      ]
+    },
+    {
+      "bindReady": 2,
+      "reason": "The bind is ready: running, no problem (RemoteListener.swift:158-161).",
+      "effects": [
+        {
+          "effect": "publish",
+          "running": true,
+          "problem": null
+        }
+      ]
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 1 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 1
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 1,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "A curl-style hook post, CRLF line endings, head and body in one read: the 204 and its close come first, then the Stop hook (RemoteListener.swift:590-596).",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 1,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 1
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 1,
+        "bytes": {
+          "text": "more bytes"
+        }
+      },
+      "reason": "An answered request reads nothing more (RemoteListener.swift:478, 458-460).",
+      "effects": []
+    },
+    {
+      "closed": 1,
+      "reason": "The close has run: the connection is forgotten and cancelled (RemoteListener.swift:603-609, 730-737).",
+      "effects": [
+        {
+          "effect": "cancel",
+          "connection": 1
+        }
+      ],
+      "state": {
+        "connections": 0
+      }
+    },
+    {
+      "accept": 2,
+      "reason": "A socket is accepted: it becomes connection 2 under the 15-second deadline (RemoteListener.swift:222-257, 427-433).",
+      "effects": [
+        {
+          "effect": "admit",
+          "connection": 2
+        },
+        {
+          "effect": "armIdleDeadline",
+          "connection": 2,
+          "seconds": 15
+        }
+      ]
+    },
+    {
+      "receive": {
+        "connection": 2,
+        "bytes": {
+          "text": "POST /event HTTP/1.1\r\nHost: 127.0.0.1:48738\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\nContent-Type: application/json\r\nX-PowerUp-Token: secret\r\nContent-Length: 138\r\n\r\n"
+        }
+      },
+      "reason": "The head alone: Content-Length says a body is coming, so nothing is answered yet (RemoteListener.swift:543-548).",
+      "effects": []
+    },
+    {
+      "receive": {
+        "connection": 2,
+        "bytes": {
+          "text": "{\"hook_event_name\":\"Stop\",\"session_id\":\"s-1\",\"cwd\":\"/Users/me/app\",\"permission_mode\":\"default\",\"last_assistant_message\":\"All tests pass.\"}"
+        }
+      },
+      "reason": "The body completes the request: again the answer before the hook.",
+      "effects": [
+        {
+          "effect": "send",
+          "connection": 2,
+          "http": "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+        },
+        {
+          "effect": "close",
+          "connection": 2
+        },
+        {
+          "effect": "deliverHook",
+          "generation": 2,
+          "hook": {
+            "kind": "stop",
+            "text": "All tests pass.",
+            "sessionID": "s-1",
+            "cwd": "/Users/me/app"
+          }
+        }
+      ]
+    }
+  ]
+}
